@@ -99,7 +99,7 @@ function addToCart(id){const x=db.cart.find(i=>i.id===id);if(x)x.qty++;else db.c
 function updateCartCount(){document.getElementById("cartCount").textContent=db.cart.reduce((s,i)=>s+i.qty,0)}
 function openProduct(id){
   const p=getP(id);
-  const image=imageById[p.id]||"";
+  const image=encodeURI(imageById[p.id]||"");
 
   showModal(`
     <div class="modal-head">
