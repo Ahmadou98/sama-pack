@@ -97,51 +97,222 @@ function openProduct(id){
 }
 function addToCart(id){const x=db.cart.find(i=>i.id===id);if(x)x.qty++;else db.cart.push({id,qty:1});save();updateCartCount();toast("Pack ajouté au panier.");}
 function updateCartCount(){document.getElementById("cartCount").textContent=db.cart.reduce((s,i)=>s+i.qty,0)}
+function productCard(p){
+  const image=encodeURI(imageById[p.id]||"");
+
+  return `
+    <article class="product-card">
+
+      <div class="pack-visual">
+        <div class="pack-box">
+
+          <img
+            src="${image}"
+            alt="${esc(p.name)}"
+            style="
+              display:block;
+              width:100%;
+              height:320px;
+              object-fit:contain;
+              border-radius:14px;
+            "
+          >
+
+          <div class="pack-code">${p.id}</div>
+
+        </div>
+      </div>
+
+      <div class="product-body">
+
+        <div class="product-cat">
+          ${esc(p.cat)}
+        </div>
+
+        <div class="product-name">
+          ${esc(p.name)}
+        </div>
+
+        <div class="product-desc">
+          ${esc(p.desc)}
+        </div>
+
+        <div class="price-row">
+          <div class="price">
+            ${money(p.price)}
+          </div>
+
+          <span class="small-note">
+            TTC
+          </span>
+        </div>
+
+        <div class="product-actions">
+
+          <button
+            class="btn ghost"
+            onclick="openProduct('${p.id}')"
+          >
+            Détails
+          </button>
+
+          <button
+            class="btn primary"
+            onclick="addToCart('${p.id}')"
+          >
+            Ajouter
+          </button>
+
+        </div>
+
+      </div>
+
+    </article>
+  `;
+}
+
+function addToCart(id){
+  const x=db.cart.find(i=>i.id===id);
+
+  if(x){
+    x.qty++;
+  }else{
+    db.cart.push({
+      id,
+      qty:1
+    });
+  }
+
+  save();
+  updateCartCount();
+  toast("Pack ajouté au panier.");
+}
+
+function updateCartCount(){
+  document.getElementById("cartCount").textContent=
+    db.cart.reduce((s,i)=>s+i.qty,0);
+}
+
 function openProduct(id){
+
   const p=getP(id);
+
+  if(!p){
+    return;
+  }
+
   const image=encodeURI(imageById[p.id]||"");
 
   showModal(`
+    
     <div class="modal-head">
+
       <div>
-        <div class="eyebrow">${esc(p.cat)}</div>
-        <h2>${esc(p.name)}</h2>
+        <div class="eyebrow">
+          ${esc(p.cat)}
+        </div>
+
+        <h2>
+          ${esc(p.name)}
+        </h2>
       </div>
-      <button class="close" onclick="closeModal()">✕</button>
+
+      <button
+        class="close"
+        onclick="closeModal()"
+      >
+        ✕
+      </button>
+
     </div>
 
-    <div class="pack-visual" style="margin:20px 0;">
-      <div class="pack-box" style="height:320px;">
-        <img
-          src="${image}"
-          alt="${esc(p.name)}"
-          style="display:block;width:100%;height:100%;object-fit:contain;border-radius:14px;"
-        >
-        <div class="pack-code">${p.id}</div>
-      </div>
+    <div
+      style="
+        width:100%;
+        margin:20px 0 30px;
+        display:flex;
+        justify-content:center;
+        align-items:center;
+      "
+    >
+
+      <img
+        src="${image}"
+        alt="${esc(p.name)}"
+        style="
+          display:block;
+          width:100%;
+          max-width:950px;
+          height:auto;
+          max-height:650px;
+          object-fit:contain;
+          border-radius:16px;
+        "
+      >
+
     </div>
 
-    <p>${esc(p.desc)}</p>
+    <p>
+      ${esc(p.desc)}
+    </p>
 
     <ul class="pack-items">
       ${p.items.map(i=>`<li>${esc(i)}</li>`).join("")}
     </ul>
 
     <div class="price-row">
-      <div class="price">${money(p.price)}</div>
-      <button class="btn primary" onclick="addToCart('${p.id}');closeModal();renderProducts()">
+
+      <div class="price">
+        ${money(p.price)}
+      </div>
+
+      <button
+        class="btn primary"
+        onclick="
+          addToCart('${p.id}');
+          closeModal();
+          renderProducts();
+        "
+      >
         Ajouter au panier
       </button>
+
     </div>
   `);
 }
+
 function showModal(body){
+
   document.getElementById("modalRoot").innerHTML=`
-    <div class="modal" onclick="if(event.target===this)closeModal()">
-      <div class="modal-card" style="width:min(900px,94vw);max-width:900px;">
+
+    <div
+      class="modal"
+      onclick="if(event.target===this)closeModal()"
+    >
+
+      <div
+        class="modal-card"
+        style="
+          width:95vw !important;
+          max-width:1100px !important;
+          max-height:92vh !important;
+          overflow-y:auto;
+          box-sizing:border-box;
+          margin:auto;
+        "
+      >
+
         ${body}
+
       </div>
-    </div>`;
+
+    </div>
+
+  `;
+}
+
+function closeModal(){
+  document.getElementById("modalRoot").innerHTML="";
 }
 function closeModal(){document.getElementById("modalRoot").innerHTML=""}
 function cartTotals(){const subtotal=db.cart.reduce((s,i)=>s+getP(i.id).price*i.qty,0);const delivery=db.settings.deliveryFee||0;return {subtotal,delivery,total:subtotal+delivery}}
