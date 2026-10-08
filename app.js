@@ -59,36 +59,41 @@ function openProduct(id){
   const p=getP(id);
   const image=imageById[p.id]||"";
 
-  showModal(`
-    <div class="modal-head">
-      <div>
-        <div class="eyebrow">${esc(p.cat)}</div>
-        <h2>${esc(p.name)}</h2>
-      </div>
-      <button class="close" onclick="closeModal()">✕</button>
-    </div>
-
-    <div style="width:100%;margin:20px 0;display:flex;justify-content:center;align-items:center;">
-      <img
-        src="${image}"
-        alt="${esc(p.name)}"
-        style="display:block;width:100%;max-width:850px;height:auto;max-height:600px;object-fit:contain;border-radius:14px;"
+ function showModal(body){
+  document.getElementById("modalRoot").innerHTML=`
+    <div
+      class="modal"
+      style="
+        position:fixed;
+        inset:0;
+        width:100vw;
+        height:100vh;
+        display:flex;
+        align-items:center;
+        justify-content:center;
+        padding:20px;
+        box-sizing:border-box;
+        overflow-y:auto;
+        z-index:9999;
+      "
+      onclick="if(event.target===this)closeModal()"
+    >
+      <div
+        class="modal-card"
+        style="
+          width:95vw !important;
+          max-width:1100px !important;
+          min-width:0 !important;
+          max-height:92vh !important;
+          overflow-y:auto;
+          box-sizing:border-box;
+          margin:auto;
+        "
       >
+        ${body}
+      </div>
     </div>
-
-    <p>${esc(p.desc)}</p>
-
-    <ul class="pack-items">
-      ${p.items.map(i=>`<li>${esc(i)}</li>`).join("")}
-    </ul>
-
-    <div class="price-row">
-      <div class="price">${money(p.price)}</div>
-      <button class="btn primary" onclick="addToCart('${p.id}');closeModal();renderProducts()">
-        Ajouter au panier
-      </button>
-    </div>
-  `);
+  `;
 }
 function addToCart(id){const x=db.cart.find(i=>i.id===id);if(x)x.qty++;else db.cart.push({id,qty:1});save();updateCartCount();toast("Pack ajouté au panier.");}
 function updateCartCount(){document.getElementById("cartCount").textContent=db.cart.reduce((s,i)=>s+i.qty,0)}
