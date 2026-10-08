@@ -95,7 +95,7 @@ function openProduct(id){
     </div>
 
     <div class="pack-visual" style="margin:20px 0;">
-      <div class="pack-box" style="height:500px;">
+      <div class="pack-box" style="height:320px;">
         <img
           src="${image}"
           alt="${esc(p.name)}"
@@ -119,7 +119,14 @@ function openProduct(id){
     </div>
   `);
 }
-function showModal(body){document.getElementById("modalRoot").innerHTML=`<div class="modal" onclick="if(event.target===this)closeModal()"><div class="modal-card">${body}</div></div>`}
+function showModal(body){
+  document.getElementById("modalRoot").innerHTML=`
+    <div class="modal" onclick="if(event.target===this)closeModal()">
+      <div class="modal-card" style="width:min(900px,94vw);max-width:900px;">
+        ${body}
+      </div>
+    </div>`;
+}
 function closeModal(){document.getElementById("modalRoot").innerHTML=""}
 function cartTotals(){const subtotal=db.cart.reduce((s,i)=>s+getP(i.id).price*i.qty,0);const delivery=db.settings.deliveryFee||0;return {subtotal,delivery,total:subtotal+delivery}}
 function renderCartModal(){if(!db.cart.length){showModal(`<div class="modal-head"><h2>Ton panier</h2><button class="close" onclick="closeModal()">✕</button></div><div class="empty">Ton panier est vide.<br><br><a class="btn primary" href="#catalogue" onclick="closeModal()">Voir le catalogue</a></div>`);return}const t=cartTotals();showModal(`<div class="modal-head"><div><div class="eyebrow">COMMANDE</div><h2>Ton panier</h2></div><button class="close" onclick="closeModal()">✕</button></div><div class="cart-list">${db.cart.map(i=>{const p=getP(i.id);return `<div class="cart-item"><div class="mini-icon">📦</div><div><strong>${esc(p.name)}</strong><div class="small-note">${money(p.price)} / pack</div></div><div class="qty"><button onclick="changeQty('${p.id}',-1)">−</button><b>${i.qty}</b><button onclick="changeQty('${p.id}',1)">+</button></div></div>`}).join("")}</div><div class="summary"><div class="summary-row"><span>Sous-total</span><strong>${money(t.subtotal)}</strong></div><div class="summary-row"><span>Livraison</span><strong>${money(t.delivery)}</strong></div><div class="summary-row total"><span>Total</span><strong>${money(t.total)}</strong></div></div><div style="height:12px"></div><button class="btn primary full" onclick="checkoutModal()">Passer la commande</button>`)}
