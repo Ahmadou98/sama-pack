@@ -13,6 +13,7 @@ const imageById = {
   SP09: "image/Cérémonie du paquet.jpeg",
   SP10: "image/Pack éco coloc.jpeg"
 };
+const iconById={SP01:"🧼",SP02:"👶",SP03:"🧽",SP04:"🧼",SP05:"💼",SP06:"🍳",SP07:"🌸",SP08:"🏡",SP09:"🎉",SP10:"🏪"};
 const defaults = {
   settings:{company:"SAMA-PACK",whatsapp:"221770000000",deliveryFee:1500,adminPin:"0000",currency:"FCFA"},
   cart:[],
