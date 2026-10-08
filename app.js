@@ -55,30 +55,40 @@ function renderProducts(){
  const arr=products.filter(p=>getP(p.id).active&&(c==="all"||p.cat===c)&&(p.name.toLowerCase().includes(q)||p.desc.toLowerCase().includes(q)||p.cat.toLowerCase().includes(q)));
  document.getElementById("productGrid").innerHTML=arr.map(p=>productCard(p)).join("")||'<div class="empty">Aucun pack trouvé.</div>';
 }
-function productCard(p){
-  const image=imageById[p.id];
-  return `<article class="product-card">
-    <div style="width:100%;margin:20px 0;display:flex;justify-content:center;align-items:center;">
-  <img
-    src="${image}"
-    alt="${esc(p.name)}"
-    style="display:block;width:100%;max-width:850px;height:auto;max-height:600px;object-fit:contain;border-radius:14px;"
-  >
-</div>
-    <div class="product-body">
-      <div class="product-cat">${esc(p.cat)}</div>
-      <div class="product-name">${esc(p.name)}</div>
-      <div class="product-desc">${esc(p.desc)}</div>
-      <div class="price-row">
-        <div class="price">${money(p.price)}</div>
-        <span class="small-note">TTC</span>
+function openProduct(id){
+  const p=getP(id);
+  const image=imageById[p.id]||"";
+
+  showModal(`
+    <div class="modal-head">
+      <div>
+        <div class="eyebrow">${esc(p.cat)}</div>
+        <h2>${esc(p.name)}</h2>
       </div>
-      <div class="product-actions">
-        <button class="btn ghost" onclick="openProduct('${p.id}')">Détails</button>
-        <button class="btn primary" onclick="addToCart('${p.id}')">Ajouter</button>
-      </div>
+      <button class="close" onclick="closeModal()">✕</button>
     </div>
-  </article>`
+
+    <div style="width:100%;margin:20px 0;display:flex;justify-content:center;align-items:center;">
+      <img
+        src="${image}"
+        alt="${esc(p.name)}"
+        style="display:block;width:100%;max-width:850px;height:auto;max-height:600px;object-fit:contain;border-radius:14px;"
+      >
+    </div>
+
+    <p>${esc(p.desc)}</p>
+
+    <ul class="pack-items">
+      ${p.items.map(i=>`<li>${esc(i)}</li>`).join("")}
+    </ul>
+
+    <div class="price-row">
+      <div class="price">${money(p.price)}</div>
+      <button class="btn primary" onclick="addToCart('${p.id}');closeModal();renderProducts()">
+        Ajouter au panier
+      </button>
+    </div>
+  `);
 }
 function addToCart(id){const x=db.cart.find(i=>i.id===id);if(x)x.qty++;else db.cart.push({id,qty:1});save();updateCartCount();toast("Pack ajouté au panier.");}
 function updateCartCount(){document.getElementById("cartCount").textContent=db.cart.reduce((s,i)=>s+i.qty,0)}
