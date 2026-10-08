@@ -95,7 +95,7 @@ function openProduct(id){
     </div>
 
     <div class="pack-visual" style="margin:20px 0;">
-      <div class="pack-box" style="height:320px;">
+      <div class="pack-box" style="height:500px;">
         <img
           src="${image}"
           alt="${esc(p.name)}"
