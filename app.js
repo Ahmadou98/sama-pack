@@ -60,7 +60,7 @@ function productCard(p){
   return `<article class="product-card">
     <div class="pack-visual">
       <div class="pack-box">
-        <img src="${image}" alt="${esc(p.name)}" style="width:100%;height:100%;object-fit:contain;border-radius:14px;">
+        <img src="${image}" alt="${esc(p.name)}" style="display:block;width:100%;height:220px;object-fit:contain;border-radius:14px;">
         <div class="pack-code">${p.id}</div>
       </div>
     </div>
