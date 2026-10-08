@@ -54,7 +54,30 @@ function renderProducts(){
  const arr=products.filter(p=>getP(p.id).active&&(c==="all"||p.cat===c)&&(p.name.toLowerCase().includes(q)||p.desc.toLowerCase().includes(q)||p.cat.toLowerCase().includes(q)));
  document.getElementById("productGrid").innerHTML=arr.map(p=>productCard(p)).join("")||'<div class="empty">Aucun pack trouvé.</div>';
 }
-function productCard(p){const emoji=iconById[p.id]||"📦";return `<article class="product-card"><div class="pack-visual"><div class="pack-box"><div class="emoji">${emoji}</div><div class="pack-code">${p.id}</div></div></div><div class="product-body"><div class="product-cat">${esc(p.cat)}</div><div class="product-name">${esc(p.name)}</div><div class="product-desc">${esc(p.desc)}</div><div class="price-row"><div class="price">${money(p.price)}</div><span class="small-note">TTC</span></div><div class="product-actions"><button class="btn ghost" onclick="openProduct('${p.id}')">Détails</button><button class="btn primary" onclick="addToCart('${p.id}')">Ajouter</button></div></div></article>`}
+function productCard(p){
+  const image=imageById[p.id];
+  return `<article class="product-card">
+    <div class="pack-visual">
+      <div class="pack-box">
+        <img src="${image}" alt="${esc(p.name)}" style="width:100%;height:100%;object-fit:contain;border-radius:14px;">
+        <div class="pack-code">${p.id}</div>
+      </div>
+    </div>
+    <div class="product-body">
+      <div class="product-cat">${esc(p.cat)}</div>
+      <div class="product-name">${esc(p.name)}</div>
+      <div class="product-desc">${esc(p.desc)}</div>
+      <div class="price-row">
+        <div class="price">${money(p.price)}</div>
+        <span class="small-note">TTC</span>
+      </div>
+      <div class="product-actions">
+        <button class="btn ghost" onclick="openProduct('${p.id}')">Détails</button>
+        <button class="btn primary" onclick="addToCart('${p.id}')">Ajouter</button>
+      </div>
+    </div>
+  </article>`
+}
 function addToCart(id){const x=db.cart.find(i=>i.id===id);if(x)x.qty++;else db.cart.push({id,qty:1});save();updateCartCount();toast("Pack ajouté au panier.");}
 function updateCartCount(){document.getElementById("cartCount").textContent=db.cart.reduce((s,i)=>s+i.qty,0)}
 function openProduct(id){const p=getP(id); const emoji=iconById[p.id]||"📦"; showModal(`<div class="modal-head"><div><div class="eyebrow">${esc(p.cat)}</div><h2>${esc(p.name)}</h2></div><button class="close" onclick="closeModal()">✕</button></div><div class="pack-visual"><div class="pack-box"><div class="emoji">${emoji}</div><div class="pack-code">${p.id}</div></div></div><p>${esc(p.desc)}</p><ul class="pack-items">${p.items.map(i=>`<li>${esc(i)}</li>`).join("")}</ul><div class="price-row"><div class="price">${money(p.price)}</div><button class="btn primary" onclick="addToCart('${p.id}');closeModal();renderProducts()">Ajouter au panier</button></div>`)}
