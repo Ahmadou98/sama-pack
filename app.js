@@ -1,7 +1,18 @@
 
 const products = window.SAMA_PRODUCTS || [];
 const KEY = "sama_pack_v1";
-const iconById={SP01:"🧼",SP02:"👶",SP03:"🧽",SP04:"🧼",SP05:"💼",SP06:"🍳",SP07:"🌸",SP08:"🏡",SP09:"🎉",SP10:"🏪"};
+const imageById = {
+  SP01: "image/Pack Grand Ménage.jpeg",
+  SP02: "image/Pack hygiène bébé.jpeg",
+  SP03: "image/Pack Mini-Ménage.jpeg",
+  SP04: "image/Pack douche.jpeg",
+  SP05: "image/Pack keur gui.jpeg",
+  SP06: "image/Pack cuisine.jpeg",
+  SP07: "image/Pack langue.jpeg",
+  SP08: "image/Pack Fraicheur.jpeg",
+  SP09: "image/Cérémonie du paquet.jpeg",
+  SP10: "image/Pack éco coloc.jpeg"
+};
 const defaults = {
   settings:{company:"SAMA-PACK",whatsapp:"221770000000",deliveryFee:1500,adminPin:"0000",currency:"FCFA"},
   cart:[],
