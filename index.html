@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#166534">
+<meta name="description" content="SAMA-PACK — Packs de nettoyage et d'hygiène livrés à Dakar.">
+<title>SAMA-PACK — Distribution de packs de nettoyage</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div id="toast" class="toast"></div>
+
+<header class="topbar">
+  <div class="wrap nav">
+    <a class="brand" href="#home"><span class="brand-mark">S</span><span>SAMA<span>-PACK</span></span></a>
+    <nav class="desktop-nav">
+      <a href="#catalogue">Catalogue</a>
+      <a href="#how">Comment ça marche</a>
+      <a href="#b2b">Professionnels</a>
+      <a href="#contact">Contact</a>
+    </nav>
+    <div class="nav-actions">
+      <button class="icon-btn" id="openCartBtn" aria-label="Panier">🛒 <span id="cartCount">0</span></button>
+      <button class="btn small ghost" id="adminBtn">Gestion</button>
+    </div>
+  </div>
+</header>
+
+<main>
+<section id="home" class="hero">
+  <div class="wrap hero-grid">
+    <div>
+      <div class="eyebrow">DISTRIBUTION SIMPLE • DAKAR</div>
+      <h1>Les bons produits de nettoyage, <span>dans un seul pack.</span></h1>
+      <p>Des packs prêts à commander pour la maison, les familles, les commerces, les bureaux et les événements.</p>
+      <div class="hero-actions">
+        <a class="btn primary" href="#catalogue">Voir les packs</a>
+        <button class="btn secondary" id="heroWhatsApp">Commander sur WhatsApp</button>
+      </div>
+      <div class="trust-row">
+        <div><strong>10</strong><span>packs</span></div>
+        <div><strong>1</strong><span>commande simple</span></div>
+        <div><strong>24/7</strong><span>catalogue en ligne</span></div>
+      </div>
+    </div>
+    <div class="hero-card">
+      <div class="hero-card-head"><span>🔥 Top ventes</span><small>Selon ton catalogue</small></div>
+      <div id="heroTopPacks" class="top-packs"></div>
+      <div class="hero-note">Paiement à la livraison configurable dans la gestion.</div>
+    </div>
+  </div>
+</section>
+
+<section id="catalogue" class="section">
+  <div class="wrap">
+    <div class="section-head">
+      <div><div class="eyebrow">CATALOGUE</div><h2>Choisis ton pack</h2></div>
+      <div class="controls">
+        <input id="searchBox" class="input" type="search" placeholder="Rechercher un pack…">
+        <select id="categoryFilter" class="input"><option value="all">Toutes les catégories</option></select>
+      </div>
+    </div>
+    <div id="productGrid" class="product-grid"></div>
+  </div>
+</section>
+
+<section id="how" class="section alt">
+  <div class="wrap">
+    <div class="section-head"><div><div class="eyebrow">SIMPLE</div><h2>Comment ça marche ?</h2></div></div>
+    <div class="steps">
+      <div class="step"><b>01</b><h3>Choisis</h3><p>Ajoute un ou plusieurs packs au panier.</p></div>
+      <div class="step"><b>02</b><h3>Renseigne</h3><p>Nom, téléphone, adresse et créneau de livraison.</p></div>
+      <div class="step"><b>03</b><h3>Confirme</h3><p>La commande est enregistrée et peut être envoyée sur WhatsApp.</p></div>
+      <div class="step"><b>04</b><h3>Reçois</h3><p>Tu vérifies ta commande à la réception avant paiement si ce mode est activé.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="b2b" class="section">
+  <div class="wrap b2b-box">
+    <div><div class="eyebrow">B2B</div><h2>Approvisionnez votre structure sans perdre du temps.</h2><p>Bureaux, boutiques, écoles, restaurants et événements : créez une commande récurrente ou demandez un devis.</p></div>
+    <div class="b2b-actions"><button class="btn primary" id="quoteBtn">Demander un devis</button><a class="btn ghost" href="#contact">Parler à SAMA-PACK</a></div>
+  </div>
+</section>
+
+<section id="contact" class="section alt">
+  <div class="wrap contact-grid">
+    <div><div class="eyebrow">CONTACT</div><h2>Une question avant de commander ?</h2><p id="contactText">Écris-nous sur WhatsApp ou utilise le numéro configuré dans la gestion.</p></div>
+    <div class="contact-card"><div class="contact-icon">💬</div><div><strong>WhatsApp</strong><p id="contactPhone">Numéro à configurer</p></div><button class="btn secondary" id="contactWhatsApp">Ouvrir WhatsApp</button></div>
+  </div>
+</section>
+</main>
+
+<footer class="footer"><div class="wrap footer-grid"><div><div class="brand footer-brand"><span class="brand-mark">S</span><span>SAMA<span>-PACK</span></span></div><p>Distribution de packs de nettoyage et d’hygiène.</p></div><div><strong>Navigation</strong><a href="#catalogue">Catalogue</a><a href="#b2b">Professionnels</a><a href="#contact">Contact</a></div><div><strong>Gestion</strong><a href="#" id="footerAdmin">Accès gestion commerciale</a><small>Les données de gestion V1 sont stockées dans le navigateur.</small></div></div><div class="wrap footer-bottom">© <span id="year"></span> SAMA-PACK. Tous droits réservés.</div></footer>
+
+<div id="modalRoot"></div>
+
+<div id="adminPanel" class="admin-overlay hidden">
+  <div class="admin-shell">
+    <aside class="admin-sidebar">
+      <div class="brand admin-brand"><span class="brand-mark">S</span><span>SAMA<span>-PACK</span></span></div>
+      <button class="side-btn active" data-view="dashboard">📊 Dashboard</button>
+      <button class="side-btn" data-view="orders">🧾 Commandes</button>
+      <button class="side-btn" data-view="customers">👥 Clients</button>
+      <button class="side-btn" data-view="products">📦 Stock</button>
+      <button class="side-btn" data-view="suppliers">🚚 Fournisseurs</button>
+      <button class="side-btn" data-view="expenses">💸 Dépenses</button>
+      <button class="side-btn" data-view="quotes">📑 Devis</button>
+      <button class="side-btn" data-view="settings">⚙️ Paramètres</button>
+      <div class="sidebar-foot"><button class="btn small ghost full" id="exportDataBtn">Exporter les données</button><label class="btn small ghost full file-btn">Importer JSON<input id="importDataInput" type="file" accept="application/json"></label><button class="link-btn" id="closeAdminBtn">Fermer la gestion</button></div>
+    </aside>
+    <section class="admin-main"><div class="admin-top"><div><span class="eyebrow">GESTION COMMERCIALE</span><h2 id="adminTitle">Dashboard</h2></div><div class="admin-top-actions"><button class="btn small ghost" id="viewShopBtn">Voir boutique</button></div></div><div id="adminContent"></div></section>
+  </div>
+</div>
+<script>window.SAMA_PRODUCTS = [{"id": "SP01", "name": "Pack Grand Ménage Mensuel 🧼", "cat": "Ménage", "price": 14500, "desc": "L’essentiel pour garder la maison propre et parfumée tout le mois.", "items": ["1 grand bidon Madar 5 L", "1 sac de lessive Omo ou Ariel 3 kg", "1 bouteille de Javel Madar / Lacroix 1 L", "1 liquide vaisselle Mir / Madar 1 L"]}, {"id": "SP02", "name": "Pack Hygiène Bébé Confort 👶", "cat": "Bébé", "price": 18500, "desc": "Un pack pratique pour les besoins d’hygiène de bébé, avec livraison et paiement à la réception.", "items": ["1 gros paquet de couches Molfix / Pampers T3, T4 ou T5", "1 lot de 3 paquets de lingettes", "2 savons doux bébé"]}, {"id": "SP03", "name": "Pack Mini-Ménage Éco 🧽", "cat": "Ménage", "price": 6500, "desc": "La formule compacte pour petits budgets, studios et personnes seules.", "items": ["1 nettoyant sol Madar 1 L", "1 lessive Omo 1 kg", "1 Javel 500 ml", "2 savons de ménage Diama"]}, {"id": "SP04", "name": "Pack Douche & Soin Famille 🧼", "cat": "Soin", "price": 9500, "desc": "Un lot complet pour l’hygiène quotidienne de toute la famille.", "items": ["6 savons de toilette (Duru, Geisha ou Lux)", "1 gel douche familial 1 L", "3 dentifrices Maxam ou Colgate", "4 rouleaux de papier hygiénique"]}, {"id": "SP05", "name": "Pack Hygiène Pro & Bureau 💼", "cat": "Professionnel", "price": 24500, "desc": "Des formats professionnels pour bureaux, commerces et petites structures.", "items": ["1 savon liquide mains 5 L", "1 maxi-rouleau d’essuie-tout professionnel", "1 gel hydroalcoolique 1 L avec pompe", "25 grands sacs poubelles renforcés"]}, {"id": "SP06", "name": "Pack Cuisine Net & Brillant 🍳", "cat": "Cuisine", "price": 8500, "desc": "Un assortiment puissant contre les graisses et pour une cuisine impeccable.", "items": ["2 liquides vaisselle 1 L", "1 crème à récurer", "3 éponges double face", "1 essuie-tout cuisine maxi format"]}, {"id": "SP07", "name": "Pack Linge Éclat & Parfum 🌸", "cat": "Lessive", "price": 16500, "desc": "Pour un linge propre, blanc et parfumé avec des formats familiaux.", "items": ["1 lessive Ariel ou Omo 3 kg", "1 adoucissant Soupline / Minidou 2 L", "1 Javel spécial blanc 1 L", "4 savons Diama blanc"]}, {"id": "SP08", "name": "Pack Fraîcheur Keur Gui 🏡", "cat": "Ménage", "price": 11500, "desc": "Nettoyage, désodorisation et ambiance agréable pour la maison.", "items": ["1 nettoyant sol parfumé Madar 3 L", "1 désodorisant Air Wick / Glade", "1 Canard WC / Harpic", "1 petit pot de thiouraye offert"]}, {"id": "SP09", "name": "Pack Cérémonies & Grandes Réceptions 🎉", "cat": "Événementiel", "price": 29500, "desc": "Des gros formats pour baptêmes, mariages et grandes réceptions.", "items": ["2 bidons de nettoyant sol Madar 5 L", "1 crème vaisselle Baraka / Madar 2 kg", "2 Javel Lacroix 2 L", "12 rouleaux d’essuie-tout + 2 paquets de serviettes", "20 sacs poubelles XXL 100 L"]}, {"id": "SP10", "name": "Pack Éco Coloc & Commerce 🏪", "cat": "Ménage", "price": 4500, "desc": "La formule mini pour colocation, petite boutique ou bureau de proximité.", "items": ["1 nettoyant sol Madar 1 L", "1 lessive Omo 500 g", "1 liquide vaisselle 500 ml", "1 savon Diama de ménage"]}];</script>
+<script src="app.js"></script>
+</body>
+</html>
