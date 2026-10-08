@@ -1,10 +1,35 @@
-const products = window.SAMA_PRODUCTS || [];
-const KEY = "sama_pack_v1";
+/* =========================================================
+   SAMA-PACK
+   Boutique + Gestion commerciale + Supabase
+   ========================================================= */
+
+const SUPABASE_URL = "https://tbxxrnhcfuaeaatlrdtr.supabase.co";
+const SUPABASE_PUBLISHABLE_KEY =
+  "sb_publishable_lDAKRHFWyUYZ-tb23hbbnQ_96zF9Iwo";
+
+const REST_URL = `${SUPABASE_URL}/rest/v1`;
+const CART_KEY = "sama_pack_cart_v2";
+const ADMIN_TOKEN_KEY = "sama_pack_admin_token";
+
+let products = [];
+let db = {
+  settings: {
+    company: "SAMA-PACK",
+    whatsapp: "221770000000",
+    deliveryFee: 1500,
+    currency: "FCFA"
+  },
+  cart: [],
+  orders: [],
+  customers: [],
+  stock: [],
+  suppliers: [],
+  expenses: [],
+  quotes: []
+};
 
 /* =========================================================
-   IMAGES DES PACKS
-   Les noms doivent correspondre exactement aux fichiers
-   présents dans le dossier "images"
+   IMAGES
    ========================================================= */
 
 const imageById = {
@@ -20,13 +45,14 @@ const imageById = {
   SP10: "images/Pack eco coloc.jpeg"
 };
 
+function imageSrc(id, fallback = "") {
+  const path = imageById[id] || fallback || "";
+  return path ? encodeURI(path) : "";
+}
+
 /* =========================================================
    OUTILS
    ========================================================= */
-
-function imageSrc(id) {
-  return encodeURI(imageById[id] || "");
-}
 
 function cleanName(name) {
   return String(name ?? "")
@@ -35,72 +61,17 @@ function cleanName(name) {
     .trim();
 }
 
-const defaults = {
-  settings: {
-    company: "SAMA-PACK",
-    whatsapp: "221770000000",
-    deliveryFee: 1500,
-    adminPin: "0000",
-    currency: "FCFA"
-  },
-  cart: [],
-  orders: [],
-  customers: [],
-  stock: products.map(p => ({
+function normalizeProduct(p) {
+  return {
     id: p.id,
-    qty: 0,
-    min: 0,
-    supplier: "",
-    cost: 0
-  })),
-  suppliers: [],
-  expenses: [],
-  quotes: [],
-  activity: [],
-  productSettings: Object.fromEntries(
-    products.map(p => [
-      p.id,
-      {
-        price: p.price,
-        active: true
-      }
-    ])
-  )
-};
-
-function load() {
-  try {
-    return JSON.parse(localStorage.getItem(KEY)) || structuredClone(defaults);
-  } catch {
-    return structuredClone(defaults);
-  }
-}
-
-let db = load();
-
-/* Sécurise les anciennes données */
-if (!db.settings) db.settings = structuredClone(defaults.settings);
-if (!db.cart) db.cart = [];
-if (!db.orders) db.orders = [];
-if (!db.customers) db.customers = [];
-if (!db.stock) db.stock = structuredClone(defaults.stock);
-if (!db.suppliers) db.suppliers = [];
-if (!db.expenses) db.expenses = [];
-if (!db.quotes) db.quotes = [];
-if (!db.activity) db.activity = [];
-if (!db.productSettings) db.productSettings = {};
-
-products.forEach(p => {
-  if (!db.productSettings[p.id]) {
-    db.productSettings[p.id] = {
-      price: p.price,
-      active: true
-    };
-  }
-});
-
-function save() {
-  localStorage.setItem(KEY, JSON.stringify(db));
+    name: cleanName(p.name),
+    cat: p.category ?? p.cat ?? "",
+    price: Number(p.price ?? 0),
+    desc: p.description ?? p.desc ?? "",
+    items: Array.isArray(p.items) ? p.items : [],
+    image_path: p.image_path || imageById[p.id] || "",
+    active: p.active !== false
+  };
 }
 
 function money(n) {
@@ -121,11 +92,11 @@ function esc(s) {
   );
 }
 
-function toast(t) {
+function toast(message) {
   const el = document.getElementById("toast");
   if (!el) return;
 
-  el.textContent = t;
+  el.textContent = message;
   el.classList.add("show");
 
   setTimeout(() => {
@@ -134,82 +105,252 @@ function toast(t) {
 }
 
 function getP(id) {
-  const p = products.find(x => x.id === id);
-  if (!p) return null;
-
-  return {
-    ...p,
-    name: cleanName(p.name),
-    price: Number(
-      db.productSettings?.[id]?.price ?? p.price
-    ),
-    active:
-      db.productSettings?.[id]?.active !== false
-  };
+  return products.find(p => p.id === id) || null;
 }
 
-function log(action, detail) {
-  db.activity.unshift({
-    at: new Date().toISOString(),
-    action,
-    detail
+/* =========================================================
+   SUPABASE HTTP
+   ========================================================= */
+
+async function supabaseFetch(url, options = {}) {
+  const response = await fetch(url, {
+    ...options,
+    headers: {
+      apikey: SUPABASE_PUBLISHABLE_KEY,
+      "Content-Type": "application/json",
+      ...(options.headers || {})
+    }
   });
 
-  db.activity = db.activity.slice(0, 100);
-  save();
+  let data = null;
+
+  try {
+    data = await response.json();
+  } catch {
+    data = null;
+  }
+
+  if (!response.ok) {
+    const message =
+      data?.message ||
+      data?.error_description ||
+      data?.error ||
+      "Erreur de connexion à Supabase.";
+
+    throw new Error(message);
+  }
+
+  return data;
+}
+
+async function supabaseGet(table, query = "") {
+  return supabaseFetch(
+    `${REST_URL}/${table}${query}`
+  );
+}
+
+async function supabaseRpc(functionName, params = {}) {
+  return supabaseFetch(
+    `${REST_URL}/rpc/${functionName}`,
+    {
+      method: "POST",
+      body: JSON.stringify(params)
+    }
+  );
+}
+
+/* =========================================================
+   CART LOCAL
+   Le panier reste local.
+   Les commandes, clients, stock, etc. sont dans Supabase.
+   ========================================================= */
+
+function loadCart() {
+  try {
+    db.cart =
+      JSON.parse(
+        localStorage.getItem(CART_KEY)
+      ) || [];
+  } catch {
+    db.cart = [];
+  }
+}
+
+function saveCart() {
+  localStorage.setItem(
+    CART_KEY,
+    JSON.stringify(db.cart)
+  );
+}
+
+/* =========================================================
+   CHARGEMENT BOUTIQUE
+   ========================================================= */
+
+async function loadShopData() {
+  const [productData, settingsData] =
+    await Promise.all([
+
+      supabaseGet(
+        "products",
+        "?select=id,name,category,price,description,items,image_path,active&active=eq.true&order=id"
+      ),
+
+      supabaseGet(
+        "settings",
+        "?select=company,whatsapp,delivery_fee,currency&id=eq.true"
+      )
+    ]);
+
+  products = (productData || [])
+    .map(normalizeProduct);
+
+  if (!products.length) {
+    products =
+      (window.SAMA_PRODUCTS || [])
+        .map(p =>
+          normalizeProduct({
+            ...p,
+            category: p.cat,
+            description: p.desc,
+            image_path: imageById[p.id]
+          })
+        );
+  }
+
+  if (settingsData?.[0]) {
+    db.settings = {
+      company:
+        settingsData[0].company ||
+        "SAMA-PACK",
+
+      whatsapp:
+        settingsData[0].whatsapp ||
+        "221770000000",
+
+      deliveryFee:
+        Number(
+          settingsData[0].delivery_fee ?? 0
+        ),
+
+      currency:
+        settingsData[0].currency ||
+        "FCFA"
+    };
+  }
 }
 
 /* =========================================================
    WHATSAPP
    ========================================================= */
 
-function whatsappUrl(msg) {
-  const n = (db.settings.whatsapp || "").replace(/\D/g, "");
+function whatsappUrl(message) {
+  const number =
+    String(
+      db.settings.whatsapp || ""
+    ).replace(/\D/g, "");
 
-  return n
-    ? `https://wa.me/${n}?text=${encodeURIComponent(msg)}`
-    : "#";
+  if (!number) return "#";
+
+  return (
+    `https://wa.me/${number}` +
+    `?text=${encodeURIComponent(message)}`
+  );
 }
 
-function openWA(msg) {
-  const u = whatsappUrl(msg);
+function openWA(message) {
+  const url = whatsappUrl(message);
 
-  if (u === "#") {
-    toast("Configure le numéro WhatsApp dans Gestion > Paramètres.");
+  if (url === "#") {
+    toast(
+      "Configure le numéro WhatsApp dans Gestion > Paramètres."
+    );
     return;
   }
 
-  window.open(u, "_blank", "noopener");
+  window.open(
+    url,
+    "_blank",
+    "noopener"
+  );
 }
 
 /* =========================================================
-   INITIALISATION BOUTIQUE
+   BOUTIQUE
    ========================================================= */
 
-function initShop() {
-  const year = document.getElementById("year");
-  if (year) {
-    year.textContent = new Date().getFullYear();
+async function initShop() {
+
+  loadCart();
+
+  try {
+    await loadShopData();
+  } catch (error) {
+
+    console.error(error);
+
+    products =
+      (window.SAMA_PRODUCTS || [])
+        .map(p =>
+          normalizeProduct({
+            ...p,
+            category: p.cat,
+            description: p.desc,
+            image_path: imageById[p.id]
+          })
+        );
+
+    toast(
+      "Connexion base de données indisponible. Catalogue local chargé."
+    );
   }
 
-  const categoryFilter = document.getElementById("categoryFilter");
+  const year =
+    document.getElementById("year");
+
+  if (year) {
+    year.textContent =
+      new Date().getFullYear();
+  }
+
+  const categoryFilter =
+    document.getElementById(
+      "categoryFilter"
+    );
 
   if (categoryFilter) {
-    const cats = [...new Set(products.map(p => p.cat))];
+
+    const categories = [
+      ...new Set(
+        products.map(p => p.cat)
+      )
+    ];
 
     categoryFilter.innerHTML =
       '<option value="all">Toutes les catégories</option>' +
-      cats
-        .map(c => `<option>${esc(c)}</option>`)
+      categories
+        .map(
+          category =>
+            `<option value="${esc(category)}">${esc(category)}</option>`
+        )
         .join("");
   }
 
   renderTop();
   renderProducts();
+  updateCartCount();
+  updateContact();
 
-  const searchBox = document.getElementById("searchBox");
+  const searchBox =
+    document.getElementById(
+      "searchBox"
+    );
+
   if (searchBox) {
-    searchBox.addEventListener("input", renderProducts);
+    searchBox.addEventListener(
+      "input",
+      renderProducts
+    );
   }
 
   if (categoryFilter) {
@@ -219,41 +360,66 @@ function initShop() {
     );
   }
 
-  const openCartBtn = document.getElementById("openCartBtn");
-  if (openCartBtn) {
-    openCartBtn.onclick = renderCartModal;
+  const cartButton =
+    document.getElementById(
+      "openCartBtn"
+    );
+
+  if (cartButton) {
+    cartButton.onclick =
+      renderCartModal;
   }
 
-  const heroWhatsApp = document.getElementById("heroWhatsApp");
+  const heroWhatsApp =
+    document.getElementById(
+      "heroWhatsApp"
+    );
+
   if (heroWhatsApp) {
-    heroWhatsApp.onclick = () =>
-      openWA(
-        "Bonjour SAMA-PACK, je souhaite passer une commande."
-      );
+    heroWhatsApp.onclick =
+      () =>
+        openWA(
+          "Bonjour SAMA-PACK, je souhaite passer une commande."
+        );
   }
 
   const contactWhatsApp =
-    document.getElementById("contactWhatsApp");
+    document.getElementById(
+      "contactWhatsApp"
+    );
 
   if (contactWhatsApp) {
-    contactWhatsApp.onclick = () =>
-      openWA(
-        "Bonjour SAMA-PACK, je souhaite avoir plus d'informations."
-      );
+    contactWhatsApp.onclick =
+      () =>
+        openWA(
+          "Bonjour SAMA-PACK, je souhaite avoir plus d'informations."
+        );
   }
 
-  const quoteBtn = document.getElementById("quoteBtn");
+  const quoteBtn =
+    document.getElementById(
+      "quoteBtn"
+    );
+
   if (quoteBtn) {
-    quoteBtn.onclick = openQuoteModal;
+    quoteBtn.onclick =
+      openQuoteModal;
   }
 
-  const adminBtn = document.getElementById("adminBtn");
+  const adminBtn =
+    document.getElementById(
+      "adminBtn"
+    );
+
   if (adminBtn) {
-    adminBtn.onclick = openAdmin;
+    adminBtn.onclick =
+      openAdmin;
   }
 
   const footerAdmin =
-    document.getElementById("footerAdmin");
+    document.getElementById(
+      "footerAdmin"
+    );
 
   if (footerAdmin) {
     footerAdmin.onclick = e => {
@@ -263,29 +429,41 @@ function initShop() {
   }
 
   const viewShopBtn =
-    document.getElementById("viewShopBtn");
+    document.getElementById(
+      "viewShopBtn"
+    );
 
   if (viewShopBtn) {
-    viewShopBtn.onclick = closeAdmin;
+    viewShopBtn.onclick =
+      closeAdmin;
   }
 
   const closeAdminBtn =
-    document.getElementById("closeAdminBtn");
+    document.getElementById(
+      "closeAdminBtn"
+    );
 
   if (closeAdminBtn) {
-    closeAdminBtn.onclick = closeAdmin;
+    closeAdminBtn.onclick =
+      closeAdmin;
   }
-
-  updateContact();
 }
 
 function updateContact() {
-  const el = document.getElementById("contactPhone");
+  const el =
+    document.getElementById(
+      "contactPhone"
+    );
+
   if (!el) return;
 
-  el.textContent = db.settings.whatsapp
-    ? "+" + db.settings.whatsapp.replace(/\D/g, "")
-    : "Numéro à configurer";
+  el.textContent =
+    db.settings.whatsapp
+      ? "+" +
+        String(
+          db.settings.whatsapp
+        ).replace(/\D/g, "")
+      : "Numéro à configurer";
 }
 
 /* =========================================================
@@ -293,56 +471,81 @@ function updateContact() {
    ========================================================= */
 
 function renderTop() {
-  const container =
-    document.getElementById("heroTopPacks");
 
-  if (!container) return;
+  const target =
+    document.getElementById(
+      "heroTopPacks"
+    );
 
-  const tops = products.slice(0, 3);
+  if (!target) return;
 
-  container.innerHTML = tops
-    .map(p => {
-      const product = getP(p.id);
-      const image = imageSrc(p.id);
+  const tops =
+    products.slice(0, 3);
 
-      return `
-        <div class="mini-pack">
+  target.innerHTML =
+    tops
+      .map(p => {
 
-          <div
-            class="mini-icon"
-            style="
-              width:76px;
-              height:76px;
-              min-width:76px;
-              display:flex;
-              align-items:center;
-              justify-content:center;
-              overflow:hidden;
-              border-radius:14px;
-              background:#f8fafc;
-            "
-          >
-            <img
-              src="${image}"
-              alt="${esc(product.name)}"
+        const image =
+          imageSrc(
+            p.id,
+            p.image_path
+          );
+
+        return `
+          <div class="mini-pack">
+
+            <div
+              class="mini-icon"
               style="
-                width:100%;
-                height:100%;
-                object-fit:contain;
-                display:block;
+                width:76px;
+                height:76px;
+                min-width:76px;
+                display:flex;
+                align-items:center;
+                justify-content:center;
+                overflow:hidden;
+                border-radius:14px;
+                background:#f8fafc;
               "
             >
-          </div>
 
-          <div>
-            <strong>${esc(product.name)}</strong>
-            <small>${money(product.price)}</small>
-          </div>
+              ${
+                image
+                  ? `
+                    <img
+                      src="${image}"
+                      alt="${esc(p.name)}"
+                      style="
+                        width:100%;
+                        height:100%;
+                        object-fit:contain;
+                        display:block;
+                      "
+                    >
+                  `
+                  : "📦"
+              }
 
-        </div>
-      `;
-    })
-    .join("");
+            </div>
+
+            <div>
+
+              <strong>
+                ${esc(p.name)}
+              </strong>
+
+              <small>
+                ${money(p.price)}
+              </small>
+
+            </div>
+
+          </div>
+        `;
+
+      })
+      .join("");
 }
 
 /* =========================================================
@@ -350,44 +553,71 @@ function renderTop() {
    ========================================================= */
 
 function renderProducts() {
+
   const searchBox =
-    document.getElementById("searchBox");
+    document.getElementById(
+      "searchBox"
+    );
 
   const categoryFilter =
-    document.getElementById("categoryFilter");
+    document.getElementById(
+      "categoryFilter"
+    );
 
   const productGrid =
-    document.getElementById("productGrid");
+    document.getElementById(
+      "productGrid"
+    );
 
-  if (!searchBox || !categoryFilter || !productGrid) {
+  if (
+    !searchBox ||
+    !categoryFilter ||
+    !productGrid
+  ) {
     return;
   }
 
-  const q = searchBox.value.toLowerCase().trim();
-  const c = categoryFilter.value;
+  const q =
+    searchBox.value
+      .toLowerCase()
+      .trim();
 
-  const arr = products.filter(p => {
-    const product = getP(p.id);
+  const category =
+    categoryFilter.value;
 
-    if (!product || !product.active) {
-      return false;
-    }
+  const filtered =
+    products.filter(p => {
 
-    const searchableName =
-      cleanName(p.name).toLowerCase();
+      if (!p.active) return false;
 
-    return (
-      (c === "all" || p.cat === c) &&
-      (
-        searchableName.includes(q) ||
-        p.desc.toLowerCase().includes(q) ||
-        p.cat.toLowerCase().includes(q)
-      )
-    );
-  });
+      const searchable =
+        p.name
+          .toLowerCase()
+          .includes(q) ||
+
+        p.desc
+          .toLowerCase()
+          .includes(q) ||
+
+        p.cat
+          .toLowerCase()
+          .includes(q);
+
+      return (
+        searchable &&
+        (
+          category === "all" ||
+          p.cat === category
+        )
+      );
+    });
 
   productGrid.innerHTML =
-    arr.map(productCard).join("") ||
+    filtered
+      .map(
+        productCard
+      )
+      .join("") ||
     '<div class="empty">Aucun pack trouvé.</div>';
 }
 
@@ -396,8 +626,12 @@ function renderProducts() {
    ========================================================= */
 
 function productCard(p) {
-  const product = getP(p.id);
-  const image = imageSrc(p.id);
+
+  const image =
+    imageSrc(
+      p.id,
+      p.image_path
+    );
 
   return `
     <article class="product-card">
@@ -427,45 +661,58 @@ function productCard(p) {
           "
         >
 
-          <img
-            src="${image}"
-            alt="${esc(product.name)}"
-            loading="lazy"
-            style="
-              display:block;
-              width:100%;
-              height:100%;
-              object-fit:contain;
-              border-radius:14px;
-            "
-          >
+          ${
+            image
+              ? `
+                <img
+                  src="${image}"
+                  alt="${esc(p.name)}"
+                  loading="lazy"
+                  style="
+                    display:block;
+                    width:100%;
+                    height:100%;
+                    object-fit:contain;
+                    border-radius:14px;
+                  "
+                >
+              `
+              : `
+                <div
+                  style="
+                    font-size:60px;
+                  "
+                >
+                  📦
+                </div>
+              `
+          }
 
           <div class="pack-code">
             ${p.id}
           </div>
 
         </div>
-
       </div>
 
       <div class="product-body">
 
         <div class="product-cat">
-          ${esc(product.cat)}
+          ${esc(p.cat)}
         </div>
 
         <div class="product-name">
-          ${esc(product.name)}
+          ${esc(p.name)}
         </div>
 
         <div class="product-desc">
-          ${esc(product.desc)}
+          ${esc(p.desc)}
         </div>
 
         <div class="price-row">
 
           <div class="price">
-            ${money(product.price)}
+            ${money(p.price)}
           </div>
 
           <span class="small-note">
@@ -499,41 +746,11 @@ function productCard(p) {
 }
 
 /* =========================================================
-   PANIER
-   ========================================================= */
-
-function addToCart(id) {
-  const x = db.cart.find(i => i.id === id);
-
-  if (x) {
-    x.qty++;
-  } else {
-    db.cart.push({
-      id,
-      qty: 1
-    });
-  }
-
-  save();
-  updateCartCount();
-  toast("Pack ajouté au panier.");
-}
-
-function updateCartCount() {
-  const el = document.getElementById("cartCount");
-  if (!el) return;
-
-  el.textContent = db.cart.reduce(
-    (s, i) => s + i.qty,
-    0
-  );
-}
-
-/* =========================================================
-   DÉTAILS PRODUIT
+   PRODUIT — DÉTAILS
    ========================================================= */
 
 function openProduct(id) {
+
   const p = getP(id);
 
   if (!p) {
@@ -541,12 +758,17 @@ function openProduct(id) {
     return;
   }
 
-  const image = imageSrc(p.id);
+  const image =
+    imageSrc(
+      p.id,
+      p.image_path
+    );
 
   showModal(`
     <div class="modal-head">
 
       <div>
+
         <div class="eyebrow">
           ${esc(p.cat)}
         </div>
@@ -554,6 +776,7 @@ function openProduct(id) {
         <h2>
           ${esc(p.name)}
         </h2>
+
       </div>
 
       <button
@@ -568,26 +791,45 @@ function openProduct(id) {
     <div
       style="
         width:100%;
+        margin:15px 0 30px;
         display:flex;
         justify-content:center;
         align-items:center;
-        margin:10px 0 30px;
       "
     >
 
-      <img
-        src="${image}"
-        alt="${esc(p.name)}"
-        style="
-          display:block;
-          width:100%;
-          max-width:950px;
-          height:auto;
-          max-height:650px;
-          object-fit:contain;
-          border-radius:16px;
-        "
-      >
+      ${
+        image
+          ? `
+            <img
+              src="${image}"
+              alt="${esc(p.name)}"
+              style="
+                display:block;
+                width:100%;
+                max-width:950px;
+                height:auto;
+                max-height:650px;
+                object-fit:contain;
+                border-radius:16px;
+              "
+            >
+          `
+          : `
+            <div
+              style="
+                height:400px;
+                width:100%;
+                display:flex;
+                justify-content:center;
+                align-items:center;
+                font-size:80px;
+              "
+            >
+              📦
+            </div>
+          `
+      }
 
     </div>
 
@@ -596,9 +838,16 @@ function openProduct(id) {
     </p>
 
     <ul class="pack-items">
-      ${p.items
-        .map(i => `<li>${esc(i)}</li>`)
-        .join("")}
+
+      ${
+        p.items
+          .map(
+            item =>
+              `<li>${esc(item)}</li>`
+          )
+          .join("")
+      }
+
     </ul>
 
     <div class="price-row">
@@ -627,7 +876,12 @@ function openProduct(id) {
    ========================================================= */
 
 function showModal(body) {
-  const root = document.getElementById("modalRoot");
+
+  const root =
+    document.getElementById(
+      "modalRoot"
+    );
+
   if (!root) return;
 
   root.innerHTML = `
@@ -656,7 +910,6 @@ function showModal(body) {
         style="
           width:95vw !important;
           max-width:1100px !important;
-          min-width:0 !important;
           max-height:92vh !important;
           overflow-y:auto;
           box-sizing:border-box;
@@ -673,7 +926,10 @@ function showModal(body) {
 }
 
 function closeModal() {
-  const root = document.getElementById("modalRoot");
+  const root =
+    document.getElementById(
+      "modalRoot"
+    );
 
   if (root) {
     root.innerHTML = "";
@@ -681,33 +937,114 @@ function closeModal() {
 }
 
 /* =========================================================
-   TOTAL PANIER
+   PANIER
    ========================================================= */
 
-function cartTotals() {
-  const subtotal = db.cart.reduce(
-    (s, i) => {
-      const p = getP(i.id);
-      return p ? s + p.price * i.qty : s;
-    },
-    0
+function addToCart(id) {
+
+  const product = getP(id);
+
+  if (!product) {
+    toast("Produit introuvable.");
+    return;
+  }
+
+  const existing =
+    db.cart.find(
+      item => item.id === id
+    );
+
+  if (existing) {
+    existing.qty++;
+  } else {
+    db.cart.push({
+      id,
+      qty:1
+    });
+  }
+
+  saveCart();
+  updateCartCount();
+
+  toast(
+    "Pack ajouté au panier."
   );
+}
+
+function updateCartCount() {
+
+  const el =
+    document.getElementById(
+      "cartCount"
+    );
+
+  if (!el) return;
+
+  el.textContent =
+    db.cart.reduce(
+      (sum, item) =>
+        sum + Number(item.qty || 0),
+      0
+    );
+}
+
+function changeQty(id, amount) {
+
+  const item =
+    db.cart.find(
+      x => x.id === id
+    );
+
+  if (!item) return;
+
+  item.qty += amount;
+
+  if (item.qty <= 0) {
+    db.cart =
+      db.cart.filter(
+        x => x.id !== id
+      );
+  }
+
+  saveCart();
+  updateCartCount();
+  renderCartModal();
+}
+
+function cartTotals() {
+
+  const subtotal =
+    db.cart.reduce(
+      (sum, item) => {
+
+        const product =
+          getP(item.id);
+
+        return product
+          ? sum +
+            product.price *
+            Number(item.qty || 0)
+          : sum;
+
+      },
+      0
+    );
 
   const delivery =
-    Number(db.settings.deliveryFee || 0);
+    Number(
+      db.settings.deliveryFee || 0
+    );
 
   return {
     subtotal,
     delivery,
-    total: subtotal + delivery
+    total:
+      subtotal + delivery
   };
 }
 
-/* =========================================================
-   FENÊTRE PANIER
-   ========================================================= */
-
 function renderCartModal() {
+
   if (!db.cart.length) {
 
     showModal(`
@@ -746,7 +1083,8 @@ function renderCartModal() {
     return;
   }
 
-  const t = cartTotals();
+  const totals =
+    cartTotals();
 
   showModal(`
     <div class="modal-head">
@@ -774,13 +1112,19 @@ function renderCartModal() {
 
     <div class="cart-list">
 
-      ${db.cart
-        .map(i => {
-          const p = getP(i.id);
+      ${
+        db.cart.map(item => {
+
+          const p =
+            getP(item.id);
 
           if (!p) return "";
 
-          const image = imageSrc(p.id);
+          const image =
+            imageSrc(
+              p.id,
+              p.image_path
+            );
 
           return `
             <div class="cart-item">
@@ -800,16 +1144,22 @@ function renderCartModal() {
                 "
               >
 
-                <img
-                  src="${image}"
-                  alt="${esc(p.name)}"
-                  style="
-                    width:100%;
-                    height:100%;
-                    object-fit:contain;
-                    display:block;
-                  "
-                >
+                ${
+                  image
+                    ? `
+                      <img
+                        src="${image}"
+                        alt="${esc(p.name)}"
+                        style="
+                          width:100%;
+                          height:100%;
+                          object-fit:contain;
+                          display:block;
+                        "
+                      >
+                    `
+                    : "📦"
+                }
 
               </div>
 
@@ -836,7 +1186,7 @@ function renderCartModal() {
                 </button>
 
                 <b>
-                  ${i.qty}
+                  ${item.qty}
                 </b>
 
                 <button
@@ -851,26 +1201,48 @@ function renderCartModal() {
 
             </div>
           `;
-        })
-        .join("")}
+
+        }).join("")
+      }
 
     </div>
 
     <div class="summary">
 
       <div class="summary-row">
-        <span>Sous-total</span>
-        <strong>${money(t.subtotal)}</strong>
+
+        <span>
+          Sous-total
+        </span>
+
+        <strong>
+          ${money(totals.subtotal)}
+        </strong>
+
       </div>
 
       <div class="summary-row">
-        <span>Livraison</span>
-        <strong>${money(t.delivery)}</strong>
+
+        <span>
+          Livraison
+        </span>
+
+        <strong>
+          ${money(totals.delivery)}
+        </strong>
+
       </div>
 
       <div class="summary-row total">
-        <span>Total</span>
-        <strong>${money(t.total)}</strong>
+
+        <span>
+          Total
+        </span>
+
+        <strong>
+          ${money(totals.total)}
+        </strong>
+
       </div>
 
     </div>
@@ -886,30 +1258,19 @@ function renderCartModal() {
   `);
 }
 
-function changeQty(id, d) {
-  const x = db.cart.find(i => i.id === id);
-
-  if (!x) return;
-
-  x.qty += d;
-
-  if (x.qty <= 0) {
-    db.cart = db.cart.filter(
-      i => i.id !== id
-    );
-  }
-
-  save();
-  updateCartCount();
-  renderCartModal();
-}
-
 /* =========================================================
-   CHECKOUT
+   COMMANDER
    ========================================================= */
 
 function checkoutModal() {
-  const t = cartTotals();
+
+  if (!db.cart.length) {
+    toast("Ton panier est vide.");
+    return;
+  }
+
+  const totals =
+    cartTotals();
 
   showModal(`
     <div class="modal-head">
@@ -997,13 +1358,13 @@ function checkoutModal() {
           </span>
 
           <strong>
-            ${money(t.total)}
+            ${money(totals.total)}
           </strong>
 
         </div>
 
         <div class="small-note">
-          La commande sera enregistrée dans la gestion et préparée pour WhatsApp.
+          La commande sera enregistrée dans la base de données SAMA-PACK.
         </div>
 
       </div>
@@ -1018,119 +1379,151 @@ function checkoutModal() {
   `);
 
   const form =
-    document.getElementById("checkoutForm");
+    document.getElementById(
+      "checkoutForm"
+    );
 
   if (!form) return;
 
-  form.onsubmit = e => {
+  form.onsubmit =
+    async e => {
 
-    e.preventDefault();
+      e.preventDefault();
 
-    const f = new FormData(e.target);
+      const button =
+        form.querySelector(
+          "button[type='submit'], button.btn.primary"
+        );
 
-    const order = {
-      id:
+      if (button) {
+        button.disabled = true;
+        button.textContent =
+          "Enregistrement...";
+      }
+
+      const f =
+        new FormData(form);
+
+      const orderId =
         "CMD-" +
-        Date.now().toString().slice(-7),
+        Date.now()
+          .toString()
+          .slice(-7);
 
-      createdAt:
-        new Date().toISOString(),
+      const payload = {
 
-      status: "new",
+        orderId,
 
-      customer: {
-        name: f.get("name"),
-        phone: f.get("phone"),
-        address: f.get("address"),
-        zone: f.get("zone")
-      },
+        customer: {
 
-      slot: f.get("slot"),
-      payment: f.get("pay"),
+          name:
+            String(
+              f.get("name") || ""
+            ).trim(),
 
-      items: db.cart.map(i => ({
-        ...i
-      })),
+          phone:
+            String(
+              f.get("phone") || ""
+            ).trim(),
 
-      subtotal: t.subtotal,
-      delivery: t.delivery,
-      total: t.total
+          address:
+            String(
+              f.get("address") || ""
+            ).trim(),
+
+          zone:
+            String(
+              f.get("zone") || ""
+            ).trim()
+        },
+
+        slot:
+          String(
+            f.get("slot") || ""
+          ),
+
+        payment:
+          String(
+            f.get("pay") ||
+            "Paiement à la livraison"
+          ),
+
+        items:
+          db.cart.map(
+            item => ({
+              id:item.id,
+              qty:Number(
+                item.qty || 1
+              )
+            })
+          )
+      };
+
+      try {
+
+        const result =
+          await supabaseRpc(
+            "sama_create_order",
+            {
+              p_payload:
+                payload
+            }
+          );
+
+        db.cart = [];
+        saveCart();
+        updateCartCount();
+
+        closeModal();
+
+        toast(
+          "Commande enregistrée dans la base."
+        );
+
+        const order =
+          result?.order || {};
+
+        const lines =
+          Array.isArray(
+            order.items
+          )
+            ? order.items
+                .map(
+                  item =>
+                    `${item.quantity} x ${item.product_name}`
+                )
+                .join("\n")
+            : "";
+
+        openWA(
+          `Bonjour SAMA-PACK, je confirme la commande ${order.id || orderId}.\n\n` +
+          `${lines}\n\n` +
+          `Total: ${money(order.total || 0)}\n` +
+          `Nom: ${payload.customer.name}\n` +
+          `Téléphone: ${payload.customer.phone}\n` +
+          `Adresse: ${payload.customer.address}`
+        );
+
+      } catch (error) {
+
+        console.error(error);
+
+        toast(
+          "Impossible d'enregistrer la commande : " +
+          error.message
+        );
+
+        if (button) {
+          button.disabled = false;
+          button.textContent =
+            "Confirmer la commande";
+        }
+      }
     };
-
-    db.orders.unshift(order);
-
-    let c = db.customers.find(
-      x =>
-        x.phone ===
-        order.customer.phone
-    );
-
-    if (c) {
-
-      c.lastOrder =
-        order.createdAt;
-
-      c.orders =
-        (Number(c.orders) || 0) + 1;
-
-    } else {
-
-      db.customers.push({
-
-        id:
-          "CLI-" +
-          Date.now().toString().slice(-6),
-
-        ...order.customer,
-
-        orders: 1,
-
-        lastOrder:
-          order.createdAt
-      });
-    }
-
-    db.cart = [];
-
-    save();
-    updateCartCount();
-
-    log(
-      "Commande créée",
-      order.id
-    );
-
-    closeModal();
-
-    toast(
-      "Commande enregistrée."
-    );
-
-    const lines = order.items
-      .map(i => {
-
-        const p = getP(i.id);
-
-        return `${i.qty} x ${
-          p ? p.name : i.id
-        }`;
-
-      })
-      .join("\n");
-
-    openWA(
-      `Bonjour SAMA-PACK, je confirme la commande ${order.id}.\n\n` +
-      `${lines}\n\n` +
-      `Total: ${money(order.total)}\n` +
-      `Nom: ${order.customer.name}\n` +
-      `Téléphone: ${order.customer.phone}\n` +
-      `Adresse: ${order.customer.address}`
-    );
-  };
 }
 
 /* =========================================================
-   DEVISS
+   DEVIS PUBLIC
    ========================================================= */
 
 function openQuoteModal() {
@@ -1207,204 +1600,415 @@ function openQuoteModal() {
   `);
 
   const form =
-    document.getElementById("quoteForm");
+    document.getElementById(
+      "quoteForm"
+    );
 
   if (!form) return;
 
-  form.onsubmit = e => {
+  form.onsubmit =
+    async e => {
 
-    e.preventDefault();
+      e.preventDefault();
 
-    const f = new FormData(e.target);
+      const button =
+        form.querySelector(
+          "button.btn.primary"
+        );
 
-    const q = {
-      id:
-        "DEV-" +
-        Date.now().toString().slice(-7),
+      if (button) {
+        button.disabled = true;
+        button.textContent =
+          "Enregistrement...";
+      }
 
-      createdAt:
-        new Date().toISOString(),
+      const f =
+        new FormData(form);
 
-      status: "new",
+      const quote = {
 
-      company: f.get("company"),
-      phone: f.get("phone"),
-      email: f.get("email"),
-      need: f.get("need"),
-      message: f.get("message")
+        id:
+          "DEV-" +
+          Date.now()
+            .toString()
+            .slice(-7),
+
+        company:
+          String(
+            f.get("company") || ""
+          ).trim(),
+
+        phone:
+          String(
+            f.get("phone") || ""
+          ).trim(),
+
+        email:
+          String(
+            f.get("email") || ""
+          ).trim(),
+
+        need:
+          String(
+            f.get("need") || ""
+          ).trim(),
+
+        message:
+          String(
+            f.get("message") || ""
+          ).trim()
+      };
+
+      try {
+
+        const result =
+          await supabaseRpc(
+            "sama_create_quote",
+            {
+              p_payload:
+                quote
+            }
+          );
+
+        closeModal();
+
+        toast(
+          "Demande de devis enregistrée."
+        );
+
+        openWA(
+          `Bonjour SAMA-PACK, demande de devis ${result?.id || quote.id}.\n` +
+          `Structure: ${quote.company}\n` +
+          `Besoin: ${quote.need}\n` +
+          `Téléphone: ${quote.phone}\n` +
+          `${quote.message || ""}`
+        );
+
+      } catch (error) {
+
+        console.error(error);
+
+        toast(
+          "Impossible d'enregistrer le devis : " +
+          error.message
+        );
+
+        if (button) {
+          button.disabled = false;
+          button.textContent =
+            "Envoyer la demande";
+        }
+      }
     };
-
-    db.quotes.unshift(q);
-
-    save();
-
-    log(
-      "Demande de devis",
-      q.id
-    );
-
-    closeModal();
-
-    toast(
-      "Demande enregistrée."
-    );
-
-    openWA(
-      `Bonjour SAMA-PACK, demande de devis ${q.id}.\n` +
-      `Structure: ${q.company}\n` +
-      `Besoin: ${q.need}\n` +
-      `Téléphone: ${q.phone}\n` +
-      `${q.message || ""}`
-    );
-  };
 }
 
 /* =========================================================
-   ADMIN
+   ADMIN — API
    ========================================================= */
 
-function openAdmin() {
-
-  const pin = prompt(
-    "Code d’accès à la gestion commerciale :"
+function getAdminToken() {
+  return sessionStorage.getItem(
+    ADMIN_TOKEN_KEY
   );
+}
 
-  if (pin !== db.settings.adminPin) {
-    toast("Code incorrect.");
+function setAdminToken(token) {
+  sessionStorage.setItem(
+    ADMIN_TOKEN_KEY,
+    token
+  );
+}
+
+function clearAdminToken() {
+  sessionStorage.removeItem(
+    ADMIN_TOKEN_KEY
+  );
+}
+
+async function adminRpc(
+  functionName,
+  extra = {}
+) {
+
+  const token =
+    getAdminToken();
+
+  if (!token) {
+    throw new Error(
+      "Session de gestion inexistante."
+    );
+  }
+
+  return supabaseRpc(
+    functionName,
+    {
+      p_token: token,
+      ...extra
+    }
+  );
+}
+
+/* =========================================================
+   OUVRIR GESTION
+   ========================================================= */
+
+async function openAdmin() {
+
+  const currentToken =
+    getAdminToken();
+
+  if (currentToken) {
+
+    try {
+
+      await adminRpc(
+        "sama_admin_dashboard"
+      );
+
+      document
+        .getElementById(
+          "adminPanel"
+        )
+        .classList
+        .remove("hidden");
+
+      await showAdminView(
+        "dashboard"
+      );
+
+      return;
+
+    } catch {
+      clearAdminToken();
+    }
+  }
+
+  const pin =
+    prompt(
+      "Code d’accès à la gestion commerciale :"
+    );
+
+  if (pin === null) {
     return;
   }
 
-  document
-    .getElementById("adminPanel")
-    .classList
-    .remove("hidden");
+  try {
 
-  showAdminView("dashboard");
+    const token =
+      await supabaseRpc(
+        "sama_admin_login",
+        {
+          p_pin:
+            String(pin)
+        }
+      );
+
+    setAdminToken(token);
+
+    document
+      .getElementById(
+        "adminPanel"
+      )
+      .classList
+      .remove("hidden");
+
+    await showAdminView(
+      "dashboard"
+    );
+
+  } catch (error) {
+
+    console.error(error);
+
+    toast(
+      "Accès refusé : " +
+      error.message
+    );
+  }
 }
 
 function closeAdmin() {
 
   const panel =
-    document.getElementById("adminPanel");
+    document.getElementById(
+      "adminPanel"
+    );
 
   if (panel) {
-    panel.classList.add("hidden");
+    panel.classList.add(
+      "hidden"
+    );
   }
 }
 
-/* Menu admin */
-document
-  .querySelectorAll(".side-btn")
-  .forEach(b => {
+/* =========================================================
+   NAVIGATION ADMIN
+   ========================================================= */
 
-    b.addEventListener(
+const adminTitles = {
+  dashboard:"Dashboard",
+  orders:"Commandes",
+  customers:"Clients",
+  products:"Stock",
+  suppliers:"Fournisseurs",
+  expenses:"Dépenses",
+  quotes:"Devis",
+  settings:"Paramètres"
+};
+
+document
+  .querySelectorAll(
+    ".side-btn"
+  )
+  .forEach(button => {
+
+    button.addEventListener(
       "click",
       () =>
         showAdminView(
-          b.dataset.view
+          button.dataset.view
         )
     );
 
   });
 
-function showAdminView(view) {
+async function showAdminView(view) {
 
   document
-    .querySelectorAll(".side-btn")
-    .forEach(b => {
+    .querySelectorAll(
+      ".side-btn"
+    )
+    .forEach(button => {
 
-      b.classList.toggle(
+      button.classList.toggle(
         "active",
-        b.dataset.view === view
+        button.dataset.view === view
       );
 
     });
 
-  const titles = {
-    dashboard: "Dashboard",
-    orders: "Commandes",
-    customers: "Clients",
-    products: "Stock",
-    suppliers: "Fournisseurs",
-    expenses: "Dépenses",
-    quotes: "Devis",
-    settings: "Paramètres"
-  };
+  const title =
+    document.getElementById(
+      "adminTitle"
+    );
 
-  document.getElementById(
-    "adminTitle"
-  ).textContent =
-    titles[view] || "Gestion";
+  const content =
+    document.getElementById(
+      "adminContent"
+    );
 
-  const r = {
-    dashboard: adminDashboard,
-    orders: adminOrders,
-    customers: adminCustomers,
-    products: adminStock,
-    suppliers: adminSuppliers,
-    expenses: adminExpenses,
-    quotes: adminQuotes,
-    settings: adminSettings
-  };
+  if (title) {
+    title.textContent =
+      adminTitles[view] ||
+      "Gestion";
+  }
 
-  document.getElementById(
-    "adminContent"
-  ).innerHTML =
-    r[view]();
+  if (!content) return;
 
-  bindAdmin(view);
+  content.innerHTML =
+    `
+      <div
+        class="panel"
+        style="padding:30px;text-align:center"
+      >
+        Chargement...
+      </div>
+    `;
+
+  try {
+
+    let html = "";
+
+    switch (view) {
+
+      case "dashboard":
+        html =
+          await renderDashboard();
+        break;
+
+      case "orders":
+        html =
+          await renderOrders();
+        break;
+
+      case "customers":
+        html =
+          await renderCustomers();
+        break;
+
+      case "products":
+        html =
+          await renderStock();
+        break;
+
+      case "suppliers":
+        html =
+          await renderSuppliers();
+        break;
+
+      case "expenses":
+        html =
+          await renderExpenses();
+        break;
+
+      case "quotes":
+        html =
+          await renderQuotes();
+        break;
+
+      case "settings":
+        html =
+          await renderSettings();
+        break;
+
+      default:
+        html =
+          '<div class="empty">Page inconnue.</div>';
+    }
+
+    content.innerHTML = html;
+
+    bindAdmin(view);
+
+  } catch (error) {
+
+    console.error(error);
+
+    clearAdminToken();
+
+    closeAdmin();
+
+    toast(
+      "Session de gestion expirée ou erreur : " +
+      error.message
+    );
+  }
 }
 
 /* =========================================================
-   DASHBOARD
+   DASHBOARD ADMIN
    ========================================================= */
 
-function adminDashboard() {
+async function renderDashboard() {
 
-  const ca =
-    db.orders
-      .filter(
-        o => o.status !== "cancelled"
-      )
-      .reduce(
-        (s, o) =>
-          s + Number(o.total || 0),
-        0
-      );
-
-  const pending =
-    db.orders.filter(
-      o =>
-        ["new", "processing"]
-          .includes(o.status)
-    ).length;
-
-  const stockValue =
-    db.stock.reduce(
-      (s, x) =>
-        s +
-        (Number(x.qty) || 0) *
-        (Number(x.cost) || 0),
-      0
+  const data =
+    await adminRpc(
+      "sama_admin_dashboard"
     );
 
-  const low =
-    db.stock.filter(
-      x =>
-        Number(x.min) > 0 &&
-        Number(x.qty) <= Number(x.min)
-    ).length;
+  db.orders =
+    data.recentOrders || [];
 
   return `
+
     <div class="admin-cards">
 
       <div class="kpi">
         <div class="label">
           CA commandes
         </div>
-
         <div class="value">
-          ${money(ca)}
+          ${money(data.ca || 0)}
         </div>
       </div>
 
@@ -1412,9 +2016,8 @@ function adminDashboard() {
         <div class="label">
           Commandes en cours
         </div>
-
         <div class="value">
-          ${pending}
+          ${data.pending || 0}
         </div>
       </div>
 
@@ -1422,9 +2025,8 @@ function adminDashboard() {
         <div class="label">
           Valeur stock
         </div>
-
         <div class="value">
-          ${money(stockValue)}
+          ${money(data.stockValue || 0)}
         </div>
       </div>
 
@@ -1432,9 +2034,8 @@ function adminDashboard() {
         <div class="label">
           Alertes stock
         </div>
-
         <div class="value">
-          ${low}
+          ${data.low || 0}
         </div>
       </div>
 
@@ -1449,7 +2050,7 @@ function adminDashboard() {
         </h3>
 
         ${
-          db.orders.length
+          (data.recentOrders || []).length
             ? `
               <div class="table-wrap">
 
@@ -1463,31 +2064,33 @@ function adminDashboard() {
                   </tr>
 
                   ${
-                    db.orders
-                      .slice(0, 8)
+                    data.recentOrders
                       .map(
-                        o => `
+                        order => `
                           <tr>
 
                             <td>
-                              ${o.id}
+                              ${esc(order.id)}
                             </td>
 
                             <td>
                               ${esc(
-                                o.customer.name
+                                order.customer?.name ||
+                                ""
                               )}
                             </td>
 
                             <td>
-                              ${money(o.total)}
+                              ${money(
+                                order.total
+                              )}
                             </td>
 
                             <td>
                               <span
-                                class="status ${o.status}"
+                                class="status ${esc(order.status)}"
                               >
-                                ${o.status}
+                                ${esc(order.status)}
                               </span>
                             </td>
 
@@ -1518,17 +2121,15 @@ function adminDashboard() {
 
         <p>
           Stock faible :
-          <strong>${low}</strong>
+          <strong>
+            ${data.low || 0}
+          </strong>
         </p>
 
         <p>
           Demandes de devis :
           <strong>
-            ${
-              db.quotes.filter(
-                q => q.status === "new"
-              ).length
-            }
+            ${data.newQuotes || 0}
           </strong>
         </p>
 
@@ -1536,13 +2137,7 @@ function adminDashboard() {
           Dépenses enregistrées :
           <strong>
             ${money(
-              db.expenses.reduce(
-                (s, x) =>
-                  s + Number(
-                    x.amount || 0
-                  ),
-                0
-              )
+              data.expenseTotal || 0
             )}
           </strong>
         </p>
@@ -1554,10 +2149,33 @@ function adminDashboard() {
 }
 
 /* =========================================================
-   COMMANDES
+   COMMANDES ADMIN
    ========================================================= */
 
-function adminOrders() {
+async function renderOrders() {
+
+  const data =
+    await adminRpc(
+      "sama_admin_orders"
+    );
+
+  db.orders =
+    data.orders || [];
+
+  if (!db.orders.length) {
+
+    return `
+      <div class="panel">
+        <h3>
+          Commandes (0)
+        </h3>
+
+        <div class="empty">
+          Aucune commande pour le moment.
+        </div>
+      </div>
+    `;
+  }
 
   return `
     <div class="panel">
@@ -1566,129 +2184,126 @@ function adminOrders() {
         Commandes (${db.orders.length})
       </h3>
 
-      ${
-        db.orders.length
-          ? `
-            <div class="table-wrap">
+      <div class="table-wrap">
 
-              <table class="table">
+        <table class="table">
 
-                <tr>
-                  <th>ID</th>
-                  <th>Date</th>
-                  <th>Client</th>
-                  <th>Total</th>
-                  <th>Statut</th>
-                  <th>Action</th>
-                </tr>
+          <tr>
+            <th>ID</th>
+            <th>Date</th>
+            <th>Client</th>
+            <th>Total</th>
+            <th>Statut</th>
+            <th>Action</th>
+          </tr>
 
-                ${
-                  db.orders
-                    .map(
-                      o => `
-                        <tr>
+          ${
+            db.orders
+              .map(
+                order => `
 
-                          <td>
-                            ${o.id}
-                          </td>
+                  <tr>
 
-                          <td>
-                            ${new Date(
-                              o.createdAt
+                    <td>
+                      ${esc(order.id)}
+                    </td>
+
+                    <td>
+                      ${
+                        order.created_at
+                          ? new Date(
+                              order.created_at
                             ).toLocaleDateString(
                               "fr-FR"
-                            )}
-                          </td>
+                            )
+                          : "—"
+                      }
+                    </td>
 
-                          <td>
+                    <td>
 
-                            ${esc(
-                              o.customer.name
-                            )}
+                      ${esc(
+                        order.customer?.name ||
+                        ""
+                      )}
 
-                            <br>
+                      <br>
 
-                            <span class="small-note">
-                              ${esc(
-                                o.customer.phone
-                              )}
-                            </span>
+                      <span class="small-note">
+                        ${esc(
+                          order.customer?.phone ||
+                          ""
+                        )}
+                      </span>
 
-                          </td>
+                    </td>
 
-                          <td>
-                            ${money(o.total)}
-                          </td>
+                    <td>
+                      ${money(order.total)}
+                    </td>
 
-                          <td>
+                    <td>
 
-                            <select
-                              class="input"
-                              onchange="
-                                setOrderStatus(
-                                  '${o.id}',
-                                  this.value
-                                )
-                              "
-                            >
+                      <select
+                        class="input"
+                        onchange="
+                          setOrderStatus(
+                            '${order.id}',
+                            this.value
+                          )
+                        "
+                      >
 
-                              ${
-                                [
-                                  "new",
-                                  "processing",
-                                  "delivered",
-                                  "cancelled"
-                                ]
-                                  .map(
-                                    s => `
-                                      <option
-                                        ${
-                                          o.status === s
-                                            ? "selected"
-                                            : ""
-                                        }
-                                        value="${s}"
-                                      >
-                                        ${s}
-                                      </option>
-                                    `
-                                  )
-                                  .join("")
-                              }
+                        ${
+                          [
+                            "new",
+                            "processing",
+                            "delivered",
+                            "cancelled"
+                          ]
+                          .map(
+                            status => `
+                              <option
+                                value="${status}"
+                                ${
+                                  order.status === status
+                                    ? "selected"
+                                    : ""
+                                }
+                              >
+                                ${status}
+                              </option>
+                            `
+                          )
+                          .join("")
+                        }
 
-                            </select>
+                      </select>
 
-                          </td>
+                    </td>
 
-                          <td>
+                    <td>
 
-                            <button
-                              class="btn small ghost"
-                              onclick="
-                                showOrder('${o.id}')
-                              "
-                            >
-                              Voir
-                            </button>
+                      <button
+                        class="btn small ghost"
+                        onclick="
+                          showOrder('${order.id}')
+                        "
+                      >
+                        Voir
+                      </button>
 
-                          </td>
+                    </td>
 
-                        </tr>
-                      `
-                    )
-                    .join("")
-                }
+                  </tr>
+                `
+              )
+              .join("")
+          }
 
-              </table>
+        </table>
 
-            </div>
-          `
-          : `
-            <div class="empty">
-              Aucune commande pour le moment.
-            </div>
-          `
-      }
+      </div>
 
     </div>
   `;
@@ -1696,17 +2311,20 @@ function adminOrders() {
 
 function showOrder(id) {
 
-  const o =
+  const order =
     db.orders.find(
-      x => x.id === id
+      o => o.id === id
     );
 
-  if (!o) {
-    toast("Commande introuvable.");
+  if (!order) {
+    toast(
+      "Commande introuvable."
+    );
     return;
   }
 
   showModal(`
+
     <div class="modal-head">
 
       <div>
@@ -1716,7 +2334,7 @@ function showOrder(id) {
         </div>
 
         <h2>
-          ${o.id}
+          ${esc(order.id)}
         </h2>
 
       </div>
@@ -1733,40 +2351,47 @@ function showOrder(id) {
     <p>
 
       <strong>
-        ${esc(o.customer.name)}
+        ${esc(
+          order.customer?.name || ""
+        )}
       </strong>
 
       ·
 
-      ${esc(o.customer.phone)}
+      ${esc(
+        order.customer?.phone || ""
+      )}
 
       <br>
 
-      ${esc(o.customer.address)}
-      ${esc(o.customer.zone || "")}
+      ${esc(
+        order.customer?.address || ""
+      )}
+
+      ${order.customer?.zone
+        ? " — " +
+          esc(
+            order.customer.zone
+          )
+        : ""}
 
     </p>
 
     <ul class="pack-items">
 
       ${
-        o.items
-          .map(i => {
-
-            const p = getP(i.id);
-
-            return `
+        (order.items || [])
+          .map(
+            item => `
               <li>
-                ${i.qty} ×
+                ${item.quantity} ×
                 ${esc(
-                  p
-                    ? p.name
-                    : i.id
+                  item.product_name ||
+                  ""
                 )}
               </li>
-            `;
-
-          })
+            `
+          )
           .join("")
       }
 
@@ -1775,58 +2400,92 @@ function showOrder(id) {
     <div class="summary">
 
       <div class="summary-row">
-        <span>Sous-total</span>
+
+        <span>
+          Sous-total
+        </span>
+
         <strong>
-          ${money(o.subtotal)}
+          ${money(order.subtotal)}
         </strong>
+
       </div>
 
       <div class="summary-row">
-        <span>Livraison</span>
+
+        <span>
+          Livraison
+        </span>
+
         <strong>
-          ${money(o.delivery)}
+          ${money(order.delivery)}
         </strong>
+
       </div>
 
       <div class="summary-row total">
-        <span>Total</span>
+
+        <span>
+          Total
+        </span>
+
         <strong>
-          ${money(o.total)}
+          ${money(order.total)}
         </strong>
+
       </div>
 
     </div>
   `);
 }
 
-function setOrderStatus(id, status) {
+async function setOrderStatus(
+  id,
+  status
+) {
 
-  const o =
-    db.orders.find(
-      x => x.id === id
+  try {
+
+    await adminRpc(
+      "sama_admin_set_order_status",
+      {
+        p_id: id,
+        p_status: status
+      }
     );
 
-  if (!o) return;
+    await showAdminView(
+      "orders"
+    );
 
-  o.status = status;
+    toast(
+      "Statut de la commande mis à jour."
+    );
 
-  save();
+  } catch (error) {
 
-  log(
-    "Statut commande",
-    id + " → " + status
-  );
-
-  showAdminView("orders");
+    toast(
+      error.message
+    );
+  }
 }
 
 /* =========================================================
-   CLIENTS
+   CLIENTS ADMIN
    ========================================================= */
 
-function adminCustomers() {
+async function renderCustomers() {
+
+  const data =
+    await adminRpc(
+      "sama_admin_customers"
+    );
+
+  db.customers =
+    data.customers || [];
 
   return `
+
     <div class="panel">
 
       <h3>
@@ -1841,37 +2500,67 @@ function adminCustomers() {
               <table class="table">
 
                 <tr>
-                  <th>Nom</th>
-                  <th>Téléphone</th>
-                  <th>Zone</th>
-                  <th>Dernière commande</th>
+
+                  <th>
+                    Nom
+                  </th>
+
+                  <th>
+                    Téléphone
+                  </th>
+
+                  <th>
+                    Zone
+                  </th>
+
+                  <th>
+                    Commandes
+                  </th>
+
+                  <th>
+                    Dernière commande
+                  </th>
+
                 </tr>
 
                 ${
                   db.customers
                     .map(
-                      c => `
+                      customer => `
+
                         <tr>
 
                           <td>
-                            ${esc(c.name)}
-                          </td>
-
-                          <td>
-                            ${esc(c.phone)}
+                            ${esc(
+                              customer.name
+                            )}
                           </td>
 
                           <td>
                             ${esc(
-                              c.zone || ""
+                              customer.phone
+                            )}
+                          </td>
+
+                          <td>
+                            ${esc(
+                              customer.zone ||
+                              ""
+                            )}
+                          </td>
+
+                          <td>
+                            ${Number(
+                              customer.orders_count ||
+                              0
                             )}
                           </td>
 
                           <td>
                             ${
-                              c.lastOrder
+                              customer.last_order_at
                                 ? new Date(
-                                    c.lastOrder
+                                    customer.last_order_at
                                   ).toLocaleDateString(
                                     "fr-FR"
                                   )
@@ -1901,18 +2590,36 @@ function adminCustomers() {
 }
 
 /* =========================================================
-   STOCK
+   STOCK ADMIN
    ========================================================= */
 
-function adminStock() {
+async function renderStock() {
 
-  const map = new Map(
-    db.stock.map(
-      x => [x.id, x]
-    )
-  );
+  const data =
+    await adminRpc(
+      "sama_admin_stock"
+    );
+
+  db.stock =
+    data.stock || [];
+
+  if (!db.stock.length) {
+
+    return `
+      <div class="panel">
+        <h3>
+          Stock et réapprovisionnement
+        </h3>
+
+        <div class="empty">
+          Aucun stock configuré.
+        </div>
+      </div>
+    `;
+  }
 
   return `
+
     <div class="panel">
 
       <h3>
@@ -1924,159 +2631,218 @@ function adminStock() {
         <table class="table">
 
           <tr>
-            <th>Pack</th>
-            <th>Qté</th>
-            <th>Seuil</th>
-            <th>Coût unitaire</th>
-            <th>Prix vente</th>
-            <th>Valeur</th>
-            <th>Fournisseur</th>
-            <th>Action</th>
+
+            <th>
+              Pack
+            </th>
+
+            <th>
+              Qté
+            </th>
+
+            <th>
+              Seuil
+            </th>
+
+            <th>
+              Coût unitaire
+            </th>
+
+            <th>
+              Prix vente
+            </th>
+
+            <th>
+              Valeur
+            </th>
+
+            <th>
+              Fournisseur
+            </th>
+
+            <th>
+              Action
+            </th>
+
           </tr>
 
           ${
-            products
-              .map(p => {
+            db.stock
+              .map(
+                stock => {
 
-                const s =
-                  map.get(p.id) ||
-                  {
-                    qty: 0,
-                    min: 0,
-                    cost: 0,
-                    supplier: ""
-                  };
+                  const product =
+                    stock.product ||
+                    {};
 
-                const product =
-                  getP(p.id);
+                  const low =
+                    Number(
+                      stock.quantity
+                    ) <=
+                    Number(
+                      stock.min_quantity
+                    ) &&
+                    Number(
+                      stock.min_quantity
+                    ) > 0;
 
-                return `
-                  <tr>
+                  return `
 
-                    <td>
-                      ${esc(product.name)}
-                    </td>
+                    <tr>
 
-                    <td>
+                      <td>
+                        ${esc(
+                          product.name ||
+                          stock.product_id
+                        )}
+                      </td>
 
-                      <input
-                        class="input"
-                        style="width:80px"
-                        type="number"
-                        value="${s.qty}"
-                        onchange="
-                          updateStock(
-                            '${p.id}',
-                            'qty',
-                            this.value
+                      <td>
+
+                        <input
+                          class="input"
+                          style="width:80px"
+                          type="number"
+                          min="0"
+                          value="${Number(
+                            stock.quantity ||
+                            0
+                          )}"
+                          onchange="
+                            updateStockField(
+                              '${stock.product_id}',
+                              'quantity',
+                              this.value
+                            )
+                          "
+                        >
+
+                      </td>
+
+                      <td>
+
+                        <input
+                          class="input"
+                          style="width:80px"
+                          type="number"
+                          min="0"
+                          value="${Number(
+                            stock.min_quantity ||
+                            0
+                          )}"
+                          onchange="
+                            updateStockField(
+                              '${stock.product_id}',
+                              'min_quantity',
+                              this.value
+                            )
+                          "
+                        >
+
+                      </td>
+
+                      <td>
+
+                        <input
+                          class="input"
+                          style="width:110px"
+                          type="number"
+                          min="0"
+                          value="${Number(
+                            stock.unit_cost ||
+                            0
+                          )}"
+                          onchange="
+                            updateStockField(
+                              '${stock.product_id}',
+                              'unit_cost',
+                              this.value
+                            )
+                          "
+                        >
+
+                      </td>
+
+                      <td>
+
+                        <input
+                          class="input"
+                          style="width:110px"
+                          type="number"
+                          min="0"
+                          value="${Number(
+                            product.price ||
+                            0
+                          )}"
+                          onchange="
+                            updateProductPrice(
+                              '${stock.product_id}',
+                              this.value
+                            )
+                          "
+                        >
+
+                      </td>
+
+                      <td>
+                        ${money(
+                          Number(
+                            stock.quantity ||
+                            0
+                          ) *
+                          Number(
+                            stock.unit_cost ||
+                            0
                           )
-                        "
-                      >
+                        )}
+                      </td>
 
-                    </td>
+                      <td>
 
-                    <td>
+                        <input
+                          class="input"
+                          value="${esc(
+                            stock.supplier ||
+                            ""
+                          )}"
+                          onchange="
+                            updateStockField(
+                              '${stock.product_id}',
+                              'supplier',
+                              this.value
+                            )
+                          "
+                        >
 
-                      <input
-                        class="input"
-                        style="width:80px"
-                        type="number"
-                        value="${s.min}"
-                        onchange="
-                          updateStock(
-                            '${p.id}',
-                            'min',
-                            this.value
-                          )
-                        "
-                      >
+                      </td>
 
-                    </td>
+                      <td>
 
-                    <td>
+                        ${
+                          low
+                            ? `
+                              <span
+                                class="status cancelled"
+                              >
+                                À commander
+                              </span>
+                            `
+                            : `
+                              <span
+                                class="status delivered"
+                              >
+                                OK
+                              </span>
+                            `
+                        }
 
-                      <input
-                        class="input"
-                        style="width:110px"
-                        type="number"
-                        value="${s.cost}"
-                        onchange="
-                          updateStock(
-                            '${p.id}',
-                            'cost',
-                            this.value
-                          )
-                        "
-                      >
+                      </td>
 
-                    </td>
+                    </tr>
 
-                    <td>
-
-                      <input
-                        class="input"
-                        style="width:110px"
-                        type="number"
-                        value="${product.price}"
-                        onchange="
-                          updateProductSetting(
-                            '${p.id}',
-                            'price',
-                            this.value
-                          )
-                        "
-                      >
-
-                    </td>
-
-                    <td>
-                      ${money(
-                        (s.qty || 0) *
-                        (s.cost || 0)
-                      )}
-                    </td>
-
-                    <td>
-
-                      <input
-                        class="input"
-                        value="${esc(
-                          s.supplier || ""
-                        )}"
-                        onchange="
-                          updateStock(
-                            '${p.id}',
-                            'supplier',
-                            this.value
-                          )
-                        "
-                      >
-
-                    </td>
-
-                    <td>
-
-                      ${
-                        s.min > 0 &&
-                        s.qty <= s.min
-                          ? `
-                            <span class="status cancelled">
-                              À commander
-                            </span>
-                          `
-                          : `
-                            <span class="status delivered">
-                              OK
-                            </span>
-                          `
-                      }
-
-                    </td>
-
-                  </tr>
-                `;
-
-              })
+                  `;
+                }
+              )
               .join("")
           }
 
@@ -2088,72 +2854,142 @@ function adminStock() {
   `;
 }
 
-function updateProductSetting(
-  id,
-  k,
-  v
+async function updateStockField(
+  productId,
+  field,
+  value
 ) {
 
-  if (!db.productSettings) {
-    db.productSettings = {};
-  }
-
-  if (!db.productSettings[id]) {
-    db.productSettings[id] = {
-      price: 0,
-      active: true
-    };
-  }
-
-  db.productSettings[id][k] =
-    k === "active"
-      ? Boolean(v)
-      : Number(v);
-
-  save();
-
-  renderProducts();
-}
-
-function updateStock(
-  id,
-  k,
-  v
-) {
-
-  let s =
+  const stock =
     db.stock.find(
-      x => x.id === id
+      x =>
+        x.product_id ===
+        productId
     );
 
-  if (!s) {
+  if (!stock) return;
 
-    s = {
-      id,
-      qty: 0,
-      min: 0,
-      cost: 0,
-      supplier: ""
-    };
+  const payload = {
 
-    db.stock.push(s);
+    product_id:
+      productId,
+
+    quantity:
+      field === "quantity"
+        ? Number(value)
+        : Number(
+            stock.quantity || 0
+          ),
+
+    min_quantity:
+      field === "min_quantity"
+        ? Number(value)
+        : Number(
+            stock.min_quantity || 0
+          ),
+
+    unit_cost:
+      field === "unit_cost"
+        ? Number(value)
+        : Number(
+            stock.unit_cost || 0
+          ),
+
+    supplier:
+      field === "supplier"
+        ? value
+        : stock.supplier || ""
+  };
+
+  try {
+
+    await adminRpc(
+      "sama_admin_update_stock",
+      {
+        p_payload:
+          payload
+      }
+    );
+
+    toast(
+      "Stock enregistré."
+    );
+
+  } catch (error) {
+
+    toast(
+      error.message
+    );
   }
+}
 
-  s[k] =
-    k === "supplier"
-      ? v
-      : Number(v);
+async function updateProductPrice(
+  productId,
+  price
+) {
 
-  save();
+  const stock =
+    db.stock.find(
+      x =>
+        x.product_id ===
+        productId
+    );
+
+  if (!stock) return;
+
+  try {
+
+    await adminRpc(
+      "sama_admin_update_product",
+      {
+        p_id: productId,
+        p_price:
+          Number(price),
+        p_active:
+          true
+      }
+    );
+
+    const product =
+      products.find(
+        p =>
+          p.id ===
+          productId
+      );
+
+    if (product) {
+      product.price =
+        Number(price);
+    }
+
+    toast(
+      "Prix enregistré."
+    );
+
+  } catch (error) {
+
+    toast(
+      error.message
+    );
+  }
 }
 
 /* =========================================================
    FOURNISSEURS
    ========================================================= */
 
-function adminSuppliers() {
+async function renderSuppliers() {
+
+  const data =
+    await adminRpc(
+      "sama_admin_suppliers"
+    );
+
+  db.suppliers =
+    data.suppliers || [];
 
   return `
+
     <div class="panel">
 
       <h3>
@@ -2210,32 +3046,54 @@ function adminSuppliers() {
             <table class="table">
 
               <tr>
-                <th>Fournisseur</th>
-                <th>Téléphone</th>
-                <th>Famille</th>
-                <th>Conditions</th>
+
+                <th>
+                  Fournisseur
+                </th>
+
+                <th>
+                  Téléphone
+                </th>
+
+                <th>
+                  Famille
+                </th>
+
+                <th>
+                  Conditions
+                </th>
+
               </tr>
 
               ${
                 db.suppliers
                   .map(
-                    s => `
+                    supplier => `
+
                       <tr>
 
                         <td>
-                          ${esc(s.name)}
+                          ${esc(
+                            supplier.name
+                          )}
                         </td>
 
                         <td>
-                          ${esc(s.phone)}
+                          ${esc(
+                            supplier.phone
+                          )}
                         </td>
 
                         <td>
-                          ${esc(s.family)}
+                          ${esc(
+                            supplier.family
+                          )}
                         </td>
 
                         <td>
-                          ${esc(s.terms)}
+                          ${esc(
+                            supplier.terms
+                          )}
                         </td>
 
                       </tr>
@@ -2261,18 +3119,28 @@ function adminSuppliers() {
    DÉPENSES
    ========================================================= */
 
-function adminExpenses() {
+async function renderExpenses() {
+
+  const data =
+    await adminRpc(
+      "sama_admin_expenses"
+    );
+
+  db.expenses =
+    data.expenses || [];
 
   const total =
     db.expenses.reduce(
-      (s, x) =>
-        s + Number(
-          x.amount || 0
+      (sum, expense) =>
+        sum +
+        Number(
+          expense.amount || 0
         ),
       0
     );
 
   return `
+
     <div class="panel">
 
       <h3>
@@ -2294,6 +3162,7 @@ function adminExpenses() {
         <input
           class="input"
           type="number"
+          min="0"
           name="amount"
           required
           placeholder="Montant FCFA"
@@ -2311,7 +3180,7 @@ function adminExpenses() {
           name="date"
           value="${new Date()
             .toISOString()
-            .slice(0, 10)}"
+            .slice(0,10)}"
         >
 
         <button
@@ -2334,34 +3203,55 @@ function adminExpenses() {
             <table class="table">
 
               <tr>
-                <th>Date</th>
-                <th>Libellé</th>
-                <th>Catégorie</th>
-                <th>Montant</th>
+
+                <th>
+                  Date
+                </th>
+
+                <th>
+                  Libellé
+                </th>
+
+                <th>
+                  Catégorie
+                </th>
+
+                <th>
+                  Montant
+                </th>
+
               </tr>
 
               ${
                 db.expenses
                   .map(
-                    e => `
+                    expense => `
+
                       <tr>
 
                         <td>
-                          ${e.date}
-                        </td>
-
-                        <td>
-                          ${esc(e.label)}
-                        </td>
-
-                        <td>
                           ${esc(
-                            e.category || ""
+                            expense.expense_date
                           )}
                         </td>
 
                         <td>
-                          ${money(e.amount)}
+                          ${esc(
+                            expense.label
+                          )}
+                        </td>
+
+                        <td>
+                          ${esc(
+                            expense.category ||
+                            ""
+                          )}
+                        </td>
+
+                        <td>
+                          ${money(
+                            expense.amount
+                          )}
                         </td>
 
                       </tr>
@@ -2387,9 +3277,18 @@ function adminExpenses() {
    DEVIS ADMIN
    ========================================================= */
 
-function adminQuotes() {
+async function renderQuotes() {
+
+  const data =
+    await adminRpc(
+      "sama_admin_quotes"
+    );
+
+  db.quotes =
+    data.quotes || [];
 
   return `
+
     <div class="panel">
 
       <h3>
@@ -2399,36 +3298,63 @@ function adminQuotes() {
       ${
         db.quotes.length
           ? `
+
             <table class="table">
 
               <tr>
-                <th>ID</th>
-                <th>Structure</th>
-                <th>Besoin</th>
-                <th>Téléphone</th>
-                <th>Statut</th>
+
+                <th>
+                  ID
+                </th>
+
+                <th>
+                  Structure
+                </th>
+
+                <th>
+                  Besoin
+                </th>
+
+                <th>
+                  Téléphone
+                </th>
+
+                <th>
+                  Statut
+                </th>
+
               </tr>
 
               ${
                 db.quotes
                   .map(
-                    q => `
+                    quote => `
+
                       <tr>
 
                         <td>
-                          ${q.id}
+                          ${esc(
+                            quote.id
+                          )}
                         </td>
 
                         <td>
-                          ${esc(q.company)}
+                          ${esc(
+                            quote.company
+                          )}
                         </td>
 
                         <td>
-                          ${esc(q.need)}
+                          ${esc(
+                            quote.need
+                          )}
                         </td>
 
                         <td>
-                          ${esc(q.phone)}
+                          ${esc(
+                            quote.phone ||
+                            ""
+                          )}
                         </td>
 
                         <td>
@@ -2437,7 +3363,7 @@ function adminQuotes() {
                             class="input"
                             onchange="
                               setQuoteStatus(
-                                '${q.id}',
+                                '${quote.id}',
                                 this.value
                               )
                             "
@@ -2450,21 +3376,21 @@ function adminQuotes() {
                                 "won",
                                 "lost"
                               ]
-                                .map(
-                                  s => `
-                                    <option
-                                      ${
-                                        q.status === s
-                                          ? "selected"
-                                          : ""
-                                      }
-                                      value="${s}"
-                                    >
-                                      ${s}
-                                    </option>
-                                  `
-                                )
-                                .join("")
+                              .map(
+                                status => `
+                                  <option
+                                    value="${status}"
+                                    ${
+                                      quote.status === status
+                                        ? "selected"
+                                        : ""
+                                    }
+                                  >
+                                    ${status}
+                                  </option>
+                                `
+                              )
+                              .join("")
                             }
 
                           </select>
@@ -2478,6 +3404,7 @@ function adminQuotes() {
               }
 
             </table>
+
           `
           : `
             <div class="empty">
@@ -2490,32 +3417,72 @@ function adminQuotes() {
   `;
 }
 
-function setQuoteStatus(
+async function setQuoteStatus(
   id,
   status
 ) {
 
-  const q =
-    db.quotes.find(
-      x => x.id === id
+  try {
+
+    await adminRpc(
+      "sama_admin_set_quote_status",
+      {
+        p_id: id,
+        p_status: status
+      }
     );
 
-  if (!q) return;
+    await showAdminView(
+      "quotes"
+    );
 
-  q.status = status;
+    toast(
+      "Statut du devis mis à jour."
+    );
 
-  save();
+  } catch (error) {
 
-  showAdminView("quotes");
+    toast(
+      error.message
+    );
+  }
 }
 
 /* =========================================================
-   PARAMÈTRES
+   PARAMÈTRES ADMIN
    ========================================================= */
 
-function adminSettings() {
+async function renderSettings() {
+
+  const data =
+    await adminRpc(
+      "sama_admin_settings"
+    );
+
+  if (data.settings) {
+    db.settings = {
+      company:
+        data.settings.company ||
+        "SAMA-PACK",
+
+      whatsapp:
+        data.settings.whatsapp ||
+        "",
+
+      deliveryFee:
+        Number(
+          data.settings.deliveryFee ||
+          0
+        ),
+
+      currency:
+        data.settings.currency ||
+        "FCFA"
+    };
+  }
 
   return `
+
     <div class="panel">
 
       <h3>
@@ -2528,6 +3495,7 @@ function adminSettings() {
       >
 
         <label>
+
           Nom
 
           <input
@@ -2541,7 +3509,8 @@ function adminSettings() {
         </label>
 
         <label>
-          WhatsApp (ex. 22177...)
+
+          WhatsApp
 
           <input
             class="input"
@@ -2549,36 +3518,42 @@ function adminSettings() {
             value="${esc(
               db.settings.whatsapp
             )}"
+            placeholder="22177..."
           >
 
         </label>
 
         <label>
+
           Frais livraison par défaut
 
           <input
             class="input"
             name="deliveryFee"
             type="number"
-            value="${db.settings.deliveryFee}"
-          >
-
-        </label>
-
-        <label>
-          Code gestion
-
-          <input
-            class="input"
-            name="adminPin"
-            value="${esc(
-              db.settings.adminPin
+            min="0"
+            value="${Number(
+              db.settings.deliveryFee
             )}"
           >
 
         </label>
 
+        <label>
+
+          Nouveau code gestion
+
+          <input
+            class="input"
+            name="adminPin"
+            type="password"
+            placeholder="Laisser vide pour conserver le code actuel"
+          >
+
+        </label>
+
         <label class="full">
+
           Devise
 
           <input
@@ -2600,8 +3575,7 @@ function adminSettings() {
       </form>
 
       <p class="small-note">
-        V1 : les données sont stockées dans ce navigateur.
-        Exporte régulièrement le JSON de sauvegarde.
+        Les données commerciales sont maintenant enregistrées dans Supabase.
       </p>
 
     </div>
@@ -2609,7 +3583,7 @@ function adminSettings() {
 }
 
 /* =========================================================
-   LIAISON DES FORMULAIRES ADMIN
+   FORMULAIRES ADMIN
    ========================================================= */
 
 function bindAdmin(view) {
@@ -2623,44 +3597,58 @@ function bindAdmin(view) {
 
     if (!form) return;
 
-    form.onsubmit = e => {
+    form.onsubmit =
+      async e => {
 
-      e.preventDefault();
+        e.preventDefault();
 
-      const f =
-        new FormData(e.target);
+        const f =
+          new FormData(form);
 
-      db.suppliers.unshift({
+        try {
 
-        id:
-          "SUP-" +
-          Date.now(),
+          await adminRpc(
+            "sama_admin_add_supplier",
+            {
+              p_payload: {
+                name:
+                  String(
+                    f.get("name") || ""
+                  ).trim(),
 
-        name:
-          f.get("name"),
+                phone:
+                  String(
+                    f.get("phone") || ""
+                  ).trim(),
 
-        phone:
-          f.get("phone"),
+                family:
+                  String(
+                    f.get("family") || ""
+                  ).trim(),
 
-        family:
-          f.get("family"),
+                terms:
+                  String(
+                    f.get("terms") || ""
+                  ).trim()
+              }
+            }
+          );
 
-        terms:
-          f.get("terms")
+          toast(
+            "Fournisseur ajouté."
+          );
 
-      });
+          await showAdminView(
+            "suppliers"
+          );
 
-      save();
+        } catch (error) {
 
-      log(
-        "Fournisseur ajouté",
-        f.get("name")
-      );
-
-      showAdminView(
-        "suppliers"
-      );
-    };
+          toast(
+            error.message
+          );
+        }
+      };
   }
 
   if (view === "expenses") {
@@ -2672,46 +3660,63 @@ function bindAdmin(view) {
 
     if (!form) return;
 
-    form.onsubmit = e => {
+    form.onsubmit =
+      async e => {
 
-      e.preventDefault();
+        e.preventDefault();
 
-      const f =
-        new FormData(e.target);
+        const f =
+          new FormData(form);
 
-      db.expenses.unshift({
+        try {
 
-        id:
-          "DEP-" +
-          Date.now(),
+          await adminRpc(
+            "sama_admin_add_expense",
+            {
+              p_payload: {
 
-        label:
-          f.get("label"),
+                id:
+                  "DEP-" +
+                  Date.now(),
 
-        amount:
-          Number(
-            f.get("amount")
-          ),
+                label:
+                  String(
+                    f.get("label") || ""
+                  ).trim(),
 
-        category:
-          f.get("category"),
+                amount:
+                  Number(
+                    f.get("amount") || 0
+                  ),
 
-        date:
-          f.get("date")
+                category:
+                  String(
+                    f.get("category") || ""
+                  ).trim(),
 
-      });
+                date:
+                  String(
+                    f.get("date") || ""
+                  )
+              }
+            }
+          );
 
-      save();
+          toast(
+            "Dépense enregistrée."
+          );
 
-      log(
-        "Dépense ajoutée",
-        f.get("label")
-      );
+          await showAdminView(
+            "expenses"
+          );
 
-      showAdminView(
-        "expenses"
-      );
-    };
+        } catch (error) {
+
+          toast(
+            error.message
+          );
+        }
+      };
   }
 
   if (view === "settings") {
@@ -2723,42 +3728,112 @@ function bindAdmin(view) {
 
     if (!form) return;
 
-    form.onsubmit = e => {
+    form.onsubmit =
+      async e => {
 
-      e.preventDefault();
+        e.preventDefault();
 
-      const f =
-        new FormData(e.target);
+        const f =
+          new FormData(form);
 
-      db.settings = {
+        try {
 
-        company:
-          f.get("company"),
+          await adminRpc(
+            "sama_admin_update_settings",
+            {
+              p_payload: {
 
-        whatsapp:
-          f.get("whatsapp"),
+                company:
+                  String(
+                    f.get("company") ||
+                    ""
+                  ).trim(),
 
-        deliveryFee:
-          Number(
-            f.get("deliveryFee")
-          ),
+                whatsapp:
+                  String(
+                    f.get("whatsapp") ||
+                    ""
+                  ).trim(),
 
-        adminPin:
-          f.get("adminPin"),
+                deliveryFee:
+                  Number(
+                    f.get(
+                      "deliveryFee"
+                    ) || 0
+                  ),
 
-        currency:
-          f.get("currency")
+                currency:
+                  String(
+                    f.get("currency") ||
+                    "FCFA"
+                  ).trim(),
 
+                adminPin:
+                  String(
+                    f.get("adminPin") ||
+                    ""
+                  ).trim()
+              }
+            }
+          );
+
+          db.settings = {
+
+            company:
+              String(
+                f.get("company") ||
+                ""
+              ).trim(),
+
+            whatsapp:
+              String(
+                f.get("whatsapp") ||
+                ""
+              ).trim(),
+
+            deliveryFee:
+              Number(
+                f.get(
+                  "deliveryFee"
+                ) || 0
+              ),
+
+            currency:
+              String(
+                f.get("currency") ||
+                "FCFA"
+              ).trim()
+          };
+
+          updateContact();
+
+          toast(
+            "Paramètres enregistrés."
+          );
+
+          if (
+            String(
+              f.get("adminPin") ||
+              ""
+            ).trim()
+          ) {
+
+            clearAdminToken();
+
+            closeAdmin();
+
+            toast(
+              "Le nouveau code est actif. Reconnecte-toi avec ce code."
+            );
+          }
+
+        } catch (error) {
+
+          toast(
+            error.message
+          );
+        }
       };
-
-      save();
-
-      updateContact();
-
-      toast(
-        "Paramètres enregistrés."
-      );
-    };
   }
 }
 
@@ -2766,20 +3841,88 @@ function bindAdmin(view) {
    EXPORT DES DONNÉES
    ========================================================= */
 
-const exportDataBtn =
-  document.getElementById(
-    "exportDataBtn"
-  );
+async function exportData() {
 
-if (exportDataBtn) {
+  try {
 
-  exportDataBtn.onclick = () => {
+    const [
+      dashboard,
+      orders,
+      customers,
+      stock,
+      suppliers,
+      expenses,
+      quotes,
+      settings
+    ] = await Promise.all([
+
+      adminRpc(
+        "sama_admin_dashboard"
+      ),
+
+      adminRpc(
+        "sama_admin_orders"
+      ),
+
+      adminRpc(
+        "sama_admin_customers"
+      ),
+
+      adminRpc(
+        "sama_admin_stock"
+      ),
+
+      adminRpc(
+        "sama_admin_suppliers"
+      ),
+
+      adminRpc(
+        "sama_admin_expenses"
+      ),
+
+      adminRpc(
+        "sama_admin_quotes"
+      ),
+
+      adminRpc(
+        "sama_admin_settings"
+      )
+    ]);
+
+    const exportObject = {
+
+      exportedAt:
+        new Date().toISOString(),
+
+      settings:
+        settings.settings,
+
+      dashboard,
+
+      orders:
+        orders.orders || [],
+
+      customers:
+        customers.customers || [],
+
+      stock:
+        stock.stock || [],
+
+      suppliers:
+        suppliers.suppliers || [],
+
+      expenses:
+        expenses.expenses || [],
+
+      quotes:
+        quotes.quotes || []
+    };
 
     const blob =
       new Blob(
         [
           JSON.stringify(
-            db,
+            exportObject,
             null,
             2
           )
@@ -2790,15 +3933,17 @@ if (exportDataBtn) {
         }
       );
 
+    const url =
+      URL.createObjectURL(
+        blob
+      );
+
     const a =
       document.createElement(
         "a"
       );
 
-    a.href =
-      URL.createObjectURL(
-        blob
-      );
+    a.href = url;
 
     a.download =
       "sama-pack-sauvegarde.json";
@@ -2806,13 +3951,36 @@ if (exportDataBtn) {
     a.click();
 
     URL.revokeObjectURL(
-      a.href
+      url
     );
-  };
+
+    toast(
+      "Sauvegarde exportée."
+    );
+
+  } catch (error) {
+
+    toast(
+      error.message
+    );
+  }
+}
+
+const exportDataBtn =
+  document.getElementById(
+    "exportDataBtn"
+  );
+
+if (exportDataBtn) {
+  exportDataBtn.onclick =
+    exportData;
 }
 
 /* =========================================================
-   IMPORT DES DONNÉES
+   IMPORT
+   La base est maintenant centralisée.
+   On désactive l'ancien import local pour éviter
+   de donner l'illusion qu'il restaure Supabase.
    ========================================================= */
 
 const importDataInput =
@@ -2824,38 +3992,13 @@ if (importDataInput) {
 
   importDataInput.addEventListener(
     "change",
-    e => {
+    () => {
 
-      const file =
-        e.target.files?.[0];
+      toast(
+        "L'import JSON vers Supabase sera ajouté dans une prochaine étape."
+      );
 
-      if (!file) return;
-
-      const r =
-        new FileReader();
-
-      r.onload = () => {
-
-        try {
-
-          db =
-            JSON.parse(
-              r.result
-            );
-
-          save();
-
-          location.reload();
-
-        } catch {
-
-          toast(
-            "Fichier JSON invalide."
-          );
-        }
-      };
-
-      r.readAsText(file);
+      importDataInput.value = "";
     }
   );
 }
@@ -2865,4 +4008,3 @@ if (importDataInput) {
    ========================================================= */
 
 initShop();
-updateCartCount();
