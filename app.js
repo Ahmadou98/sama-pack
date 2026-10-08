@@ -58,12 +58,13 @@ function renderProducts(){
 function productCard(p){
   const image=imageById[p.id];
   return `<article class="product-card">
-    <div class="pack-visual">
-      <div class="pack-box">
-        <img src="${image}" alt="${esc(p.name)}" style="display:block;width:100%;height:280px;object-fit:contain;border-radius:14px;">
-        <div class="pack-code">${p.id}</div>
-      </div>
-    </div>
+    <div style="width:100%;margin:20px 0;display:flex;justify-content:center;align-items:center;">
+  <img
+    src="${image}"
+    alt="${esc(p.name)}"
+    style="display:block;width:100%;max-width:850px;height:auto;max-height:600px;object-fit:contain;border-radius:14px;"
+  >
+</div>
     <div class="product-body">
       <div class="product-cat">${esc(p.cat)}</div>
       <div class="product-name">${esc(p.name)}</div>
