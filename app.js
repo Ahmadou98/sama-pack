@@ -81,7 +81,44 @@ function productCard(p){
 }
 function addToCart(id){const x=db.cart.find(i=>i.id===id);if(x)x.qty++;else db.cart.push({id,qty:1});save();updateCartCount();toast("Pack ajouté au panier.");}
 function updateCartCount(){document.getElementById("cartCount").textContent=db.cart.reduce((s,i)=>s+i.qty,0)}
-function openProduct(id){const p=getP(id); const emoji=iconById[p.id]||"📦"; showModal(`<div class="modal-head"><div><div class="eyebrow">${esc(p.cat)}</div><h2>${esc(p.name)}</h2></div><button class="close" onclick="closeModal()">✕</button></div><div class="pack-visual"><div class="pack-box"><div class="emoji">${emoji}</div><div class="pack-code">${p.id}</div></div></div><p>${esc(p.desc)}</p><ul class="pack-items">${p.items.map(i=>`<li>${esc(i)}</li>`).join("")}</ul><div class="price-row"><div class="price">${money(p.price)}</div><button class="btn primary" onclick="addToCart('${p.id}');closeModal();renderProducts()">Ajouter au panier</button></div>`)}
+function openProduct(id){
+  const p=getP(id);
+  const image=imageById[p.id]||"";
+
+  showModal(`
+    <div class="modal-head">
+      <div>
+        <div class="eyebrow">${esc(p.cat)}</div>
+        <h2>${esc(p.name)}</h2>
+      </div>
+      <button class="close" onclick="closeModal()">✕</button>
+    </div>
+
+    <div class="pack-visual" style="margin:20px 0;">
+      <div class="pack-box" style="height:320px;">
+        <img
+          src="${image}"
+          alt="${esc(p.name)}"
+          style="display:block;width:100%;height:100%;object-fit:contain;border-radius:14px;"
+        >
+        <div class="pack-code">${p.id}</div>
+      </div>
+    </div>
+
+    <p>${esc(p.desc)}</p>
+
+    <ul class="pack-items">
+      ${p.items.map(i=>`<li>${esc(i)}</li>`).join("")}
+    </ul>
+
+    <div class="price-row">
+      <div class="price">${money(p.price)}</div>
+      <button class="btn primary" onclick="addToCart('${p.id}');closeModal();renderProducts()">
+        Ajouter au panier
+      </button>
+    </div>
+  `);
+}
 function showModal(body){document.getElementById("modalRoot").innerHTML=`<div class="modal" onclick="if(event.target===this)closeModal()"><div class="modal-card">${body}</div></div>`}
 function closeModal(){document.getElementById("modalRoot").innerHTML=""}
 function cartTotals(){const subtotal=db.cart.reduce((s,i)=>s+getP(i.id).price*i.qty,0);const delivery=db.settings.deliveryFee||0;return {subtotal,delivery,total:subtotal+delivery}}
