@@ -4,14 +4,14 @@ const KEY = "sama_pack_v1";
 const imageById = {
   SP01: "images/Pack Grand Ménage.jpeg",
   SP02: "images/Pack hygiène bébé.jpeg",
-  SP03: "images/Pack Mini-Ménage.jpeg",
+  SP03: "images/Pack Mini-Menage.jpeg",
   SP04: "images/Pack douche.jpeg",
   SP05: "images/Pack keur gui.jpeg",
   SP06: "images/Pack cuisine.jpeg",
-  SP07: "images/Pack langue.jpeg",
+  SP07: "images/Pack linge.jpeg",
   SP08: "images/Pack Fraicheur.jpeg",
-  SP09: "images/Cérémonie du paquet.jpeg",
-  SP10: "images/Pack éco coloc.jpeg"
+  SP09: "images/Pack Ceremonie.jpeg",
+  SP10: "images/Pack eco coloc.jpeg"
 };
 const iconById={SP01:"🧼",SP02:"👶",SP03:"🧽",SP04:"🧼",SP05:"💼",SP06:"🍳",SP07:"🌸",SP08:"🏡",SP09:"🎉",SP10:"🏪"};
 const defaults = {
