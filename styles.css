@@ -793,3 +793,100 @@ select:focus-visible {
     padding: 14px;
   }
 }
+
+/* ==========================================
+   SAMA-PACK — GRANDE IMAGE EN ARRIÈRE-PLAN
+   ========================================== */
+
+.hero {
+  position: relative;
+  isolation: isolate;
+  min-height: calc(100vh - 72px);
+  display: flex;
+  align-items: center;
+  padding: 70px 0;
+
+  /* Photo sur toute la largeur, avec un voile pour garder le texte lisible */
+  background:
+    linear-gradient(
+      90deg,
+      rgba(248, 252, 248, 0.96) 0%,
+      rgba(248, 252, 248, 0.88) 34%,
+      rgba(248, 252, 248, 0.52) 64%,
+      rgba(248, 252, 248, 0.30) 100%
+    ),
+    url("https://images.pexels.com/photos/5217896/pexels-photo-5217896.jpeg?auto=compress&cs=tinysrgb&w=1920")
+    center / cover no-repeat;
+}
+
+/* Texte à gauche, contenu commercial à droite */
+.hero-grid {
+  position: relative;
+  width: min(1280px, 92%);
+  grid-template-columns: minmax(0, 1.1fr) minmax(300px, 0.75fr);
+  gap: 48px;
+  align-items: center;
+}
+
+/* Supprimer la petite image : la photo est désormais en fond */
+.hero-image-wrap {
+  display: none !important;
+}
+
+/* Carte des meilleures ventes, légèrement transparente */
+.hero-card {
+  background: rgba(255, 255, 255, 0.86);
+  border: 1px solid rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow: 0 20px 55px rgba(15, 50, 25, 0.14);
+}
+
+/* Le titre reste lisible devant la photo */
+.hero h1 {
+  max-width: 720px;
+  text-shadow: 0 1px 1px rgba(255, 255, 255, 0.15);
+}
+
+/* Tablettes */
+@media (max-width: 900px) {
+  .hero {
+    min-height: auto;
+    padding: 56px 0;
+    background-position: 62% center;
+  }
+
+  .hero-grid {
+    grid-template-columns: 1fr;
+    gap: 30px;
+  }
+
+  .hero-card {
+    width: 100%;
+    max-width: 700px;
+    margin-inline: auto;
+  }
+}
+
+/* Téléphones */
+@media (max-width: 600px) {
+  .hero {
+    padding: 42px 0;
+    background:
+      linear-gradient(
+        rgba(248, 252, 248, 0.88),
+        rgba(248, 252, 248, 0.80)
+      ),
+      url("https://images.pexels.com/photos/5217896/pexels-photo-5217896.jpeg?auto=compress&cs=tinysrgb&w=1200")
+      62% center / cover no-repeat;
+  }
+
+  .hero-grid {
+    width: 91%;
+    gap: 25px;
+  }
+
+  .hero-card {
+    padding: 15px;
+  }
+}
