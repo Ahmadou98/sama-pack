@@ -37,11 +37,11 @@ const imageById = {
   SP02: "images/Pack hygiène bébé.jpeg",
   SP03: "images/Pack Mini-Menage.jpeg",
   SP04: "images/Pack douche.jpeg",
-  SP05: "images/Pack keur gui.jpeg",
+  SP05: "images/Pack pro.jpeg",
   SP06: "images/Pack cuisine.jpeg",
   SP07: "images/Pack linge.jpeg",
   SP08: "images/Pack Fraicheur.jpeg",
-  SP09: "images/Pack Ceremonie.jpeg",
+  SP09: "images/Pack ceremonie.jpeg",
   SP10: "images/Pack eco coloc.jpeg"
 };
 
