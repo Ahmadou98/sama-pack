@@ -41,7 +41,7 @@ const imageById = {
   SP06: "images/Pack cuisine.jpeg",
   SP07: "images/Pack linge.jpeg",
   SP08: "images/Pack Fraicheur.jpeg",
-  SP09: "images/Pack Ceremonie.jpeg",
+ 
   SP10: "images/Pack eco coloc.jpeg"
 };
 
