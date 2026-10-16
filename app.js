@@ -127,6 +127,26 @@
     const tops = products.filter(p => p.active).sort((a,b) => Number(hasPromotion(b)) - Number(hasPromotion(a))).slice(0, 3);
     el.innerHTML = tops.map(p => `<div class="mini-pack"><div class="mini-icon">${iconById[p.id] || "📦"}</div><div><strong>${esc(p.name)}</strong><small>${money(getEffectivePrice(p))}${hasPromotion(p) ? " · Promo" : ""}</small></div></div>`).join("") || '<div class="empty">Les packs seront bientôt disponibles.</div>';
   }
+  function promoImageOnly(p) {
+  const path = String(p.image_path || "").trim();
+
+  if (!path) {
+    return '<div class="promo-visual promo-visual-empty"></div>';
+  }
+
+  const src = /^https?:\/\//i.test(path)
+    ? path
+    : path.replace(/^\//, "");
+
+  return `<div class="promo-visual product-image-frame">
+    <img
+      class="product-photo"
+      src="${esc(src)}"
+      alt="${esc(p.name)}"
+      loading="lazy"
+    >
+  </div>`;
+}
   function renderPromoCarousel() {
     const section = $("promoSection"), carousel = $("promoCarousel"), dots = $("promoDots");
     if (!section || !carousel) return;
@@ -144,7 +164,7 @@
     }
     currentPromoIndex = ((currentPromoIndex % promos.length) + promos.length) % promos.length;
     const p = promos[currentPromoIndex];
-    carousel.innerHTML = `<article class="promo-card promo-slide-in"><div class="promo-image">${imageOrEmoji(p, "promo-visual")}</div><div class="promo-copy"><span class="promo-label">${esc(p.promo_label || "Offre spéciale")}</span><h3>${esc(p.name)}</h3><div class="promo-price-line"><strong>${money(getEffectivePrice(p))}</strong><del>${money(p.price)}</del></div><div class="promo-actions"><button class="btn ghost small" onclick="openProduct('${esc(p.id)}')">Détails</button><button class="btn primary small" onclick="addToCart('${esc(p.id)}')">Ajouter</button></div></div></article>`;
+    carousel.innerHTML = `<article class="promo-card promo-slide-in"><div class="promo-image">${promoImageOnly(p)}</div><div class="promo-copy"><span class="promo-label">${esc(p.promo_label || "Offre spéciale")}</span><h3>${esc(p.name)}</h3><div class="promo-price-line"><strong>${money(getEffectivePrice(p))}</strong><del>${money(p.price)}</del></div><div class="promo-actions"><button class="btn ghost small" onclick="openProduct('${esc(p.id)}')">Détails</button><button class="btn primary small" onclick="addToCart('${esc(p.id)}')">Ajouter</button></div></div></article>`;
     if (dots) dots.innerHTML = promos.map((item, index) => `<button class="promo-dot ${index === currentPromoIndex ? "active" : ""}" aria-label="Afficher la promotion ${index + 1}" aria-current="${index === currentPromoIndex ? "true" : "false"}" onclick="goToPromo(${index})"></button>`).join("");
   }
   function movePromo(direction) {
