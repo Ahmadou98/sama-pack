@@ -132,10 +132,19 @@
     if (!section || !carousel) return;
     const promos = products.filter(p => p.active && hasPromotion(p));
     section.classList.toggle("hidden", promos.length === 0);
-    if (!promos.length) { carousel.innerHTML = ""; if (dots) dots.innerHTML = ""; currentPromoIndex = 0; return; }
+    const topPacks = $("heroTopPacks");
+    if (topPacks) topPacks.classList.toggle("hidden", promos.length > 0);
+    const arrows = $("promoArrows");
+    if (arrows) arrows.classList.toggle("hidden", promos.length < 2);
+    if (!promos.length) {
+      carousel.innerHTML = "";
+      if (dots) dots.innerHTML = "";
+      currentPromoIndex = 0;
+      return;
+    }
     currentPromoIndex = ((currentPromoIndex % promos.length) + promos.length) % promos.length;
     const p = promos[currentPromoIndex];
-    carousel.innerHTML = `<article class="promo-card"><div class="promo-image">${imageOrEmoji(p, "promo-visual")}</div><div class="promo-copy"><span class="eyebrow">OFFRE DU MOMENT</span><h3>${esc(p.name)}</h3><p>${esc(p.desc || "")}</p><div class="promo-price-line"><strong>${money(getEffectivePrice(p))}</strong><del>${money(p.price)}</del><span class="promo-label">${esc(p.promo_label || "Offre spéciale")}</span></div><div class="promo-actions"><button class="btn primary" onclick="addToCart('${esc(p.id)}')">Ajouter au panier</button><button class="btn ghost" onclick="openProduct('${esc(p.id)}')">Voir le pack</button></div><small>Offre valable tant qu’elle est activée dans la gestion des packs.</small></div></article>`;
+    carousel.innerHTML = `<article class="promo-card promo-slide-in"><div class="promo-image">${imageOrEmoji(p, "promo-visual")}</div><div class="promo-copy"><span class="promo-label">${esc(p.promo_label || "Offre spéciale")}</span><h3>${esc(p.name)}</h3><div class="promo-price-line"><strong>${money(getEffectivePrice(p))}</strong><del>${money(p.price)}</del></div><div class="promo-actions"><button class="btn ghost small" onclick="openProduct('${esc(p.id)}')">Détails</button><button class="btn primary small" onclick="addToCart('${esc(p.id)}')">Ajouter</button></div></div></article>`;
     if (dots) dots.innerHTML = promos.map((item, index) => `<button class="promo-dot ${index === currentPromoIndex ? "active" : ""}" aria-label="Afficher la promotion ${index + 1}" aria-current="${index === currentPromoIndex ? "true" : "false"}" onclick="goToPromo(${index})"></button>`).join("");
   }
   function movePromo(direction) {
@@ -178,7 +187,7 @@
   }
   function productCard(p) {
     const photo = p.image_path ? `<img class="product-photo" src="${esc(/^https?:\/\//i.test(p.image_path) ? p.image_path : p.image_path.replace(/^\//,""))}" alt="${esc(p.name)}" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">` : "";
-    return `<article class="product-card"><div class="pack-visual ${p.image_path ? "has-photo" : ""}">${photo}<div class="pack-box ${p.image_path ? "photo-fallback" : ""}" ${p.image_path ? "style=\"display:none\"" : ""}><div class="emoji">${iconById[p.id] || "📦"}</div><div class="pack-code">${esc(p.id)}</div></div>${hasPromotion(p) ? `<span class="product-promo-ribbon">${esc(p.promo_label || "Promo")}</span>` : ""}</div><div class="product-body"><div class="product-cat">${esc(p.cat)}</div><div class="product-name">${esc(p.name)}</div><div class="product-desc">${esc(p.desc)}</div><div class="price-row">${priceDisplayHtml(p)}<span class="small-note">TTC</span></div><div class="product-actions"><button class="btn ghost" onclick="openProduct('${esc(p.id)}')">Détails</button><button class="btn primary" onclick="addToCart('${esc(p.id)}')">Ajouter</button></div></div></article>`;
+    return `<article class="product-card"><div class="pack-visual ${p.image_path ? "has-photo" : ""}">${photo}<div class="pack-box ${p.image_path ? "photo-fallback" : ""}" ${p.image_path ? "style=\"display:none\"" : ""}><div class="emoji">${iconById[p.id] || "📦"}</div><div class="pack-code">${esc(p.id)}</div></div>${hasPromotion(p) ? `<span class="product-promo-ribbon">${esc(p.promo_label || "Promo")}</span>` : ""}</div><div class="product-body"><div class="product-cat">${esc(p.cat)}</div><div class="product-name">${esc(p.name)}</div><div class="price-row">${priceDisplayHtml(p)}<span class="small-note">TTC</span></div><div class="product-actions"><button class="btn ghost" onclick="openProduct('${esc(p.id)}')">Détails</button><button class="btn primary" onclick="addToCart('${esc(p.id)}')">Ajouter</button></div></div></article>`;
   }
   function openProduct(id) {
     const p = getP(id); if (!p) return;
@@ -257,7 +266,10 @@
   }
   function updateAccountButtons() {
     const accountBtn = $("accountBtn"); if (accountBtn) accountBtn.textContent = currentUser ? (currentProfile?.role === "admin" ? "Compte admin" : "Mon compte") : "Connexion";
-    const adminBtn = $("adminBtn"); if (adminBtn) adminBtn.textContent = isAdmin() ? "Gestion" : "Gestion";
+    const adminBtn = $("adminBtn");
+    if (adminBtn) { adminBtn.textContent = "Gestion"; adminBtn.classList.toggle("hidden", !isAdmin()); }
+    const footerAdminSection = $("footerAdminSection");
+    if (footerAdminSection) footerAdminSection.classList.toggle("hidden", !isAdmin());
     const adminFlag = $("adminFlag"); if (adminFlag) adminFlag.textContent = isAdmin() ? `Connecté : ${currentProfile?.full_name || currentUser?.email || "Administrateur"}` : "Espace réservé aux administrateurs";
     const n = userNotifications.filter(x => !x.read_at).length; const badge = $("notificationCount");
     if (badge) { badge.textContent = String(n > 99 ? "99+" : n); badge.classList.toggle("hidden", n === 0); }

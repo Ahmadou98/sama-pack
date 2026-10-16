@@ -860,3 +860,54 @@ select:focus-visible {
   .product-actions { gap:5px; }
   .product-actions .btn { min-width:0; padding:8px 5px; font-size:10px; border-radius:9px; }
 }
+
+
+/* SAMA-PACK — accueil et catalogue compacts */
+.hero-card.promo-hero-card { min-width:0; padding:22px; border-radius:24px; overflow:hidden; }
+.promo-hero-card .hero-card-head { gap:12px; margin-bottom:15px; }
+.promo-hero-card .hero-card-head>span { font-size:15px; font-weight:900; letter-spacing:-.02em; }
+.promo-hero-card .promo-arrows { gap:6px; }
+.promo-hero-card .promo-arrows .btn { width:34px; height:34px; padding:0; font-size:15px; }
+.promo-inline-section { min-width:0; }
+.promo-card { display:grid; grid-template-columns:112px minmax(0,1fr); align-items:center; gap:14px; min-height:0; padding:0; border:0; border-radius:0; background:transparent; box-shadow:none; overflow:visible; }
+.promo-image { width:112px; min-height:112px; max-height:112px; padding:8px; border-radius:16px; background:linear-gradient(140deg,#e8f7ec,#f8fafc); overflow:hidden; }
+.promo-image .promo-visual { display:grid; place-items:center; width:100%; min-height:96px; }
+.promo-image .product-photo { width:100%; height:96px; min-height:96px; object-fit:contain; }
+.promo-image .pack-box { width:80px; height:62px; border-radius:13px; }
+.promo-image .pack-box .emoji { font-size:25px; }
+.promo-image .pack-box .pack-code { font-size:10px; }
+.promo-copy { display:flex; align-items:flex-start; flex-direction:column; min-width:0; gap:7px; padding:0; }
+.promo-copy h3 { display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; overflow:hidden; margin:0; font-size:clamp(15px,1.5vw,19px); line-height:1.25; }
+.promo-price-line { display:flex; align-items:baseline; flex-wrap:wrap; gap:8px; margin:0; }
+.promo-price-line strong { font-size:20px; line-height:1.2; }
+.promo-price-line del { font-size:12px; }
+.promo-actions { display:flex; flex-wrap:wrap; gap:6px; margin-top:2px; }
+.promo-actions .btn { padding:8px 10px; font-size:12px; border-radius:10px; }
+.promo-hero-card .promo-dots { margin-top:13px; }
+.promo-hero-card .promo-dot { width:7px; height:7px; }
+.promo-hero-card .promo-dot.active { width:21px; }
+.promo-slide-in { animation:promo-enter-from-left 360ms cubic-bezier(.2,.7,.25,1) both; }
+@keyframes promo-enter-from-left { from { opacity:0; transform:translateX(-22px); } to { opacity:1; transform:translateX(0); } }
+.product-card .product-body { gap:12px; }
+.product-card .product-name { overflow-wrap:anywhere; }
+#footerAdminSection { display:flex; flex-direction:column; gap:8px; }
+#footerAdminSection.hidden { display:none !important; }
+@media(max-width:700px) {
+  .hero-card.promo-hero-card { padding:15px; border-radius:18px; }
+  .promo-hero-card .hero-card-head { margin-bottom:12px; }
+  .promo-hero-card .hero-card-head>span { font-size:13px; }
+  .promo-card { grid-template-columns:86px minmax(0,1fr); gap:10px; }
+  .promo-image { width:86px; min-height:88px; max-height:88px; padding:5px; border-radius:13px; }
+  .promo-image .promo-visual { min-height:76px; }
+  .promo-image .product-photo { height:76px; min-height:76px; }
+  .promo-image .pack-box { width:66px; height:52px; }
+  .promo-copy { gap:6px; }
+  .promo-copy h3 { font-size:14px; }
+  .promo-price-line { gap:6px; }
+  .promo-price-line strong { font-size:17px; }
+  .promo-price-line del { font-size:10px; }
+  .promo-label { font-size:9px; padding:4px 7px; }
+  .promo-actions { gap:5px; }
+  .promo-actions .btn { padding:7px 8px; font-size:11px; }
+}
+@media(prefers-reduced-motion:reduce) { .promo-slide-in { animation:none; } }
