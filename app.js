@@ -5,6 +5,11 @@
   const SUPABASE_URL = "https://tbxxrnhcfuaeaatlrdtr.supabase.co";
   const SUPABASE_KEY = "sb_publishable_lDAKRHFWyUYZ-tb23hbbnQ_96zF9Iwo"; // clé publique uniquement; RLS protège les données.
   const CART_KEY = "sama_pack_cart_v2";
+  const PRODUCTS_PER_PAGE = 20;
+  const PROMO_ROTATE_MS = 5000;
+  let currentProductPage = 1;
+  let currentPromoIndex = 0;
+  let promoCarouselTimer = null;
   const FALLBACK_PRODUCTS = window.SAMA_PRODUCTS || [];
   const iconById = {SP01:"🧼",SP02:"👶",SP03:"🧽",SP04:"🧼",SP05:"💼",SP06:"🍳",SP07:"🌸",SP08:"🏡",SP09:"🎉",SP10:"🏪"};
   const $ = (id) => document.getElementById(id);
@@ -30,10 +35,20 @@
   let cart = loadCart();
 
   function normalizeFallbackProduct(p) {
-    return { id: String(p.id), name: String(p.name || "Pack"), cat: String(p.cat || p.category || "Autre"), category: String(p.cat || p.category || "Autre"), price: Number(p.price || 0), desc: String(p.desc || p.description || ""), description: String(p.desc || p.description || ""), items: Array.isArray(p.items) ? p.items : [], image_path: p.image_path || "", active: p.active !== false };
+    return { id: String(p.id), name: String(p.name || "Pack"), cat: String(p.cat || p.category || "Autre"), category: String(p.cat || p.category || "Autre"), price: Number(p.price || 0), desc: String(p.desc || p.description || ""), description: String(p.desc || p.description || ""), items: Array.isArray(p.items) ? p.items : [], image_path: p.image_path || "", active: p.active !== false, promo_active: p.promo_active === true, promo_price: p.promo_price == null || p.promo_price === "" ? null : Number(p.promo_price), promo_label: String(p.promo_label || "Offre spéciale") };
   }
   function normalizeProduct(p) {
-    return { ...p, id: String(p.id), cat: String(p.category || p.cat || "Autre"), category: String(p.category || p.cat || "Autre"), price: Number(p.price || 0), desc: String(p.description || p.desc || ""), description: String(p.description || p.desc || ""), items: Array.isArray(p.items) ? p.items : [], image_path: String(p.image_path || ""), active: p.active !== false };
+    return { ...p, id: String(p.id), cat: String(p.category || p.cat || "Autre"), category: String(p.category || p.cat || "Autre"), price: Number(p.price || 0), desc: String(p.description || p.desc || ""), description: String(p.description || p.desc || ""), items: Array.isArray(p.items) ? p.items : [], image_path: String(p.image_path || ""), active: p.active !== false, promo_active: p.promo_active === true, promo_price: p.promo_price == null || p.promo_price === "" ? null : Number(p.promo_price), promo_label: String(p.promo_label || "Offre spéciale") };
+  }
+  function hasPromotion(p) {
+    if (!p || p.promo_active !== true || p.promo_price == null || p.promo_price === "") return false;
+    const regular = Number(p.price), special = Number(p.promo_price);
+    return Number.isFinite(regular) && Number.isFinite(special) && special >= 0 && special < regular;
+  }
+  function getEffectivePrice(p) { return hasPromotion(p) ? Number(p.promo_price) : Number(p?.price || 0); }
+  function priceDisplayHtml(p) {
+    if (!hasPromotion(p)) return `<div class="price">${money(p.price)}</div>`;
+    return `<div class="promo-price-block"><div class="price">${money(getEffectivePrice(p))}</div><div class="old-price">${money(p.price)}</div></div><span class="promo-label">${esc(p.promo_label || "Offre spéciale")}</span>`;
   }
   function loadCart() {
     try { const value = JSON.parse(localStorage.getItem(CART_KEY) || "[]"); return Array.isArray(value) ? value.filter(x => x && typeof x.id === "string" && Number(x.qty) > 0).map(x => ({ id: x.id, qty: Math.min(99, Math.max(1, Number(x.qty) || 1)) })) : []; }
@@ -84,7 +99,7 @@
   async function loadPublicData() {
     if (!client) return;
     const { data: rows, error } = await client.from("products")
-      .select("id,name,category,price,description,items,image_path,active")
+      .select("id,name,category,price,description,items,image_path,active,promo_active,promo_price,promo_label")
       .order("id", { ascending: true });
     if (!error && Array.isArray(rows)) products = rows.map(normalizeProduct);
     else console.warn("Catalogue distant indisponible; affichage du catalogue de secours.", error);
@@ -109,8 +124,33 @@
   }
   function renderTop() {
     const el = $("heroTopPacks"); if (!el) return;
-    const tops = products.filter(p => p.active).slice(0, 3);
-    el.innerHTML = tops.map(p => `<div class="mini-pack"><div class="mini-icon">${iconById[p.id] || "📦"}</div><div><strong>${esc(p.name)}</strong><small>${money(p.price)}</small></div></div>`).join("") || '<div class="empty">Les packs seront bientôt disponibles.</div>';
+    const tops = products.filter(p => p.active).sort((a,b) => Number(hasPromotion(b)) - Number(hasPromotion(a))).slice(0, 3);
+    el.innerHTML = tops.map(p => `<div class="mini-pack"><div class="mini-icon">${iconById[p.id] || "📦"}</div><div><strong>${esc(p.name)}</strong><small>${money(getEffectivePrice(p))}${hasPromotion(p) ? " · Promo" : ""}</small></div></div>`).join("") || '<div class="empty">Les packs seront bientôt disponibles.</div>';
+  }
+  function renderPromoCarousel() {
+    const section = $("promoSection"), carousel = $("promoCarousel"), dots = $("promoDots");
+    if (!section || !carousel) return;
+    const promos = products.filter(p => p.active && hasPromotion(p));
+    section.classList.toggle("hidden", promos.length === 0);
+    if (!promos.length) { carousel.innerHTML = ""; if (dots) dots.innerHTML = ""; currentPromoIndex = 0; return; }
+    currentPromoIndex = ((currentPromoIndex % promos.length) + promos.length) % promos.length;
+    const p = promos[currentPromoIndex];
+    carousel.innerHTML = `<article class="promo-card"><div class="promo-image">${imageOrEmoji(p, "promo-visual")}</div><div class="promo-copy"><span class="eyebrow">OFFRE DU MOMENT</span><h3>${esc(p.name)}</h3><p>${esc(p.desc || "")}</p><div class="promo-price-line"><strong>${money(getEffectivePrice(p))}</strong><del>${money(p.price)}</del><span class="promo-label">${esc(p.promo_label || "Offre spéciale")}</span></div><div class="promo-actions"><button class="btn primary" onclick="addToCart('${esc(p.id)}')">Ajouter au panier</button><button class="btn ghost" onclick="openProduct('${esc(p.id)}')">Voir le pack</button></div><small>Offre valable tant qu’elle est activée dans la gestion des packs.</small></div></article>`;
+    if (dots) dots.innerHTML = promos.map((item, index) => `<button class="promo-dot ${index === currentPromoIndex ? "active" : ""}" aria-label="Afficher la promotion ${index + 1}" aria-current="${index === currentPromoIndex ? "true" : "false"}" onclick="goToPromo(${index})"></button>`).join("");
+  }
+  function movePromo(direction) {
+    const count = products.filter(p => p.active && hasPromotion(p)).length;
+    if (count < 2) return;
+    currentPromoIndex = (currentPromoIndex + direction + count) % count;
+    renderPromoCarousel();
+  }
+  function goToPromo(index) { currentPromoIndex = Math.max(0, Number(index) || 0); renderPromoCarousel(); }
+  function startPromoCarousel() {
+    if (promoCarouselTimer) window.clearInterval(promoCarouselTimer);
+    promoCarouselTimer = window.setInterval(() => {
+      const count = products.filter(p => p.active && hasPromotion(p)).length;
+      if (count > 1) { currentPromoIndex = (currentPromoIndex + 1) % count; renderPromoCarousel(); }
+    }, PROMO_ROTATE_MS);
   }
   function imageOrEmoji(p, klass = "pack-visual") {
     const fallback = `<div class="pack-box"><div class="emoji">${iconById[p.id] || "📦"}</div><div class="pack-code">${esc(p.id)}</div></div>`;
@@ -124,16 +164,26 @@
     const q = String($("searchBox")?.value || "").toLowerCase().trim();
     const c = $("categoryFilter")?.value || "all";
     const arr = products.filter(p => p.active && (c === "all" || p.cat === c) && [p.name,p.desc,p.cat,...p.items].join(" ").toLowerCase().includes(q));
-    grid.innerHTML = arr.map(productCard).join("") || '<div class="empty">Aucun pack trouvé. Essaie une autre recherche.</div>';
+    const pages = Math.max(1, Math.ceil(arr.length / PRODUCTS_PER_PAGE));
+    currentProductPage = Math.min(Math.max(1, currentProductPage), pages);
+    const start = (currentProductPage - 1) * PRODUCTS_PER_PAGE;
+    grid.innerHTML = arr.slice(start, start + PRODUCTS_PER_PAGE).map(productCard).join("") || '<div class="empty">Aucun pack trouvé. Essaie une autre recherche.</div>';
+    const pagination = $("productPagination");
+    if (pagination) pagination.innerHTML = arr.length > PRODUCTS_PER_PAGE ? `<button class="btn ghost small" ${currentProductPage === 1 ? "disabled" : ""} onclick="goToProductPage(${currentProductPage - 1})">← Précédent</button><span>Page ${currentProductPage} / ${pages} · ${arr.length} packs</span><button class="btn ghost small" ${currentProductPage === pages ? "disabled" : ""} onclick="goToProductPage(${currentProductPage + 1})">Suivant →</button>` : "";
+  }
+  function goToProductPage(page) {
+    currentProductPage = Math.max(1, Number(page) || 1);
+    renderProducts();
+    $("catalogue")?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
   function productCard(p) {
     const photo = p.image_path ? `<img class="product-photo" src="${esc(/^https?:\/\//i.test(p.image_path) ? p.image_path : p.image_path.replace(/^\//,""))}" alt="${esc(p.name)}" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">` : "";
-    return `<article class="product-card"><div class="pack-visual ${p.image_path ? "has-photo" : ""}">${photo}<div class="pack-box ${p.image_path ? "photo-fallback" : ""}" ${p.image_path ? "style=\"display:none\"" : ""}><div class="emoji">${iconById[p.id] || "📦"}</div><div class="pack-code">${esc(p.id)}</div></div></div><div class="product-body"><div class="product-cat">${esc(p.cat)}</div><div class="product-name">${esc(p.name)}</div><div class="product-desc">${esc(p.desc)}</div><div class="price-row"><div class="price">${money(p.price)}</div><span class="small-note">TTC</span></div><div class="product-actions"><button class="btn ghost" onclick="openProduct('${esc(p.id)}')">Détails</button><button class="btn primary" onclick="addToCart('${esc(p.id)}')">Ajouter</button></div></div></article>`;
+    return `<article class="product-card"><div class="pack-visual ${p.image_path ? "has-photo" : ""}">${photo}<div class="pack-box ${p.image_path ? "photo-fallback" : ""}" ${p.image_path ? "style=\"display:none\"" : ""}><div class="emoji">${iconById[p.id] || "📦"}</div><div class="pack-code">${esc(p.id)}</div></div>${hasPromotion(p) ? `<span class="product-promo-ribbon">${esc(p.promo_label || "Promo")}</span>` : ""}</div><div class="product-body"><div class="product-cat">${esc(p.cat)}</div><div class="product-name">${esc(p.name)}</div><div class="product-desc">${esc(p.desc)}</div><div class="price-row">${priceDisplayHtml(p)}<span class="small-note">TTC</span></div><div class="product-actions"><button class="btn ghost" onclick="openProduct('${esc(p.id)}')">Détails</button><button class="btn primary" onclick="addToCart('${esc(p.id)}')">Ajouter</button></div></div></article>`;
   }
   function openProduct(id) {
     const p = getP(id); if (!p) return;
     const photo = p.image_path ? `<img class="product-photo product-photo-detail" src="${esc(/^https?:\/\//i.test(p.image_path) ? p.image_path : p.image_path.replace(/^\//,""))}" alt="${esc(p.name)}" onerror="this.style.display='none'">` : `<div class="pack-visual"><div class="pack-box"><div class="emoji">${iconById[p.id] || "📦"}</div><div class="pack-code">${esc(p.id)}</div></div></div>`;
-    showModal(`<div class="modal-head"><div><div class="eyebrow">${esc(p.cat)}</div><h2>${esc(p.name)}</h2></div><button class="close" onclick="closeModal()">✕</button></div>${photo}<p>${esc(p.desc)}</p><ul class="pack-items">${p.items.map(i => `<li>${esc(i)}</li>`).join("")}</ul><div class="price-row"><div class="price">${money(p.price)}</div><button class="btn primary" onclick="addToCart('${esc(p.id)}');closeModal()">Ajouter au panier</button></div>`);
+    showModal(`<div class="modal-head"><div><div class="eyebrow">${esc(p.cat)}</div><h2>${esc(p.name)}</h2></div><button class="close" onclick="closeModal()">✕</button></div>${photo}<p>${esc(p.desc)}</p><ul class="pack-items">${p.items.map(i => `<li>${esc(i)}</li>`).join("")}</ul><div class="price-row">${priceDisplayHtml(p)}<button class="btn primary" onclick="addToCart('${esc(p.id)}');closeModal()">Ajouter au panier</button></div>`);
   }
   function addToCart(id) {
     const p = getP(id); if (!p || !p.active) { toast("Ce pack n’est plus disponible.", true); return; }
@@ -143,13 +193,13 @@
   }
   function updateCartCount() { const el = $("cartCount"); if (el) el.textContent = String(cart.reduce((sum, i) => sum + i.qty, 0)); }
   function saveAndRenderCart() { saveCart(); updateCartCount(); renderCartModal(); }
-  function cartTotals() { const subtotal = cart.reduce((sum, i) => sum + (getP(i.id)?.price || 0) * i.qty, 0); const delivery = Number(appSettings.deliveryFee || 0); return { subtotal, delivery, total: subtotal + delivery }; }
+  function cartTotals() { const subtotal = cart.reduce((sum, i) => sum + getEffectivePrice(getP(i.id)) * i.qty, 0); const delivery = Number(appSettings.deliveryFee || 0); return { subtotal, delivery, total: subtotal + delivery }; }
   function showModal(body) { $("modalRoot").innerHTML = `<div class="modal" onclick="if(event.target===this)closeModal()"><div class="modal-card">${body}</div></div>`; }
   function closeModal() { $("modalRoot").innerHTML = ""; }
   function renderCartModal() {
     if (!cart.length) { showModal(`<div class="modal-head"><h2>Ton panier</h2><button class="close" onclick="closeModal()">✕</button></div><div class="empty">Ton panier est vide.<br><br><a class="btn primary" href="#catalogue" onclick="closeModal()">Voir le catalogue</a></div>`); return; }
     const t = cartTotals();
-    showModal(`<div class="modal-head"><div><div class="eyebrow">COMMANDE EN LIGNE</div><h2>Ton panier</h2></div><button class="close" onclick="closeModal()">✕</button></div><div class="cart-list">${cart.map(i => { const p = getP(i.id); if (!p) return ""; return `<div class="cart-item"><div class="mini-icon">${iconById[p.id] || "📦"}</div><div><strong>${esc(p.name)}</strong><div class="small-note">${money(p.price)} / pack</div></div><div class="qty"><button onclick="changeQty('${esc(p.id)}',-1)" aria-label="Retirer une unité">−</button><b>${i.qty}</b><button onclick="changeQty('${esc(p.id)}',1)" aria-label="Ajouter une unité">+</button></div></div>`; }).join("")}</div><div class="summary"><div class="summary-row"><span>Sous-total</span><strong>${money(t.subtotal)}</strong></div><div class="summary-row"><span>Livraison</span><strong>${money(t.delivery)}</strong></div><div class="summary-row total"><span>Total estimé</span><strong>${money(t.total)}</strong></div></div><p class="small-note">Le total définitif est calculé et validé par le serveur au moment de confirmer la commande.</p><button class="btn primary full" onclick="checkoutModal()">Passer la commande</button>`);
+    showModal(`<div class="modal-head"><div><div class="eyebrow">COMMANDE EN LIGNE</div><h2>Ton panier</h2></div><button class="close" onclick="closeModal()">✕</button></div><div class="cart-list">${cart.map(i => { const p = getP(i.id); if (!p) return ""; return `<div class="cart-item"><div class="mini-icon">${iconById[p.id] || "📦"}</div><div><strong>${esc(p.name)}</strong><div class="small-note">${money(getEffectivePrice(p))} / pack</div></div><div class="qty"><button onclick="changeQty('${esc(p.id)}',-1)" aria-label="Retirer une unité">−</button><b>${i.qty}</b><button onclick="changeQty('${esc(p.id)}',1)" aria-label="Ajouter une unité">+</button></div></div>`; }).join("")}</div><div class="summary"><div class="summary-row"><span>Sous-total</span><strong>${money(t.subtotal)}</strong></div><div class="summary-row"><span>Livraison</span><strong>${money(t.delivery)}</strong></div><div class="summary-row total"><span>Total estimé</span><strong>${money(t.total)}</strong></div></div><p class="small-note">Le total définitif est calculé et validé par le serveur au moment de confirmer la commande.</p><button class="btn primary full" onclick="checkoutModal()">Passer la commande</button>`);
   }
   function changeQty(id, delta) { const x = cart.find(i => i.id === id); if (!x) return; x.qty += delta; if (x.qty <= 0) cart = cart.filter(i => i.id !== id); if (x.qty > 99) x.qty = 99; saveAndRenderCart(); }
 
@@ -246,9 +296,15 @@
     showModal(`<div class="modal-head"><div><div class="eyebrow">CENTRE DE NOTIFICATIONS</div><h2>Notifications</h2></div><button class="close" onclick="closeModal()">✕</button></div><div class="notification-list">${html}</div><div style="height:12px"></div><button class="btn ghost full" onclick="showAccountHome()">Retour à mon compte</button>`);
   }
   async function markNotificationRead(id) {
-    const { error } = await client.from("notifications").update({ read_at: new Date().toISOString() }).eq("id", id).eq("recipient_user_id", currentUser.id);
+    if (!client || !currentUser) return toast("Connecte-toi pour modifier tes notifications.", true);
+    const { data, error } = await client.rpc("sama_mark_notification_read", { p_notification_id: id });
     if (error) return toast(errorMessage(error), true);
-    userNotifications = userNotifications.map(n => n.id === id ? { ...n, read_at: new Date().toISOString() } : n); updateAccountButtons(); loadAndShowNotifications();
+    if (data === false) return toast("Cette notification n’a pas pu être marquée comme lue.", true);
+    const readAt = new Date().toISOString();
+    userNotifications = userNotifications.map(n => n.id === id ? { ...n, read_at: n.read_at || readAt } : n);
+    updateAccountButtons();
+    await loadAndShowNotifications();
+    toast("Notification marquée comme lue.");
   }
 
   function checkoutModal() {
@@ -385,12 +441,12 @@
     return "SP" + String(max + 1).padStart(2, "0");
   }
   async function adminPacks() {
-    const rows = await readRows("products"); products = rows.map(normalizeProduct); updateCategoryFilter(); renderProducts(); renderTop();
+    const rows = await readRows("products"); products = rows.map(normalizeProduct); updateCategoryFilter(); renderProducts(); renderTop(); renderPromoCarousel();
     const editing = editingProductId ? products.find(p => p.id === editingProductId) : null;
     const itemsStr = editing ? editing.items.join("\n") : "";
     const formTitle = editing ? `Modifier ${editing.id}` : "Ajouter un nouveau pack";
     const idLabel = editing ? editing.id : nextProductId();
-    return `<div class="panel"><div class="admin-panel-head"><h3>${formTitle}</h3><span class="small-note">ID proposé : ${esc(idLabel)}</span></div><form id="packForm" class="admin-form"><input class="input full" name="name" required maxlength="150" placeholder="Nom du pack" value="${esc(editing?.name||"")}"><input class="input" name="category" required maxlength="80" placeholder="Catégorie" value="${esc(editing?.cat||"")}"><input class="input" name="price" type="number" min="0" step="1" required placeholder="Prix en FCFA" value="${editing ? Number(editing.price) : ""}"><textarea class="input full" name="description" required maxlength="1500" placeholder="Description du pack">${esc(editing?.desc||"")}</textarea><textarea class="input full" name="items" required placeholder="Composition : un élément par ligne">${esc(itemsStr)}</textarea><input class="input full" name="image_path" maxlength="500" placeholder="Chemin de l’image ou URL (facultatif)" value="${esc(editing?.image_path||"")}"><label class="full">Photo du pack (facultatif, JPG/PNG/WebP, 5 Mo maximum)<input class="input" name="image_file" type="file" accept="image/jpeg,image/png,image/webp"></label><label class="check-label full"><input type="checkbox" name="active" ${editing?.active===false?"":"checked"}> Publier ce pack dans le catalogue</label><div class="form-actions full"><button class="btn primary" type="submit">${editing ? "Enregistrer les modifications" : "Ajouter le pack"}</button>${editing ? `<button class="btn ghost" type="button" onclick="cancelPackEdit()">Annuler</button>` : ""}</div></form></div><div style="height:16px"></div><div class="panel"><div class="admin-panel-head"><h3>Catalogue complet (${rows.length} packs)</h3><span class="small-note">Les packs masqués restent dans la gestion et le stock.</span></div>${rows.length ? `<div class="table-wrap"><table class="table"><thead><tr><th>Pack</th><th>Catégorie</th><th>Prix</th><th>Visibilité</th><th>Actions</th></tr></thead><tbody>${rows.map(p=>`<tr><td><strong>${esc(p.name)}</strong><br><span class="small-note">${esc(p.id)}</span></td><td>${esc(p.cat)}</td><td>${money(p.price)}</td><td><span class="status ${p.active?"delivered":"cancelled"}">${p.active?"Publié":"Masqué"}</span></td><td><div class="table-actions"><button class="btn small ghost" onclick="editPack('${esc(p.id)}')">Modifier</button><button class="btn small ${p.active?"ghost":"secondary"}" onclick="togglePack('${esc(p.id)}',${!p.active})">${p.active?"Masquer":"Publier"}</button></div></td></tr>`).join("")}</tbody></table></div>` : '<div class="empty">Aucun pack disponible.</div>'}</div>`;
+    return `<div class="panel"><div class="admin-panel-head"><h3>${formTitle}</h3><span class="small-note">ID proposé : ${esc(idLabel)}</span></div><form id="packForm" class="admin-form"><input class="input full" name="name" required maxlength="150" placeholder="Nom du pack" value="${esc(editing?.name||"")}"><input class="input" name="category" required maxlength="80" placeholder="Catégorie" value="${esc(editing?.cat||"")}"><input class="input" name="price" type="number" min="0" step="1" required placeholder="Prix en FCFA" value="${editing ? Number(editing.price) : ""}"><textarea class="input full" name="description" required maxlength="1500" placeholder="Description du pack">${esc(editing?.desc||"")}</textarea><textarea class="input full" name="items" required placeholder="Composition : un élément par ligne">${esc(itemsStr)}</textarea><input class="input full" name="image_path" maxlength="500" placeholder="Chemin de l’image ou URL (facultatif)" value="${esc(editing?.image_path||"")}"><div class="promo-admin-fields full"><label class="check-label"><input type="checkbox" name="promo_active" ${editing?.promo_active===true ? "checked" : ""}> Afficher ce pack dans les promotions</label><label>Prix promotionnel (FCFA)<input class="input" name="promo_price" type="number" min="0" step="1" placeholder="Ex. 12 000" value="${editing?.promo_price == null ? "" : Number(editing.promo_price)}"></label><label>Texte de la promotion<input class="input" name="promo_label" maxlength="80" placeholder="Offre spéciale" value="${esc(editing?.promo_label||"Offre spéciale")}"></label><p class="small-note">Le prix promotionnel doit être inférieur au prix normal. La remise est appliquée au panier et à la commande.</p></div><label class="full">Photo du pack (facultatif, JPG/PNG/WebP, 5 Mo maximum)<input class="input" name="image_file" type="file" accept="image/jpeg,image/png,image/webp"></label><label class="check-label full"><input type="checkbox" name="active" ${editing?.active===false?"":"checked"}> Publier ce pack dans le catalogue</label><div class="form-actions full"><button class="btn primary" type="submit">${editing ? "Enregistrer les modifications" : "Ajouter le pack"}</button>${editing ? `<button class="btn ghost" type="button" onclick="cancelPackEdit()">Annuler</button>` : ""}</div></form></div><div style="height:16px"></div><div class="panel"><div class="admin-panel-head"><h3>Catalogue complet (${rows.length} packs)</h3><span class="small-note">Les packs masqués restent dans la gestion et le stock.</span></div>${rows.length ? `<div class="table-wrap"><table class="table"><thead><tr><th>Pack</th><th>Catégorie</th><th>Prix</th><th>Visibilité</th><th>Actions</th></tr></thead><tbody>${rows.map(p=>`<tr><td><strong>${esc(p.name)}</strong><br><span class="small-note">${esc(p.id)}</span></td><td>${esc(p.cat)}</td><td>${money(p.price)}</td><td><span class="status ${p.active?"delivered":"cancelled"}">${p.active?"Publié":"Masqué"}</span></td><td><div class="table-actions"><button class="btn small ghost" onclick="editPack('${esc(p.id)}')">Modifier</button><button class="btn small ${p.active?"ghost":"secondary"}" onclick="togglePack('${esc(p.id)}',${!p.active})">${p.active?"Masquer":"Publier"}</button></div></td></tr>`).join("")}</tbody></table></div>` : '<div class="empty">Aucun pack disponible.</div>'}</div>`;
   }
   function editPack(id) { editingProductId = id; showAdminView("packs"); }
   function cancelPackEdit() { editingProductId = null; showAdminView("packs"); }
@@ -424,17 +480,22 @@
     return `<div class="panel"><h3>Demandes de devis (${rows.length})</h3>${rows.length ? `<div class="table-wrap"><table class="table"><thead><tr><th>Référence</th><th>Date</th><th>Structure</th><th>Besoin</th><th>Contact</th><th>Statut</th></tr></thead><tbody>${cachedQuotes.map(q=>`<tr><td>${esc(q.id)}</td><td>${esc(fmtDate(q.created_at))}</td><td>${esc(q.company)}</td><td>${esc(q.need)}<br><span class="small-note">${esc(q.message||"")}</span></td><td>${esc(q.phone)}<br><span class="small-note">${esc(q.email||"")}</span></td><td><select class="input" onchange="setQuoteStatus('${esc(q.id)}',this.value)">${["new","processing","won","lost"].map(s=>`<option ${q.status===s?"selected":""} value="${s}">${esc(statusLabel(s))}</option>`).join("")}</select></td></tr>`).join("")}</tbody></table></div>` : '<div class="empty">Aucune demande de devis.</div>'}</div>`;
   }
   async function adminSettings() {
-    const { data, error } = await client.from("settings").select("id,company,whatsapp,delivery_fee,currency").eq("id",true).maybeSingle();
+    const [{ data, error }, { data: notificationSettings, error: notificationError }] = await Promise.all([
+      client.from("settings").select("id,company,whatsapp,delivery_fee,currency").eq("id",true).maybeSingle(),
+      client.from("notification_settings").select("id,order_notification_email").eq("id",true).maybeSingle()
+    ]);
     if (error) throw error;
+    if (notificationError) console.warn("Impossible de lire les paramètres e-mail.", notificationError);
     const s = data || appSettings;
-    return `<div class="panel"><h3>Paramètres de Sama-Pack</h3><form id="settingsForm" class="admin-form"><label>Nom de l’entreprise<input class="input" name="company" required value="${esc(s.company||"SAMA-PACK")}"></label><label>WhatsApp professionnel (ex. 22177…)<input class="input" name="whatsapp" value="${esc(s.whatsapp||"")}"></label><label>Frais de livraison par défaut (FCFA)<input class="input" name="delivery_fee" type="number" min="0" step="1" value="${Number(s.delivery_fee||0)}"></label><label>Devise<input class="input" name="currency" required maxlength="10" value="${esc(s.currency||"FCFA")}"></label><button class="btn primary full" type="submit">Enregistrer les paramètres</button></form><p class="small-note">Le code administrateur par PIN n’est plus utilisé. Les accès sont gérés par compte individuel.</p></div>`;
+    const notificationEmail = notificationSettings?.order_notification_email || "";
+    return `<div class="panel"><h3>Paramètres de Sama-Pack</h3><form id="settingsForm" class="admin-form"><label>Nom de l’entreprise<input class="input" name="company" required value="${esc(s.company||"SAMA-PACK")}"></label><label>WhatsApp professionnel (ex. 22177…)<input class="input" name="whatsapp" value="${esc(s.whatsapp||"")}"></label><label>Frais de livraison par défaut (FCFA)<input class="input" name="delivery_fee" type="number" min="0" step="1" value="${Number(s.delivery_fee||0)}"></label><label>Devise<input class="input" name="currency" required maxlength="10" value="${esc(s.currency||"FCFA")}"></label><label class="full">E-mail recevant les nouvelles commandes et demandes de devis<input class="input" name="order_notification_email" type="email" placeholder="gestion@sama-pack.store" value="${esc(notificationEmail)}"></label><button class="btn primary full" type="submit">Enregistrer les paramètres</button></form><p class="small-note">Pour activer les e-mails, configure aussi RESEND_API_KEY et RESEND_FROM_EMAIL dans Supabase → Edge Functions → Secrets.</p></div>`;
   }
   function bindAdmin(view) {
     if (view === "packs" || view === "products") {
       const form = $("packForm"); if (form) form.onsubmit = async e => {
         e.preventDefault(); if (!isAdmin()) return toast("Accès refusé.", true); setBusy(form,true,"Enregistrement…");
-        const fd = new FormData(form); const uploadFile = fd.get("image_file"); const payload = { name:String(fd.get("name")||"").trim(),category:String(fd.get("category")||"").trim(),price:Number(fd.get("price")),description:String(fd.get("description")||"").trim(),items:String(fd.get("items")||"").split(/\r?\n/).map(x=>x.trim()).filter(Boolean),image_path:String(fd.get("image_path")||"").trim(),active:fd.get("active")==="on" };
-        if (!payload.name || !payload.category || !payload.description || !payload.items.length || !Number.isFinite(payload.price) || payload.price < 0) { setBusy(form,false); return toast("Complète le nom, la catégorie, le prix, la description et la composition.",true); }
+        const fd = new FormData(form); const uploadFile = fd.get("image_file"); const promoPriceInput = String(fd.get("promo_price")||"").trim(); const payload = { name:String(fd.get("name")||"").trim(),category:String(fd.get("category")||"").trim(),price:Number(fd.get("price")),description:String(fd.get("description")||"").trim(),items:String(fd.get("items")||"").split(/\r?\n/).map(x=>x.trim()).filter(Boolean),image_path:String(fd.get("image_path")||"").trim(),active:fd.get("active")==="on",promo_active:fd.get("promo_active")==="on",promo_price:promoPriceInput === "" ? null : Number(promoPriceInput),promo_label:String(fd.get("promo_label")||"Offre spéciale").trim() || "Offre spéciale" };
+        if (!payload.name || !payload.category || !payload.description || !payload.items.length || !Number.isFinite(payload.price) || payload.price < 0) { setBusy(form,false); return toast("Complète le nom, la catégorie, le prix, la description et la composition.",true); } if (payload.promo_active && (!Number.isFinite(payload.promo_price) || payload.promo_price < 0 || payload.promo_price >= payload.price)) { setBusy(form,false); return toast("Le prix promotionnel doit être positif et inférieur au prix normal.",true); } if (!payload.promo_active && !Number.isFinite(payload.promo_price)) payload.promo_price = null;
         if (payload.image_path && !/^https:\/\//i.test(payload.image_path) && /^(?:javascript:|data:|vbscript:)/i.test(payload.image_path)) { setBusy(form,false); return toast("Le chemin de l’image n’est pas valide.",true); }
         let productId = editingProductId || nextProductId();
         if (uploadFile instanceof File && uploadFile.size > 0) {
@@ -474,7 +535,7 @@
     if (view === "suppliers") { const form=$("supplierForm"); if(form) form.onsubmit=async e=>{e.preventDefault();setBusy(form,true,"Enregistrement…");const f=new FormData(form);const {error}=await client.from("suppliers").insert({name:String(f.get("name")||"").trim(),phone:String(f.get("phone")||"").trim(),family:String(f.get("family")||"").trim(),terms:String(f.get("terms")||"").trim()});setBusy(form,false);if(error)return toast(errorMessage(error),true);toast("Fournisseur ajouté.");await showAdminView("suppliers");}; }
     if (view === "expenses") { const form=$("expenseForm"); if(form) form.onsubmit=async e=>{e.preventDefault();setBusy(form,true,"Enregistrement…");const f=new FormData(form);const {error}=await client.from("expenses").insert({id:"DEP-"+crypto.randomUUID().slice(0,8).toUpperCase(),label:String(f.get("label")||"").trim(),amount:Number(f.get("amount")),category:String(f.get("category")||"").trim(),expense_date:String(f.get("date")||new Date().toISOString().slice(0,10))});setBusy(form,false);if(error)return toast(errorMessage(error),true);toast("Dépense enregistrée.");await showAdminView("expenses");}; }
     if (view === "quotes") { /* Le statut est enregistré dans le gestionnaire ci-dessous. */ }
-    if (view === "settings") { const form=$("settingsForm"); if(form) form.onsubmit=async e=>{e.preventDefault();setBusy(form,true,"Enregistrement…");const f=new FormData(form);const {error}=await client.from("settings").update({company:String(f.get("company")||"").trim(),whatsapp:String(f.get("whatsapp")||"").replace(/\D/g,""),delivery_fee:Number(f.get("delivery_fee")),currency:String(f.get("currency")||"FCFA").trim()}).eq("id",true);setBusy(form,false);if(error)return toast(errorMessage(error),true);toast("Paramètres enregistrés.");await loadPublicData();}; }
+    if (view === "settings") { const form=$("settingsForm"); if(form) form.onsubmit=async e=>{e.preventDefault();setBusy(form,true,"Enregistrement…");const f=new FormData(form);const {error}=await client.from("settings").update({company:String(f.get("company")||"").trim(),whatsapp:String(f.get("whatsapp")||"").replace(/\D/g,""),delivery_fee:Number(f.get("delivery_fee")),currency:String(f.get("currency")||"FCFA").trim()}).eq("id",true);if(error){setBusy(form,false);return toast(errorMessage(error),true);}const emailResult=await client.from("notification_settings").update({order_notification_email:String(f.get("order_notification_email")||"").trim()}).eq("id",true);setBusy(form,false);if(emailResult.error)return toast("Paramètres boutique enregistrés, mais l’e-mail n’a pas pu être enregistré : "+errorMessage(emailResult.error),true);toast("Paramètres et e-mail de notification enregistrés.");await loadPublicData();}; }
     if (view === "orders" || view === "quotes") { /* les sélecteurs déclaratifs utilisent les fonctions globales */ }
   }
   async function setQuoteStatus(id,status) {
@@ -487,8 +548,8 @@
 
   function initShop() {
     if ($("year")) $("year").textContent = String(new Date().getFullYear());
-    const search = $("searchBox"); if (search) search.addEventListener("input",renderProducts);
-    const category = $("categoryFilter"); if(category) category.addEventListener("change",renderProducts);
+    const search = $("searchBox"); if (search) search.addEventListener("input",() => { currentProductPage = 1; renderProducts(); });
+    const category = $("categoryFilter"); if(category) category.addEventListener("change",() => { currentProductPage = 1; renderProducts(); });
     if ($("openCartBtn")) $("openCartBtn").onclick = renderCartModal;
     if ($("heroWhatsApp")) $("heroWhatsApp").onclick = () => document.getElementById("catalogue").scrollIntoView({behavior:"smooth"});
     if ($("contactWhatsApp")) $("contactWhatsApp").onclick = () => openWA("Bonjour Sama-Pack, je souhaite avoir plus d’informations sur vos packs.");
@@ -501,7 +562,7 @@
     if ($("accountBtn")) $("accountBtn").onclick = openAccountModal;
     if ($("notificationBtn")) $("notificationBtn").onclick = loadAndShowNotifications;
     document.querySelectorAll(".side-btn").forEach(b => b.addEventListener("click",() => showAdminView(b.dataset.view)));
-    updateCategoryFilter(); renderTop(); renderProducts(); updateCartCount(); updateContact();
+    updateCategoryFilter(); renderTop(); renderProducts(); renderPromoCarousel(); startPromoCarousel(); updateCartCount(); updateContact();
   }
 
   async function start() {
@@ -516,6 +577,6 @@
   }
 
   // Functions called by inline storefront/admin controls.
-  Object.assign(window,{openProduct,addToCart,closeModal,changeQty,checkoutModal,showAccountHome,signOut,renderAuthForm,resetPassword,enableBrowserNotifications,loadAndShowNotifications,markNotificationRead,showAdminView,editPack,cancelPackEdit,togglePack,setOrderStatus,showOrder,setQuoteStatus});
+  Object.assign(window,{openProduct,addToCart,closeModal,changeQty,checkoutModal,showAccountHome,signOut,renderAuthForm,resetPassword,enableBrowserNotifications,loadAndShowNotifications,markNotificationRead,showAdminView,editPack,cancelPackEdit,togglePack,setOrderStatus,showOrder,setQuoteStatus,goToProductPage,movePromo,goToPromo});
   start().catch(err => { console.error(err); toast("Initialisation impossible. Recharge la page ou contacte l’administrateur.",true); });
 })();

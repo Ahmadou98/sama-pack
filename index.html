@@ -65,6 +65,17 @@
   </div>
 </section>
 
+<section id="promoSection" class="section promo-section hidden" aria-label="Offres promotionnelles">
+  <div class="wrap">
+    <div class="section-head promo-section-head">
+      <div><div class="eyebrow">SÉLECTION SAMA-PACK</div><h2>Offres du moment</h2><p class="muted">Des réductions sélectionnées par notre équipe.</p></div>
+      <div class="promo-arrows"><button class="btn ghost small" type="button" onclick="movePromo(-1)" aria-label="Promotion précédente">←</button><button class="btn ghost small" type="button" onclick="movePromo(1)" aria-label="Promotion suivante">→</button></div>
+    </div>
+    <div id="promoCarousel" aria-live="polite"></div>
+    <div id="promoDots" class="promo-dots" aria-label="Choisir une promotion"></div>
+  </div>
+</section>
+
 <section id="catalogue" class="section">
   <div class="wrap">
     <div class="section-head">
@@ -75,6 +86,7 @@
       </div>
     </div>
     <div id="productGrid" class="product-grid"></div>
+    <div id="productPagination" class="product-pagination" aria-label="Pagination du catalogue"></div>
   </div>
 </section>
 
