@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex,nofollow">
+  <meta name="referrer" content="no-referrer">
+  <meta name="theme-color" content="#087f5b">
+  <title>SAMA-PACK — Sécurité du compte</title>
+  <style>
+    :root{color-scheme:light;--green:#087f5b;--green-dark:#066348;--ink:#15231e;--muted:#64746d;--line:#dfe9e3;--paper:#f4f8f5;--white:#fff;--danger:#a61b1b;--success:#087443}
+    *{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;padding:24px;background:linear-gradient(135deg,#edf8f1 0%,#f8faf8 55%,#e8f4ed 100%);font:16px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif;color:var(--ink)}
+    .shell{width:min(100%,460px)}.brand{display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:18px;font-size:22px;font-weight:850;letter-spacing:.04em}.mark{display:grid;place-items:center;width:42px;height:42px;border-radius:13px;background:var(--green);color:white;font-size:15px;box-shadow:0 8px 22px #087f5b26}
+    .card{background:var(--white);border:1px solid var(--line);border-radius:22px;padding:clamp(22px,5vw,34px);box-shadow:0 18px 50px #183e2b12}h1{margin:0 0 8px;font-size:clamp(23px,4vw,29px);line-height:1.2;letter-spacing:-.025em}.intro{margin:0 0 24px;color:var(--muted)}
+    label{display:block;font-weight:700;font-size:14px;margin:16px 0 7px}input{display:block;width:100%;padding:13px 14px;border:1px solid #ccd9d1;border-radius:11px;font:inherit;outline:none;background:#fff;color:var(--ink)}input:focus{border-color:var(--green);box-shadow:0 0 0 3px #087f5b1c}button,.link-button{display:flex;align-items:center;justify-content:center;width:100%;margin-top:20px;padding:13px 16px;border:0;border-radius:11px;background:var(--green);color:white;font:inherit;font-weight:750;text-align:center;text-decoration:none;cursor:pointer}button:hover,.link-button:hover{background:var(--green-dark)}button:disabled{opacity:.65;cursor:wait}.notice{display:none;margin-top:18px;padding:12px 14px;border-radius:11px;background:#f0f5f2;border:1px solid var(--line);overflow-wrap:anywhere}.notice.show{display:block}.notice.error{background:#fff4f3;border-color:#f3cbc7;color:var(--danger)}.notice.success{background:#edfaf2;border-color:#c9ead6;color:var(--success)}.foot{margin:18px 0 0;text-align:center;color:var(--muted);font-size:13px}.foot a{color:var(--green-dark);font-weight:650}.hidden{display:none!important}.small{font-size:13px;color:var(--muted);margin:8px 0 0}.spinner{display:inline-block;width:14px;height:14px;border:2px solid #ffffff77;border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite;margin-right:8px;vertical-align:-2px}@keyframes spin{to{transform:rotate(360deg)}}
+  </style>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+  <main class="shell">
+    <div class="brand"><span class="mark">SP</span><span>SAMA-PACK</span></div>
+    <section class="card" aria-labelledby="page-title">
+      <h1 id="page-title">Sécurité de votre compte</h1>
+      <p id="intro" class="intro">Nous préparons votre demande en toute sécurité.</p>
+
+      <section id="confirm-panel" class="hidden">
+        <p>Confirmez votre adresse email pour activer votre compte SAMA-PACK.</p>
+        <button id="confirm-button" type="button">Confirmer mon adresse email</button>
+      </section>
+
+      <form id="password-form" class="hidden" novalidate>
+        <p>Choisissez un nouveau mot de passe pour votre compte.</p>
+        <label for="new-password">Nouveau mot de passe</label>
+        <input id="new-password" type="password" autocomplete="new-password" minlength="8" required aria-describedby="password-help">
+        <p id="password-help" class="small">8 caractères minimum.</p>
+        <label for="confirm-password">Confirmer le mot de passe</label>
+        <input id="confirm-password" type="password" autocomplete="new-password" minlength="8" required>
+        <button id="save-password" type="submit">Enregistrer le nouveau mot de passe</button>
+      </form>
+
+      <div id="notice" class="notice" role="status" aria-live="polite"></div>
+      <a id="back-link" class="link-button hidden" href="/">Retour à SAMA-PACK</a>
+    </section>
+    <p class="foot">Besoin d’aide ? <a href="/">Retourner sur le site SAMA-PACK</a></p>
+  </main>
+
+  <script>
+    (() => {
+      'use strict';
+      const SUPABASE_URL = 'https://tbxxrnhcfuaeaatlrdtr.supabase.co';
+      const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_lDAKRHFWyUYZ-tb23hbbnQ_96zF9Iwo';
+      const home = '/';
+      const params = new URLSearchParams(window.location.search);
+      const tokenHash = params.get('token_hash');
+      const type = params.get('type');
+      const intro = document.getElementById('intro');
+      const notice = document.getElementById('notice');
+      const confirmPanel = document.getElementById('confirm-panel');
+      const confirmButton = document.getElementById('confirm-button');
+      const passwordForm = document.getElementById('password-form');
+      const saveButton = document.getElementById('save-password');
+      const backLink = document.getElementById('back-link');
+      let recoveryVerified = false;
+      let busy = false;
+
+      function showNotice(message, kind = 'info') {
+        notice.textContent = message;
+        notice.className = 'notice show' + (kind === 'error' ? ' error' : kind === 'success' ? ' success' : '');
+      }
+      function showBackLink() { backLink.classList.remove('hidden'); }
+      function setBusy(button, value, label) {
+        button.disabled = value;
+        button.innerHTML = value ? '<span class="spinner" aria-hidden="true"></span>Traitement…' : label;
+      }
+      function failLink() {
+        showNotice('Ce lien est invalide, expiré ou déjà utilisé. Retournez au site et demandez un nouvel email, puis ouvrez le lien une seule fois.', 'error');
+        showBackLink();
+      }
+
+      if (!window.supabase || !window.supabase.createClient) {
+        intro.textContent = 'Le service de sécurité ne peut pas être chargé.';
+        showNotice('Impossible de charger le service d’authentification. Vérifiez votre connexion, puis réessayez.', 'error');
+        showBackLink();
+        return;
+      }
+
+      const client = window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
+        auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false }
+      });
+
+      if (!tokenHash || (type !== 'email' && type !== 'recovery')) {
+        intro.textContent = 'Le lien de sécurité fourni est incomplet.';
+        failLink();
+        return;
+      }
+
+      if (type === 'email') {
+        intro.textContent = 'Une dernière étape pour activer votre compte.';
+        confirmPanel.classList.remove('hidden');
+        confirmButton.addEventListener('click', async () => {
+          if (busy) return;
+          busy = true;
+          setBusy(confirmButton, true, 'Confirmer mon adresse email');
+          try {
+            const { error } = await client.auth.verifyOtp({ token_hash: tokenHash, type: 'email' });
+            if (error) throw error;
+            showNotice('Votre adresse email est confirmée. Votre compte est activé.', 'success');
+            intro.textContent = 'Tout est prêt. Vous allez revenir à la boutique.';
+            confirmPanel.classList.add('hidden');
+            showBackLink();
+            window.setTimeout(() => { window.location.assign(home); }, 2200);
+          } catch (error) {
+            failLink();
+            console.error('SAMA-PACK email confirmation failed:', error?.message || error);
+          } finally {
+            busy = false;
+            setBusy(confirmButton, false, 'Confirmer mon adresse email');
+          }
+        });
+        return;
+      }
+
+      intro.textContent = 'Définissez un nouveau mot de passe pour retrouver l’accès à votre compte.';
+      passwordForm.classList.remove('hidden');
+      passwordForm.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        if (busy) return;
+        const password = document.getElementById('new-password').value;
+        const confirmation = document.getElementById('confirm-password').value;
+        if (password.length < 8) {
+          showNotice('Le mot de passe doit contenir au moins 8 caractères.', 'error');
+          return;
+        }
+        if (password !== confirmation) {
+          showNotice('Les deux mots de passe ne correspondent pas.', 'error');
+          return;
+        }
+        busy = true;
+        setBusy(saveButton, true, 'Enregistrer le nouveau mot de passe');
+        try {
+          // Important : le jeton n’est vérifié qu’après la soumission du formulaire,
+          // et recoveryVerified permet de retenter updateUser si le mot de passe est refusé.
+          if (!recoveryVerified) {
+            const { error: verifyError } = await client.auth.verifyOtp({ token_hash: tokenHash, type: 'recovery' });
+            if (verifyError) throw verifyError;
+            recoveryVerified = true;
+          }
+          const { error: updateError } = await client.auth.updateUser({ password });
+          if (updateError) throw updateError;
+          showNotice('Votre mot de passe a été modifié avec succès. Vous allez revenir à SAMA-PACK.', 'success');
+          intro.textContent = 'Votre compte est de nouveau accessible.';
+          passwordForm.classList.add('hidden');
+          showBackLink();
+          window.setTimeout(() => { window.location.assign(home); }, 2500);
+        } catch (error) {
+          const msg = String(error?.message || 'Erreur inconnue');
+          if (!recoveryVerified && /expired|invalid|token|otp/i.test(msg)) {
+            failLink();
+            passwordForm.classList.add('hidden');
+          } else {
+            showNotice('Le mot de passe n’a pas pu être enregistré. ' + msg + ' Vous pouvez corriger le mot de passe et réessayer sans rouvrir le lien.', 'error');
+          }
+          console.error('SAMA-PACK password recovery failed:', msg);
+        } finally {
+          busy = false;
+          setBusy(saveButton, false, 'Enregistrer le nouveau mot de passe');
+        }
+      });
+    })();
+  </script>
+</body>
+</html>
