@@ -8,6 +8,7 @@
   const PRODUCTS_PER_PAGE = 20;
   const PROMO_ROTATE_MS = 6500;
   let currentProductPage = 1;
+  let productReviewStats = Object.create(null);
   let currentPromoIndex = 0;
   let promoCarouselTimer = null;
   let promoCountdownTimer = null;
@@ -99,6 +100,135 @@
   }
   function isAdmin() { return currentProfile?.role === "admin"; }
 
+  function renderProductRatingSummary(productId) {
+    const stats = productReviewStats[String(productId)];
+    const average = Number(stats?.average || 0);
+    const count = Number(stats?.count || 0);
+    const rounded = Math.max(0, Math.min(5, Math.round(average)));
+    const stars = Array.from({ length: 5 }, (_, index) => `<span class="${index < rounded ? "is-filled" : ""}" aria-hidden="true">★</span>`).join("");
+    const starHtml = `<span class="rating-stars" aria-label="${count ? average.toFixed(1).replace(".", ",") : "0"} sur 5">${stars}</span>`;
+    return `<div class="product-rating-summary ${count ? "has-reviews" : "is-empty"}">${starHtml}${count ? `<strong>${average.toFixed(1).replace(".", ",")}</strong><span>(${count} ${count > 1 ? "avis" : "avis"})</span>` : `<span>Pas encore d’avis</span>`}</div>`;
+  }
+
+  async function loadProductReviewStats() {
+    if (!client) return;
+    const { data, error } = await client.from("product_review_stats")
+      .select("product_id,average_rating,review_count");
+    if (error) {
+      console.warn("Notes des produits indisponibles pour le moment.", error);
+      return;
+    }
+    productReviewStats = Object.create(null);
+    (data || []).forEach(row => {
+      productReviewStats[String(row.product_id)] = {
+        average: Number(row.average_rating) || 0,
+        count: Number(row.review_count) || 0
+      };
+    });
+  }
+
+  function productReviewFormHtml(productId, ownReview) {
+    if (!currentUser) {
+      return `<div class="review-signin-prompt"><p>Connecte-toi à ton compte client pour noter ce pack et partager ton expérience.</p><button type="button" class="btn ghost" onclick="openAccountModal()">Se connecter</button></div>`;
+    }
+    const selectedRating = Math.max(1, Math.min(5, Number(ownReview?.rating) || 5));
+    const stars = [1, 2, 3, 4, 5].map(value => `<button type="button" class="review-star-choice ${value <= selectedRating ? "is-selected" : ""}" data-rating="${value}" aria-label="${value} ${value === 1 ? "étoile" : "étoiles"}" aria-pressed="${value === selectedRating ? "true" : "false"}" onclick="selectReviewRating(this, ${value})">★</button>`).join("");
+    return `<div class="review-form-wrap"><h4>${ownReview ? "Modifier votre avis" : "Donner votre avis"}</h4><p class="review-form-hint">Votre prénom sera affiché avec votre commentaire.</p><form id="productReviewForm" data-product-id="${esc(productId)}"><div class="review-rating-field"><span class="review-form-label">Votre note</span><div class="review-star-picker" role="group" aria-label="Choisir une note sur cinq étoiles">${stars}</div><input type="hidden" name="rating" value="${selectedRating}"></div><label class="review-form-label" for="productReviewText">Votre avis</label><textarea id="productReviewText" name="review" class="input review-textarea" required minlength="5" maxlength="1000" placeholder="Qu’avez-vous pensé de ce pack ?" rows="4">${esc(ownReview?.review || "")}</textarea><div class="review-form-footer"><span>5 à 1 000 caractères</span><button type="submit" class="btn primary">${ownReview ? "Mettre à jour mon avis" : "Publier mon avis"}</button></div></form></div>`;
+  }
+
+  function selectReviewRating(button, rating) {
+    const form = button?.closest("form");
+    if (!form) return;
+    const input = form.querySelector('input[name="rating"]');
+    if (input) input.value = String(rating);
+    form.querySelectorAll(".review-star-choice").forEach(star => {
+      const value = Number(star.dataset.rating);
+      star.classList.toggle("is-selected", value <= rating);
+      star.setAttribute("aria-pressed", value === rating ? "true" : "false");
+    });
+  }
+
+  async function renderProductReviews(productId) {
+    const panel = $("productReviewsPanel");
+    if (!client || !panel || panel.dataset.productId !== String(productId)) return;
+    const viewerId = currentUser?.id || null;
+    const { data: rows, error } = await client.from("product_reviews")
+      .select("id,product_id,rating,review,display_name,created_at")
+      .eq("product_id", String(productId))
+      .order("created_at", { ascending: false })
+      .limit(30);
+    if (!panel.isConnected || panel.dataset.productId !== String(productId)) return;
+    if (error) {
+      console.warn("Impossible de charger les avis du produit.", error);
+      panel.innerHTML = `<div class="review-load-error">Les avis ne sont pas disponibles pour le moment. Réessaie un peu plus tard.</div>`;
+      return;
+    }
+
+    let ownReview = null;
+    if (viewerId) {
+      const ownResult = await client.from("product_reviews")
+        .select("rating,review")
+        .eq("product_id", String(productId))
+        .eq("user_id", viewerId)
+        .maybeSingle();
+      if (!ownResult.error) ownReview = ownResult.data || null;
+      else console.warn("Impossible de charger l’avis du client.", ownResult.error);
+    }
+    if (!panel.isConnected || panel.dataset.productId !== String(productId)) return;
+    if (viewerId !== (currentUser?.id || null)) ownReview = null;
+
+    // Fallback for rendering this product if the aggregate view is temporarily unavailable.
+    if (!productReviewStats[String(productId)] && rows?.length) {
+      productReviewStats[String(productId)] = {
+        average: rows.reduce((sum, row) => sum + Number(row.rating || 0), 0) / rows.length,
+        count: rows.length
+      };
+    }
+    const reviewItems = (rows || []).map(row => `<article class="product-review-item"><div class="product-review-item-head"><strong>${esc(row.display_name || "Client")}</strong><time datetime="${esc(row.created_at || "")}">${esc(fmtDate(row.created_at))}</time></div><div class="review-item-rating" aria-label="Note : ${Number(row.rating)} sur 5">${Array.from({ length: 5 }, (_, index) => `<span class="${index < Number(row.rating) ? "is-filled" : ""}" aria-hidden="true">★</span>`).join("")}</div><p>${esc(row.review)}</p></article>`).join("");
+    const stats = productReviewStats[String(productId)];
+    const summary = stats?.count ? `${stats.count} ${stats.count > 1 ? "avis" : "avis"}` : `${(rows || []).length} avis`;
+    panel.innerHTML = `<div class="product-review-section-head"><h3>Avis clients</h3><span>${esc(summary)}</span></div>${productReviewFormHtml(productId, ownReview)}<div class="product-review-list">${reviewItems || `<p class="review-empty">Pas encore d’avis pour ce pack. Soyez le premier à partager votre expérience.</p>`}</div>`;
+    const ratingSummary = $("productRatingSummaryDetail");
+    if (ratingSummary) ratingSummary.innerHTML = renderProductRatingSummary(productId);
+
+    const form = panel.querySelector("#productReviewForm");
+    if (!form) return;
+    form.onsubmit = async event => {
+      event.preventDefault();
+      if (!currentUser) {
+        toast("Connecte-toi pour publier un avis.", true);
+        openAccountModal();
+        return;
+      }
+      const formData = new FormData(form);
+      const rating = Number(formData.get("rating"));
+      const review = String(formData.get("review") || "").trim();
+      if (!Number.isInteger(rating) || rating < 1 || rating > 5) return toast("Choisis une note de 1 à 5 étoiles.", true);
+      if (review.length < 5 || review.length > 1000) return toast("L’avis doit contenir entre 5 et 1 000 caractères.", true);
+      const userId = currentUser.id;
+      setBusy(form, true, "Publication…");
+      try {
+        const { error: saveError } = await client.from("product_reviews").upsert({
+          product_id: String(productId), user_id: userId, rating, review
+        }, { onConflict: "product_id,user_id" });
+        if (saveError) {
+          toast(errorMessage(saveError), true);
+          return;
+        }
+        toast("Merci ! Ton avis a bien été enregistré.");
+        await loadProductReviewStats();
+        renderProducts();
+        const detailSummary = $("productRatingSummaryDetail");
+        if (detailSummary) detailSummary.innerHTML = renderProductRatingSummary(productId);
+        await renderProductReviews(productId);
+      } catch (saveError) {
+        toast(errorMessage(saveError), true);
+      } finally {
+        if (form.isConnected) setBusy(form, false);
+      }
+    };
+  }
+
   async function loadPublicData() {
     if (!client) return;
     const { data: rows, error } = await client.from("products")
@@ -112,6 +242,7 @@
       appSettings = { company: setting.company || "SAMA-PACK", whatsapp: String(setting.whatsapp || ""), deliveryFee: Number(setting.delivery_fee || 0), currency: setting.currency || "FCFA", homepageBackgroundUrl: String(setting.homepage_background_url || "") };
       applyHomepageBackground();
     } else if (settingError) console.warn("Paramètres distants indisponibles.", settingError);
+    await loadProductReviewStats();
     const count = $("packCount"); if (count) count.textContent = String(products.filter(p => p.active).length);
     updateContact(); updateCategoryFilter(); renderTop(); renderProducts(); renderPromoCarousel(); updateCartCount();
   }
@@ -267,13 +398,15 @@
   }
   function productCard(p) {
     const photo = p.image_path ? `<img class="product-photo" src="${esc(/^https?:\/\//i.test(p.image_path) ? p.image_path : p.image_path.replace(/^\//,""))}" alt="${esc(p.name)}" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">` : "";
-    return `<article class="product-card"><div class="pack-visual ${p.image_path ? "has-photo" : ""}">${photo}<div class="pack-box ${p.image_path ? "photo-fallback" : ""}" ${p.image_path ? "style=\"display:none\"" : ""}><div class="emoji">${iconById[p.id] || "📦"}</div><div class="pack-code">${esc(p.id)}</div></div>${hasPromotion(p) ? `<span class="product-promo-ribbon">${esc(p.promo_label || "Promo")}</span>` : ""}</div><div class="product-body"><div class="product-cat">${esc(p.cat)}</div><div class="product-name">${esc(p.name)}</div><div class="price-row">${priceDisplayHtml(p)}<span class="small-note">TTC</span></div><div class="product-actions"><button class="btn ghost" onclick="openProduct('${esc(p.id)}')">Détails</button><button class="btn primary" onclick="addToCart('${esc(p.id)}')">Ajouter</button></div></div></article>`;
+    return `<article class="product-card"><div class="pack-visual ${p.image_path ? "has-photo" : ""}">${photo}<div class="pack-box ${p.image_path ? "photo-fallback" : ""}" ${p.image_path ? "style=\"display:none\"" : ""}><div class="emoji">${iconById[p.id] || "📦"}</div><div class="pack-code">${esc(p.id)}</div></div>${hasPromotion(p) ? `<span class="product-promo-ribbon">${esc(p.promo_label || "Promo")}</span>` : ""}</div><div class="product-body"><div class="product-cat">${esc(p.cat)}</div><div class="product-name">${esc(p.name)}</div>${renderProductRatingSummary(p.id)}<div class="price-row">${priceDisplayHtml(p)}<span class="small-note">TTC</span></div><div class="product-actions"><button class="btn ghost" onclick="openProduct('${esc(p.id)}')">Détails</button><button class="btn primary" onclick="addToCart('${esc(p.id)}')">Ajouter</button></div></div></article>`;
   }
   function openProduct(id) {
     const p = getP(id); if (!p) return;
     const photo = p.image_path ? `<img class="product-photo product-photo-detail" src="${esc(/^https?:\/\//i.test(p.image_path) ? p.image_path : p.image_path.replace(/^\//,""))}" alt="${esc(p.name)}" onerror="this.style.display='none'">` : `<div class="pack-visual"><div class="pack-box"><div class="emoji">${iconById[p.id] || "📦"}</div><div class="pack-code">${esc(p.id)}</div></div></div>`;
-    showModal(`<div class="modal-head"><div><div class="eyebrow">${esc(p.cat)}</div><h2>${esc(p.name)}</h2></div><button class="close" onclick="closeModal()">✕</button></div>${photo}<p>${esc(p.desc)}</p><ul class="pack-items">${p.items.map(i => `<li>${esc(i)}</li>`).join("")}</ul><div class="price-row">${priceDisplayHtml(p)}<button class="btn primary" onclick="addToCart('${esc(p.id)}');closeModal()">Ajouter au panier</button></div>`);
+    showModal(`<div class="modal-head"><div><div class="eyebrow">${esc(p.cat)}</div><h2>${esc(p.name)}</h2></div><button class="close" onclick="closeModal()">✕</button></div>${photo}<div id="productRatingSummaryDetail">${renderProductRatingSummary(p.id)}</div><p>${esc(p.desc)}</p><ul class="pack-items">${p.items.map(i => `<li>${esc(i)}</li>`).join("")}</ul><div class="price-row">${priceDisplayHtml(p)}<button class="btn primary" onclick="addToCart('${esc(p.id)}');closeModal()">Ajouter au panier</button></div><section id="productReviewsPanel" class="product-reviews-panel" data-product-id="${esc(p.id)}"><p class="review-loading">Chargement des avis…</p></section>`);
+    void renderProductReviews(p.id);
   }
+
   function addToCart(id) {
     const p = getP(id); if (!p || !p.active) { toast("Ce pack n’est plus disponible.", true); return; }
     const line = cart.find(i => i.id === id);
@@ -723,6 +856,6 @@
   }
 
   // Functions called by inline storefront/admin controls.
-  Object.assign(window,{openProduct,addToCart,closeModal,changeQty,checkoutModal,showAccountHome,signOut,renderAuthForm,resetPassword,enableBrowserNotifications,loadAndShowNotifications,markNotificationRead,showAdminView,editPack,cancelPackEdit,togglePack,setOrderStatus,showOrder,setQuoteStatus,goToProductPage,movePromo,goToPromo});
+  Object.assign(window,{openProduct,addToCart,closeModal,changeQty,checkoutModal,showAccountHome,signOut,renderAuthForm,resetPassword,enableBrowserNotifications,loadAndShowNotifications,markNotificationRead,showAdminView,editPack,cancelPackEdit,togglePack,setOrderStatus,showOrder,setQuoteStatus,goToProductPage,movePromo,goToPromo,selectReviewRating});
   start().catch(err => { console.error(err); toast("Initialisation impossible. Recharge la page ou contacte l’administrateur.",true); });
 })();
