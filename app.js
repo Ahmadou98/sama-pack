@@ -6,10 +6,11 @@
   const SUPABASE_KEY = "sb_publishable_lDAKRHFWyUYZ-tb23hbbnQ_96zF9Iwo"; // clé publique uniquement; RLS protège les données.
   const CART_KEY = "sama_pack_cart_v2";
   const PRODUCTS_PER_PAGE = 20;
-  const PROMO_ROTATE_MS = 5000;
+  const PROMO_ROTATE_MS = 6500;
   let currentProductPage = 1;
   let currentPromoIndex = 0;
   let promoCarouselTimer = null;
+  let promoCountdownTimer = null;
   const FALLBACK_PRODUCTS = window.SAMA_PRODUCTS || [];
   const iconById = {SP01:"🧼",SP02:"👶",SP03:"🧽",SP04:"🧼",SP05:"💼",SP06:"🍳",SP07:"🌸",SP08:"🏡",SP09:"🎉",SP10:"🏪"};
   const $ = (id) => document.getElementById(id);
@@ -31,17 +32,18 @@
   let cachedQuotes = [];
   let cachedExpenses = [];
   let cachedSuppliers = [];
-  let appSettings = { company: "SAMA-PACK", whatsapp: "", deliveryFee: 1500, currency: "FCFA" };
+  let appSettings = { company: "SAMA-PACK", whatsapp: "", deliveryFee: 1500, currency: "FCFA", homepageBackgroundUrl: "" };
   let cart = loadCart();
 
   function normalizeFallbackProduct(p) {
-    return { id: String(p.id), name: String(p.name || "Pack"), cat: String(p.cat || p.category || "Autre"), category: String(p.cat || p.category || "Autre"), price: Number(p.price || 0), desc: String(p.desc || p.description || ""), description: String(p.desc || p.description || ""), items: Array.isArray(p.items) ? p.items : [], image_path: p.image_path || "", active: p.active !== false, promo_active: p.promo_active === true, promo_price: p.promo_price == null || p.promo_price === "" ? null : Number(p.promo_price), promo_label: String(p.promo_label || "Offre spéciale") };
+    return { id: String(p.id), name: String(p.name || "Pack"), cat: String(p.cat || p.category || "Autre"), category: String(p.cat || p.category || "Autre"), price: Number(p.price || 0), desc: String(p.desc || p.description || ""), description: String(p.desc || p.description || ""), items: Array.isArray(p.items) ? p.items : [], image_path: p.image_path || "", active: p.active !== false, promo_active: p.promo_active === true, promo_price: p.promo_price == null || p.promo_price === "" ? null : Number(p.promo_price), promo_label: String(p.promo_label || "Offre spéciale"), promo_end_at: p.promo_end_at || null };
   }
   function normalizeProduct(p) {
     return { ...p, id: String(p.id), cat: String(p.category || p.cat || "Autre"), category: String(p.category || p.cat || "Autre"), price: Number(p.price || 0), desc: String(p.description || p.desc || ""), description: String(p.description || p.desc || ""), items: Array.isArray(p.items) ? p.items : [], image_path: String(p.image_path || ""), active: p.active !== false, promo_active: p.promo_active === true, promo_price: p.promo_price == null || p.promo_price === "" ? null : Number(p.promo_price), promo_label: String(p.promo_label || "Offre spéciale") };
   }
   function hasPromotion(p) {
     if (!p || p.promo_active !== true || p.promo_price == null || p.promo_price === "") return false;
+    if (p.promo_end_at) { const end = new Date(p.promo_end_at).getTime(); if (Number.isFinite(end) && end <= Date.now()) return false; }
     const regular = Number(p.price), special = Number(p.promo_price);
     return Number.isFinite(regular) && Number.isFinite(special) && special >= 0 && special < regular;
   }
@@ -58,6 +60,7 @@
   function money(n) { return new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 0 }).format(Math.round(Number(n) || 0)) + " FCFA"; }
   function esc(s) { return String(s ?? "").replace(/[&<>"']/g, m => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m])); }
   function fmtDate(s) { if (!s) return "—"; const d = new Date(s); return Number.isNaN(d.getTime()) ? "—" : d.toLocaleString("fr-FR", { dateStyle: "medium", timeStyle: "short" }); }
+  function toLocalDateTimeInput(value) { if (!value) return ""; const d = new Date(value); if (Number.isNaN(d.getTime())) return ""; return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0,16); }
   function toast(message, isError = false) {
     const el = $("toast"); if (!el) return;
     el.textContent = message; el.classList.toggle("toast-error", Boolean(isError)); el.classList.add("show");
@@ -99,17 +102,18 @@
   async function loadPublicData() {
     if (!client) return;
     const { data: rows, error } = await client.from("products")
-      .select("id,name,category,price,description,items,image_path,active,promo_active,promo_price,promo_label")
+      .select("id,name,category,price,description,items,image_path,active,promo_active,promo_price,promo_label,promo_end_at")
       .order("id", { ascending: true });
     if (!error && Array.isArray(rows)) products = rows.map(normalizeProduct);
     else console.warn("Catalogue distant indisponible; affichage du catalogue de secours.", error);
     const { data: setting, error: settingError } = await client.from("settings")
-      .select("id,company,whatsapp,delivery_fee,currency").eq("id", true).maybeSingle();
+      .select("id,company,whatsapp,delivery_fee,currency,homepage_background_url").eq("id", true).maybeSingle();
     if (!settingError && setting) {
-      appSettings = { company: setting.company || "SAMA-PACK", whatsapp: String(setting.whatsapp || ""), deliveryFee: Number(setting.delivery_fee || 0), currency: setting.currency || "FCFA" };
+      appSettings = { company: setting.company || "SAMA-PACK", whatsapp: String(setting.whatsapp || ""), deliveryFee: Number(setting.delivery_fee || 0), currency: setting.currency || "FCFA", homepageBackgroundUrl: String(setting.homepage_background_url || "") };
+      applyHomepageBackground();
     } else if (settingError) console.warn("Paramètres distants indisponibles.", settingError);
     const count = $("packCount"); if (count) count.textContent = String(products.filter(p => p.active).length);
-    updateContact(); updateCategoryFilter(); renderTop(); renderProducts(); updateCartCount();
+    updateContact(); updateCategoryFilter(); renderTop(); renderProducts(); renderPromoCarousel(); updateCartCount();
   }
   function updateCategoryFilter() {
     const filter = $("categoryFilter"); if (!filter) return;
@@ -121,6 +125,16 @@
   function updateContact() {
     const contact = $("contactPhone"); const n = waNumber();
     if (contact) contact.textContent = n ? "+" + n : "WhatsApp à configurer";
+  }
+  function applyHomepageBackground() {
+    const hero = $("home");
+    if (!hero) return;
+    const src = String(appSettings.homepageBackgroundUrl || "").trim();
+    if (!/^https:\/\//i.test(src)) { hero.classList.remove("has-custom-bg"); hero.style.removeProperty("--hero-custom-background"); return; }
+    const safeSrc = src.replace(/["\
+]/g, "");
+    hero.style.setProperty("--hero-custom-background", `url("${safeSrc}")`);
+    hero.classList.add("has-custom-bg");
   }
   function renderTop() {
     const el = $("heroTopPacks"); if (!el) return;
@@ -151,21 +165,54 @@
     const section = $("promoSection"), carousel = $("promoCarousel"), dots = $("promoDots");
     if (!section || !carousel) return;
     const promos = products.filter(p => p.active && hasPromotion(p));
-    section.classList.toggle("hidden", promos.length === 0);
+    section.classList.remove("hidden");
     const topPacks = $("heroTopPacks");
-    if (topPacks) topPacks.classList.toggle("hidden", promos.length > 0);
+    if (topPacks) topPacks.classList.remove("hidden");
     const arrows = $("promoArrows");
     if (arrows) arrows.classList.toggle("hidden", promos.length < 2);
     if (!promos.length) {
-      carousel.innerHTML = "";
+      carousel.innerHTML = '<div class="flash-empty"><span class="flash-empty-icon">✦</span><div><strong>Aucune vente flash pour le moment</strong><p>De nouvelles offres seront affichées ici. En attendant, découvre tous nos packs.</p><a class="btn primary" href="#catalogue">Explorer le catalogue</a></div></div>';
       if (dots) dots.innerHTML = "";
       currentPromoIndex = 0;
       return;
     }
     currentPromoIndex = ((currentPromoIndex % promos.length) + promos.length) % promos.length;
     const p = promos[currentPromoIndex];
-    carousel.innerHTML = `<article class="promo-card promo-slide-in"><div class="promo-image">${promoImageOnly(p)}</div><div class="promo-copy"><span class="promo-label">${esc(p.promo_label || "Offre spéciale")}</span><h3>${esc(p.name)}</h3><div class="promo-price-line"><strong>${money(getEffectivePrice(p))}</strong><del>${money(p.price)}</del></div><div class="promo-actions"><button class="btn ghost small" onclick="openProduct('${esc(p.id)}')">Détails</button><button class="btn primary small" onclick="addToCart('${esc(p.id)}')">Ajouter</button></div></div></article>`;
-    if (dots) dots.innerHTML = promos.map((item, index) => `<button class="promo-dot ${index === currentPromoIndex ? "active" : ""}" aria-label="Afficher la promotion ${index + 1}" aria-current="${index === currentPromoIndex ? "true" : "false"}" onclick="goToPromo(${index})"></button>`).join("");
+    const discount = p.price > 0 ? Math.round((1 - getEffectivePrice(p) / Number(p.price)) * 100) : 0;
+    const countdown = p.promo_end_at
+      ? `<div class="flash-countdown" data-countdown-end="${esc(p.promo_end_at)}"><span>FIN DE L’OFFRE DANS</span><strong>--j : --h : --m : --s</strong></div>`
+      : '<div class="flash-countdown is-open"><span>OFFRE EN COURS</span><strong>Prix spécial disponible</strong></div>';
+    const description = String(p.desc || p.description || "Profite de cette offre spéciale SAMA-PACK.").trim();
+    carousel.innerHTML = `<article class="flash-slide promo-slide-in">
+      <div class="flash-photo">${promoImageOnly(p)}</div>
+      <div class="flash-content">
+        <div class="flash-kickers"><span class="flash-badge">⚡ VENTE FLASH</span><span class="flash-offer-label">${esc(p.promo_label || "Prix spécial")}</span></div>
+        <div class="flash-copy-main"><h3>${esc(p.name)}</h3><p>${esc(description.length > 150 ? description.slice(0,147) + "…" : description)}</p></div>
+        <div class="flash-price-row"><strong>${money(getEffectivePrice(p))}</strong><del>${money(p.price)}</del><span class="flash-discount">−${discount}%</span></div>
+        ${countdown}
+        <div class="promo-actions"><button class="btn flash-detail-btn" onclick="openProduct('${esc(p.id)}')">Voir le pack</button><button class="btn flash-add-btn" onclick="addToCart('${esc(p.id)}')">Ajouter au panier&nbsp; +</button></div>
+      </div>
+    </article>`;
+    if (dots) dots.innerHTML = promos.map((item, index) => `<button class="promo-dot ${index === currentPromoIndex ? "active" : ""}" aria-label="Afficher la vente flash ${index + 1}" aria-current="${index === currentPromoIndex ? "true" : "false"}" onclick="goToPromo(${index})"></button>`).join("");
+    updatePromoCountdowns();
+  }
+  function updatePromoCountdowns() {
+    let expired = false;
+    document.querySelectorAll("[data-countdown-end]").forEach(el => {
+      const end = new Date(el.dataset.countdownEnd || "").getTime();
+      if (!Number.isFinite(end)) return;
+      const remaining = end - Date.now();
+      if (remaining <= 0) { expired = true; return; }
+      const seconds = Math.floor(remaining / 1000);
+      const days = Math.floor(seconds / 86400);
+      const hours = Math.floor((seconds % 86400) / 3600);
+      const minutes = Math.floor((seconds % 3600) / 60);
+      const secs = seconds % 60;
+      const pad = n => String(n).padStart(2, "0");
+      const strong = el.querySelector("strong");
+      if (strong) strong.textContent = `${days}j : ${pad(hours)}h : ${pad(minutes)}m : ${pad(secs)}s`;
+    });
+    if (expired) { renderProducts(); renderPromoCarousel(); }
   }
   function movePromo(direction) {
     const count = products.filter(p => p.active && hasPromotion(p)).length;
@@ -176,10 +223,13 @@
   function goToPromo(index) { currentPromoIndex = Math.max(0, Number(index) || 0); renderPromoCarousel(); }
   function startPromoCarousel() {
     if (promoCarouselTimer) window.clearInterval(promoCarouselTimer);
+    if (promoCountdownTimer) window.clearInterval(promoCountdownTimer);
     promoCarouselTimer = window.setInterval(() => {
       const count = products.filter(p => p.active && hasPromotion(p)).length;
       if (count > 1) { currentPromoIndex = (currentPromoIndex + 1) % count; renderPromoCarousel(); }
     }, PROMO_ROTATE_MS);
+    promoCountdownTimer = window.setInterval(updatePromoCountdowns, 1000);
+    updatePromoCountdowns();
   }
   function imageOrEmoji(p, klass = "pack-visual") {
     const fallback = `<div class="pack-box"><div class="emoji">${iconById[p.id] || "📦"}</div><div class="pack-code">${esc(p.id)}</div></div>`;
@@ -478,7 +528,7 @@
     const itemsStr = editing ? editing.items.join("\n") : "";
     const formTitle = editing ? `Modifier ${editing.id}` : "Ajouter un nouveau pack";
     const idLabel = editing ? editing.id : nextProductId();
-    return `<div class="panel"><div class="admin-panel-head"><h3>${formTitle}</h3><span class="small-note">ID proposé : ${esc(idLabel)}</span></div><form id="packForm" class="admin-form"><input class="input full" name="name" required maxlength="150" placeholder="Nom du pack" value="${esc(editing?.name||"")}"><input class="input" name="category" required maxlength="80" placeholder="Catégorie" value="${esc(editing?.cat||"")}"><input class="input" name="price" type="number" min="0" step="1" required placeholder="Prix en FCFA" value="${editing ? Number(editing.price) : ""}"><textarea class="input full" name="description" required maxlength="1500" placeholder="Description du pack">${esc(editing?.desc||"")}</textarea><textarea class="input full" name="items" required placeholder="Composition : un élément par ligne">${esc(itemsStr)}</textarea><input class="input full" name="image_path" maxlength="500" placeholder="Chemin de l’image ou URL (facultatif)" value="${esc(editing?.image_path||"")}"><div class="promo-admin-fields full"><label class="check-label"><input type="checkbox" name="promo_active" ${editing?.promo_active===true ? "checked" : ""}> Afficher ce pack dans les promotions</label><label>Prix promotionnel (FCFA)<input class="input" name="promo_price" type="number" min="0" step="1" placeholder="Ex. 12 000" value="${editing?.promo_price == null ? "" : Number(editing.promo_price)}"></label><label>Texte de la promotion<input class="input" name="promo_label" maxlength="80" placeholder="Offre spéciale" value="${esc(editing?.promo_label||"Offre spéciale")}"></label><p class="small-note">Le prix promotionnel doit être inférieur au prix normal. La remise est appliquée au panier et à la commande.</p></div><label class="full">Photo du pack (facultatif, JPG/PNG/WebP, 5 Mo maximum)<input class="input" name="image_file" type="file" accept="image/jpeg,image/png,image/webp"></label><label class="check-label full"><input type="checkbox" name="active" ${editing?.active===false?"":"checked"}> Publier ce pack dans le catalogue</label><div class="form-actions full"><button class="btn primary" type="submit">${editing ? "Enregistrer les modifications" : "Ajouter le pack"}</button>${editing ? `<button class="btn ghost" type="button" onclick="cancelPackEdit()">Annuler</button>` : ""}</div></form></div><div style="height:16px"></div><div class="panel"><div class="admin-panel-head"><h3>Catalogue complet (${rows.length} packs)</h3><span class="small-note">Les packs masqués restent dans la gestion et le stock.</span></div>${rows.length ? `<div class="table-wrap"><table class="table"><thead><tr><th>Pack</th><th>Catégorie</th><th>Prix</th><th>Visibilité</th><th>Actions</th></tr></thead><tbody>${rows.map(p=>`<tr><td><strong>${esc(p.name)}</strong><br><span class="small-note">${esc(p.id)}</span></td><td>${esc(p.cat)}</td><td>${money(p.price)}</td><td><span class="status ${p.active?"delivered":"cancelled"}">${p.active?"Publié":"Masqué"}</span></td><td><div class="table-actions"><button class="btn small ghost" onclick="editPack('${esc(p.id)}')">Modifier</button><button class="btn small ${p.active?"ghost":"secondary"}" onclick="togglePack('${esc(p.id)}',${!p.active})">${p.active?"Masquer":"Publier"}</button></div></td></tr>`).join("")}</tbody></table></div>` : '<div class="empty">Aucun pack disponible.</div>'}</div>`;
+    return `<div class="panel"><div class="admin-panel-head"><h3>${formTitle}</h3><span class="small-note">ID proposé : ${esc(idLabel)}</span></div><form id="packForm" class="admin-form"><input class="input full" name="name" required maxlength="150" placeholder="Nom du pack" value="${esc(editing?.name||"")}"><input class="input" name="category" required maxlength="80" placeholder="Catégorie" value="${esc(editing?.cat||"")}"><input class="input" name="price" type="number" min="0" step="1" required placeholder="Prix en FCFA" value="${editing ? Number(editing.price) : ""}"><textarea class="input full" name="description" required maxlength="1500" placeholder="Description du pack">${esc(editing?.desc||"")}</textarea><textarea class="input full" name="items" required placeholder="Composition : un élément par ligne">${esc(itemsStr)}</textarea><input class="input full" name="image_path" maxlength="500" placeholder="Chemin de l’image ou URL (facultatif)" value="${esc(editing?.image_path||"")}"><div class="promo-admin-fields full"><label class="check-label"><input type="checkbox" name="promo_active" ${editing?.promo_active===true ? "checked" : ""}> Afficher ce pack dans les promotions</label><label>Prix promotionnel (FCFA)<input class="input" name="promo_price" type="number" min="0" step="1" placeholder="Ex. 12 000" value="${editing?.promo_price == null ? "" : Number(editing.promo_price)}"></label><label>Texte de la promotion<input class="input" name="promo_label" maxlength="80" placeholder="Vente flash" value="${esc(editing?.promo_label||"Vente flash")}"></label><label class="full">Date et heure de fin de la vente flash<input class="input" type="datetime-local" name="promo_end_at" value="${esc(toLocalDateTimeInput(editing?.promo_end_at))}"></label><p class="small-note">Le prix promotionnel doit être inférieur au prix normal. La date de fin déclenche le compte à rebours et désactive la réduction automatiquement à son échéance.</p></div><label class="full">Photo du pack (facultatif, JPG/PNG/WebP, 5 Mo maximum)<input class="input" name="image_file" type="file" accept="image/jpeg,image/png,image/webp"></label><label class="check-label full"><input type="checkbox" name="active" ${editing?.active===false?"":"checked"}> Publier ce pack dans le catalogue</label><div class="form-actions full"><button class="btn primary" type="submit">${editing ? "Enregistrer les modifications" : "Ajouter le pack"}</button>${editing ? `<button class="btn ghost" type="button" onclick="cancelPackEdit()">Annuler</button>` : ""}</div></form></div><div style="height:16px"></div><div class="panel"><div class="admin-panel-head"><h3>Catalogue complet (${rows.length} packs)</h3><span class="small-note">Les packs masqués restent dans la gestion et le stock.</span></div>${rows.length ? `<div class="table-wrap"><table class="table"><thead><tr><th>Pack</th><th>Catégorie</th><th>Prix</th><th>Visibilité</th><th>Actions</th></tr></thead><tbody>${rows.map(p=>`<tr><td><strong>${esc(p.name)}</strong><br><span class="small-note">${esc(p.id)}</span></td><td>${esc(p.cat)}</td><td>${money(p.price)}</td><td><span class="status ${p.active?"delivered":"cancelled"}">${p.active?"Publié":"Masqué"}</span></td><td><div class="table-actions"><button class="btn small ghost" onclick="editPack('${esc(p.id)}')">Modifier</button><button class="btn small ${p.active?"ghost":"secondary"}" onclick="togglePack('${esc(p.id)}',${!p.active})">${p.active?"Masquer":"Publier"}</button></div></td></tr>`).join("")}</tbody></table></div>` : '<div class="empty">Aucun pack disponible.</div>'}</div>`;
   }
   function editPack(id) { editingProductId = id; showAdminView("packs"); }
   function cancelPackEdit() { editingProductId = null; showAdminView("packs"); }
@@ -513,21 +563,33 @@
   }
   async function adminSettings() {
     const [{ data, error }, { data: notificationSettings, error: notificationError }] = await Promise.all([
-      client.from("settings").select("id,company,whatsapp,delivery_fee,currency").eq("id",true).maybeSingle(),
+      client.from("settings").select("id,company,whatsapp,delivery_fee,currency,homepage_background_url").eq("id",true).maybeSingle(),
       client.from("notification_settings").select("id,order_notification_email").eq("id",true).maybeSingle()
     ]);
     if (error) throw error;
     if (notificationError) console.warn("Impossible de lire les paramètres e-mail.", notificationError);
     const s = data || appSettings;
     const notificationEmail = notificationSettings?.order_notification_email || "";
-    return `<div class="panel"><h3>Paramètres de Sama-Pack</h3><form id="settingsForm" class="admin-form"><label>Nom de l’entreprise<input class="input" name="company" required value="${esc(s.company||"SAMA-PACK")}"></label><label>WhatsApp professionnel (ex. 22177…)<input class="input" name="whatsapp" value="${esc(s.whatsapp||"")}"></label><label>Frais de livraison par défaut (FCFA)<input class="input" name="delivery_fee" type="number" min="0" step="1" value="${Number(s.delivery_fee||0)}"></label><label>Devise<input class="input" name="currency" required maxlength="10" value="${esc(s.currency||"FCFA")}"></label><label class="full">E-mail recevant les nouvelles commandes et demandes de devis<input class="input" name="order_notification_email" type="email" placeholder="gestion@sama-pack.store" value="${esc(notificationEmail)}"></label><button class="btn primary full" type="submit">Enregistrer les paramètres</button></form><p class="small-note">Pour activer les e-mails, configure aussi RESEND_API_KEY et RESEND_FROM_EMAIL dans Supabase → Edge Functions → Secrets.</p></div>`;
+    const backgroundUrl = String(s.homepage_background_url || "");
+    return `<div class="panel"><h3>Paramètres de Sama-Pack</h3><form id="settingsForm" class="admin-form">
+      <label>Nom de l’entreprise<input class="input" name="company" required value="${esc(s.company||"SAMA-PACK")}"></label>
+      <label>WhatsApp professionnel (ex. 22177…)<input class="input" name="whatsapp" value="${esc(s.whatsapp||"")}"></label>
+      <label>Frais de livraison par défaut (FCFA)<input class="input" name="delivery_fee" type="number" min="0" step="1" value="${Number(s.delivery_fee||0)}"></label>
+      <label>Devise<input class="input" name="currency" required maxlength="10" value="${esc(s.currency||"FCFA")}"></label>
+      <label class="full">Image de fond de l’accueil (JPG, PNG ou WebP · 5 Mo maximum)<input class="input" name="homepage_background_file" type="file" accept="image/jpeg,image/png,image/webp"></label>
+      <label class="full">Ou URL HTTPS de l’image de fond<input class="input" name="homepage_background_url" type="url" placeholder="https://…" value="${esc(backgroundUrl)}"></label>
+      ${backgroundUrl ? `<div class="homepage-bg-preview-wrap full"><span class="small-note">Image actuellement enregistrée</span><img class="homepage-bg-preview" src="${esc(backgroundUrl)}" alt="Aperçu du fond de l’accueil"></div>` : '<p class="small-note full">Aucune image personnalisée : le fond vert clair par défaut sera utilisé.</p>'}
+      <p class="small-note full">Si tu sélectionnes un fichier, il remplace l’URL ci-dessus. Pour revenir au fond par défaut, vide l’URL et enregistre sans choisir de fichier.</p>
+      <label class="full">E-mail recevant les nouvelles commandes et demandes de devis<input class="input" name="order_notification_email" type="email" placeholder="gestion@sama-pack.store" value="${esc(notificationEmail)}"></label>
+      <button class="btn primary full" type="submit">Enregistrer les paramètres</button>
+    </form><p class="small-note">Pour activer les e-mails, configure aussi RESEND_API_KEY et RESEND_FROM_EMAIL dans Supabase → Edge Functions → Secrets.</p></div>`;
   }
   function bindAdmin(view) {
     if (view === "packs" || view === "products") {
       const form = $("packForm"); if (form) form.onsubmit = async e => {
         e.preventDefault(); if (!isAdmin()) return toast("Accès refusé.", true); setBusy(form,true,"Enregistrement…");
-        const fd = new FormData(form); const uploadFile = fd.get("image_file"); const promoPriceInput = String(fd.get("promo_price")||"").trim(); const payload = { name:String(fd.get("name")||"").trim(),category:String(fd.get("category")||"").trim(),price:Number(fd.get("price")),description:String(fd.get("description")||"").trim(),items:String(fd.get("items")||"").split(/\r?\n/).map(x=>x.trim()).filter(Boolean),image_path:String(fd.get("image_path")||"").trim(),active:fd.get("active")==="on",promo_active:fd.get("promo_active")==="on",promo_price:promoPriceInput === "" ? null : Number(promoPriceInput),promo_label:String(fd.get("promo_label")||"Offre spéciale").trim() || "Offre spéciale" };
-        if (!payload.name || !payload.category || !payload.description || !payload.items.length || !Number.isFinite(payload.price) || payload.price < 0) { setBusy(form,false); return toast("Complète le nom, la catégorie, le prix, la description et la composition.",true); } if (payload.promo_active && (!Number.isFinite(payload.promo_price) || payload.promo_price < 0 || payload.promo_price >= payload.price)) { setBusy(form,false); return toast("Le prix promotionnel doit être positif et inférieur au prix normal.",true); } if (!payload.promo_active && !Number.isFinite(payload.promo_price)) payload.promo_price = null;
+        const fd = new FormData(form); const uploadFile = fd.get("image_file"); const promoPriceInput = String(fd.get("promo_price")||"").trim(); const promoEndInput = String(fd.get("promo_end_at")||"").trim(); const payload = { name:String(fd.get("name")||"").trim(),category:String(fd.get("category")||"").trim(),price:Number(fd.get("price")),description:String(fd.get("description")||"").trim(),items:String(fd.get("items")||"").split(/\r?\n/).map(x=>x.trim()).filter(Boolean),image_path:String(fd.get("image_path")||"").trim(),active:fd.get("active")==="on",promo_active:fd.get("promo_active")==="on",promo_price:promoPriceInput === "" ? null : Number(promoPriceInput),promo_label:String(fd.get("promo_label")||"Vente flash").trim() || "Vente flash",promo_end_at:promoEndInput ? new Date(promoEndInput).toISOString() : null };
+        if (!payload.name || !payload.category || !payload.description || !payload.items.length || !Number.isFinite(payload.price) || payload.price < 0) { setBusy(form,false); return toast("Complète le nom, la catégorie, le prix, la description et la composition.",true); } if (payload.promo_active && (!Number.isFinite(payload.promo_price) || payload.promo_price < 0 || payload.promo_price >= payload.price)) { setBusy(form,false); return toast("Le prix promotionnel doit être positif et inférieur au prix normal.",true); } if (payload.promo_active && payload.promo_end_at && new Date(payload.promo_end_at).getTime() <= Date.now()) { setBusy(form,false); return toast("La fin de la vente flash doit être dans le futur.",true); } if (!payload.promo_active && !Number.isFinite(payload.promo_price)) payload.promo_price = null;
         if (payload.image_path && !/^https:\/\//i.test(payload.image_path) && /^(?:javascript:|data:|vbscript:)/i.test(payload.image_path)) { setBusy(form,false); return toast("Le chemin de l’image n’est pas valide.",true); }
         let productId = editingProductId || nextProductId();
         if (uploadFile instanceof File && uploadFile.size > 0) {
@@ -567,7 +629,47 @@
     if (view === "suppliers") { const form=$("supplierForm"); if(form) form.onsubmit=async e=>{e.preventDefault();setBusy(form,true,"Enregistrement…");const f=new FormData(form);const {error}=await client.from("suppliers").insert({name:String(f.get("name")||"").trim(),phone:String(f.get("phone")||"").trim(),family:String(f.get("family")||"").trim(),terms:String(f.get("terms")||"").trim()});setBusy(form,false);if(error)return toast(errorMessage(error),true);toast("Fournisseur ajouté.");await showAdminView("suppliers");}; }
     if (view === "expenses") { const form=$("expenseForm"); if(form) form.onsubmit=async e=>{e.preventDefault();setBusy(form,true,"Enregistrement…");const f=new FormData(form);const {error}=await client.from("expenses").insert({id:"DEP-"+crypto.randomUUID().slice(0,8).toUpperCase(),label:String(f.get("label")||"").trim(),amount:Number(f.get("amount")),category:String(f.get("category")||"").trim(),expense_date:String(f.get("date")||new Date().toISOString().slice(0,10))});setBusy(form,false);if(error)return toast(errorMessage(error),true);toast("Dépense enregistrée.");await showAdminView("expenses");}; }
     if (view === "quotes") { /* Le statut est enregistré dans le gestionnaire ci-dessous. */ }
-    if (view === "settings") { const form=$("settingsForm"); if(form) form.onsubmit=async e=>{e.preventDefault();setBusy(form,true,"Enregistrement…");const f=new FormData(form);const {error}=await client.from("settings").update({company:String(f.get("company")||"").trim(),whatsapp:String(f.get("whatsapp")||"").replace(/\D/g,""),delivery_fee:Number(f.get("delivery_fee")),currency:String(f.get("currency")||"FCFA").trim()}).eq("id",true);if(error){setBusy(form,false);return toast(errorMessage(error),true);}const emailResult=await client.from("notification_settings").update({order_notification_email:String(f.get("order_notification_email")||"").trim()}).eq("id",true);setBusy(form,false);if(emailResult.error)return toast("Paramètres boutique enregistrés, mais l’e-mail n’a pas pu être enregistré : "+errorMessage(emailResult.error),true);toast("Paramètres et e-mail de notification enregistrés.");await loadPublicData();}; }
+    if (view === "settings") {
+      const form = $("settingsForm");
+      if (form) form.onsubmit = async e => {
+        e.preventDefault();
+        if (!isAdmin()) return toast("Accès refusé.", true);
+        setBusy(form, true, "Enregistrement…");
+        const f = new FormData(form);
+        const file = f.get("homepage_background_file");
+        let homepageBackgroundUrl = String(f.get("homepage_background_url") || "").trim();
+        if (file instanceof File && file.size > 0) {
+          const allowed = ["image/jpeg", "image/png", "image/webp"];
+          if (!allowed.includes(file.type) || file.size > 5 * 1024 * 1024) {
+            setBusy(form, false);
+            return toast("Choisis une image JPG, PNG ou WebP de 5 Mo maximum.", true);
+          }
+          const ext = file.type === "image/jpeg" ? "jpg" : file.type === "image/png" ? "png" : "webp";
+          const path = `site-assets/homepage-${Date.now()}-${Math.random().toString(36).slice(2,8)}.${ext}`;
+          const { data: uploaded, error: uploadError } = await client.storage.from("sama-pack-products").upload(path, file, {cacheControl:"3600",upsert:false,contentType:file.type});
+          if (uploadError) { setBusy(form, false); return toast("Envoi de l’image de fond impossible : " + errorMessage(uploadError), true); }
+          homepageBackgroundUrl = client.storage.from("sama-pack-products").getPublicUrl(uploaded.path).data.publicUrl;
+        }
+        if (homepageBackgroundUrl && !/^https:\/\//i.test(homepageBackgroundUrl)) {
+          setBusy(form, false);
+          return toast("L’URL de l’image doit commencer par https://.", true);
+        }
+        const {error} = await client.from("settings").update({
+          company:String(f.get("company")||"").trim(),
+          whatsapp:String(f.get("whatsapp")||"").replace(/\D/g,""),
+          delivery_fee:Number(f.get("delivery_fee")),
+          currency:String(f.get("currency")||"FCFA").trim(),
+          homepage_background_url: homepageBackgroundUrl
+        }).eq("id",true);
+        if (error) { setBusy(form,false); return toast(errorMessage(error),true); }
+        const emailResult = await client.from("notification_settings").update({order_notification_email:String(f.get("order_notification_email")||"").trim()}).eq("id",true);
+        setBusy(form,false);
+        if (emailResult.error) { await loadPublicData(); return toast("Paramètres boutique enregistrés, mais l’e-mail n’a pas pu être enregistré : "+errorMessage(emailResult.error),true); }
+        toast("Paramètres, image de fond et e-mail de notification enregistrés.");
+        await loadPublicData();
+        await showAdminView("settings");
+      };
+    }
     if (view === "orders" || view === "quotes") { /* les sélecteurs déclaratifs utilisent les fonctions globales */ }
   }
   async function setQuoteStatus(id,status) {
@@ -583,6 +685,8 @@
     const search = $("searchBox"); if (search) search.addEventListener("input",() => { currentProductPage = 1; renderProducts(); });
     const category = $("categoryFilter"); if(category) category.addEventListener("change",() => { currentProductPage = 1; renderProducts(); });
     if ($("openCartBtn")) $("openCartBtn").onclick = renderCartModal;
+    document.querySelectorAll("[data-mobile-action=cart]").forEach(b => b.addEventListener("click", renderCartModal));
+    document.querySelectorAll("[data-mobile-action=account]").forEach(b => b.addEventListener("click", openAccountModal));
     if ($("heroWhatsApp")) $("heroWhatsApp").onclick = () => document.getElementById("catalogue").scrollIntoView({behavior:"smooth"});
     if ($("contactWhatsApp")) $("contactWhatsApp").onclick = () => openWA("Bonjour Sama-Pack, je souhaite avoir plus d’informations sur vos packs.");
     if ($("quoteBtn")) $("quoteBtn").onclick = openQuoteModal;

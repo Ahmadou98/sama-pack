@@ -54,24 +54,37 @@
         <div><strong>24/7</strong><span>catalogue en ligne</span></div>
       </div>
     </div>
-    <div class="hero-card promo-hero-card">
+    <div class="hero-card discovery-hero-card">
       <div class="hero-card-head">
-        <span>🏷️ Offres &amp; packs</span>
-        <div id="promoArrows" class="promo-arrows" aria-label="Navigation des promotions">
-          <button class="btn ghost small" type="button" onclick="movePromo(-1)" aria-label="Promotion précédente">←</button>
-          <button class="btn ghost small" type="button" onclick="movePromo(1)" aria-label="Promotion suivante">→</button>
-        </div>
-      </div>
-      <div id="promoSection" class="promo-inline-section hidden" aria-label="Offres promotionnelles">
-        <div id="promoCarousel" aria-live="polite"></div>
-        <div id="promoDots" class="promo-dots" aria-label="Choisir une promotion"></div>
+        <span>Nos packs à découvrir</span>
+        <small>Des solutions pour chaque besoin</small>
       </div>
       <div id="heroTopPacks" class="top-packs"></div>
+      <a class="hero-discovery-link" href="#catalogue">Parcourir tout le catalogue <span aria-hidden="true">→</span></a>
     </div>
   </div>
 </section>
 
 
+
+
+<section id="promoSection" class="flash-section section hidden" aria-label="Vente flash">
+  <div class="wrap">
+    <div class="flash-section-header">
+      <div>
+        <div class="eyebrow">OFFRES À DURÉE LIMITÉE</div>
+        <h2>Vente flash <span class="flash-title-mark">⚡</span></h2>
+        <p>Les offres du moment, à ne pas laisser passer.</p>
+      </div>
+      <div id="promoArrows" class="promo-arrows flash-arrows" aria-label="Navigation des ventes flash">
+        <button class="btn ghost" type="button" onclick="movePromo(-1)" aria-label="Vente flash précédente">←</button>
+        <button class="btn ghost" type="button" onclick="movePromo(1)" aria-label="Vente flash suivante">→</button>
+      </div>
+    </div>
+    <div id="promoCarousel" class="flash-carousel" aria-live="polite"></div>
+    <div id="promoDots" class="promo-dots flash-dots" aria-label="Choisir une vente flash"></div>
+  </div>
+</section>
 
 <section id="catalogue" class="section">
   <div class="wrap">
@@ -113,6 +126,14 @@
   </div>
 </section>
 </main>
+
+<nav class="mobile-bottom-nav" aria-label="Navigation rapide">
+  <a href="#home" class="mobile-nav-item"><span aria-hidden="true">⌂</span><small>Accueil</small></a>
+  <a href="#catalogue" class="mobile-nav-item"><span aria-hidden="true">▦</span><small>Catalogue</small></a>
+  <a href="#promoSection" class="mobile-nav-item"><span aria-hidden="true">⚡</span><small>Vente flash</small></a>
+  <button type="button" class="mobile-nav-item" data-mobile-action="cart"><span aria-hidden="true">🛒</span><small>Panier</small></button>
+  <button type="button" class="mobile-nav-item" data-mobile-action="account"><span aria-hidden="true">♙</span><small>Compte</small></button>
+</nav>
 
 <footer class="footer"><div class="wrap footer-grid"><div><div class="brand footer-brand"><span class="brand-mark">S</span><span>SAMA<span>-PACK</span></span></div><p>Distribution de packs de nettoyage et d’hygiène.</p></div><div><strong>Navigation</strong><a href="#catalogue">Catalogue</a><a href="#b2b">Professionnels</a><a href="#contact">Contact</a></div><div id="footerAdminSection" class="hidden"><strong>Espace administrateur</strong><a href="#" id="footerAdmin">Ouvrir la gestion</a><small>Réservé aux administrateurs.</small></div></div><div class="wrap footer-bottom">© <span id="year"></span> SAMA-PACK. Tous droits réservés.</div></footer>
 
