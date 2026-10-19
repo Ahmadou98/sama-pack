@@ -129,13 +129,23 @@
   function applyHomepageBackground() {
     const hero = $("home");
     if (!hero) return;
+
     const src = String(appSettings.homepageBackgroundUrl || "").trim();
-    if (!/^https:\/\//i.test(src)) { hero.classList.remove("has-custom-bg"); hero.style.removeProperty("--hero-custom-background"); return; }
-    const safeSrc = src.replace(/["\
-]/g, "");
-    hero.style.setProperty("--hero-custom-background", `url("${safeSrc}")`);
+
+    if (!src.toLowerCase().startsWith("https://")) {
+      hero.classList.remove("has-custom-bg");
+      hero.style.removeProperty("--hero-custom-background");
+      return;
+    }
+
+    const safeSrc = encodeURI(src);
+    hero.style.setProperty(
+      "--hero-custom-background",
+      `url("${safeSrc}")`
+    );
     hero.classList.add("has-custom-bg");
   }
+
   function renderTop() {
     const el = $("heroTopPacks"); if (!el) return;
     const tops = products.filter(p => p.active).sort((a,b) => Number(hasPromotion(b)) - Number(hasPromotion(a))).slice(0, 3);
