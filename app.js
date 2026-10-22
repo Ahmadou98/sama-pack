@@ -484,10 +484,16 @@
     const count = $("packCount"); if (count) count.textContent = String(products.filter(p => p.active && p.catalog_type === "pack").length);
     updateContact(); updateCategoryFilter(); renderTop(); renderProducts(); renderPromoCarousel(); updateCartCount();
   }
+  function getCurrentCatalogType() {
+    const value = document.body?.dataset?.catalogType;
+    return value === "product" || value === "tool" ? value : "pack";
+  }
+
   function updateCategoryFilter() {
     const filter = $("categoryFilter"); if (!filter) return;
     const old = filter.value || "all";
-    const categories = [...new Set(products.filter(p => p.catalog_type === "pack" && (p.active || isAdmin())).map(p => p.cat).filter(Boolean))].sort((a,b) => a.localeCompare(b, "fr"));
+    const pageType = getCurrentCatalogType();
+    const categories = [...new Set(products.filter(p => p.catalog_type === pageType && (p.active || isAdmin())).map(p => p.cat).filter(Boolean))].sort((a,b) => a.localeCompare(b, "fr"));
     filter.innerHTML = '<option value="all">Toutes les catégories</option>' + categories.map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join("");
     filter.value = categories.includes(old) ? old : "all";
   }
@@ -621,7 +627,8 @@
     const grid = $("productGrid"); if (!grid) return;
     const q = String($("searchBox")?.value || "").toLowerCase().trim();
     const c = $("categoryFilter")?.value || "all";
-    const arr = products.filter(p => p.active && p.catalog_type === "pack" && (c === "all" || p.cat === c) && [p.name,p.desc,p.cat,...p.items].join(" ").toLowerCase().includes(q));
+    const currentType = getCurrentCatalogType();
+    const arr = products.filter(p => p.active && p.catalog_type === currentType && (c === "all" || p.cat === c) && [p.name,p.desc,p.cat,...p.items].join(" ").toLowerCase().includes(q));
     const pages = Math.max(1, Math.ceil(arr.length / PRODUCTS_PER_PAGE));
     currentProductPage = Math.min(Math.max(1, currentProductPage), pages);
     const start = (currentProductPage - 1) * PRODUCTS_PER_PAGE;
