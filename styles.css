@@ -1653,3 +1653,44 @@ html { scroll-padding-top:88px; }
 }
 @media (prefers-reduced-motion: reduce) { .review-star-choice { transition: none; } }
 
+/* ===== SAMA-PACK prospects + individual cleaning catalogues ===== */
+.individual-catalog-section .section-head { align-items: end; }
+.individual-catalog-section .section-head p { margin: 8px 0 0; font-size: 14px; }
+.individual-catalog-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.individual-catalog-empty { grid-column: 1 / -1; }
+.prospect-form-panel { margin-bottom: 22px; }
+.prospect-form-panel h3, #adminContent > .panel h3 { margin: 3px 0 0; }
+.prospect-status-field { display: grid; gap: 5px; min-width: 135px; }
+.prospect-status-field .input { max-width: 175px; padding: 8px; font-size: 12px; }
+.prospect-notes { margin-top: 7px; max-width: 220px; color: #475569; font-size: 12px; }
+.prospect-notes summary { cursor: pointer; font-weight: 700; color: var(--green); }
+.prospect-notes p { white-space: pre-wrap; overflow-wrap: anywhere; }
+.prospect-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.prospect-actions .btn { padding: 7px 9px; font-size: 11px; }
+.prospect-actions .btn.danger { color: #9f3434; border-color: #f2d4d4; }
+.catalog-active-check { display: flex !important; align-items: center; gap: 9px !important; color: var(--ink) !important; }
+.catalog-active-check input { width: 16px; height: 16px; accent-color: var(--green); }
+@media (max-width: 900px) {
+  .individual-catalog-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 600px) {
+  .individual-catalog-section { padding: 44px 0; }
+  .individual-catalog-section .section-head { margin-bottom: 17px; }
+  .individual-catalog-section .section h2,
+  .individual-catalog-section h2 { font-size: 27px; }
+  .individual-catalog-section .section-head p { font-size: 12px; line-height: 1.5; }
+  .individual-catalog-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .individual-catalog-grid .product-card { border-radius: 14px; }
+  .individual-catalog-grid .pack-visual { min-height: 112px; padding: 8px; }
+  .individual-catalog-grid .product-photo { max-height: 112px; }
+  .individual-catalog-grid .product-body { gap: 8px; padding: 11px; }
+  .individual-catalog-grid .product-cat { font-size: 9px; }
+  .individual-catalog-grid .product-name { font-size: 13px; line-height: 1.3; overflow-wrap: anywhere; }
+  .individual-catalog-grid .price { font-size: 16px; }
+  .individual-catalog-grid .product-actions { display: grid; grid-template-columns: 1fr; gap: 6px; }
+  .individual-catalog-grid .product-actions .btn { width: 100%; min-height: 36px; padding: 8px 5px; font-size: 11px; }
+  .prospect-form-panel .section-head { flex-direction: row; align-items: center; }
+  .prospect-actions { flex-direction: column; align-items: stretch; }
+  .prospect-actions .btn { width: 100%; }
+}
+

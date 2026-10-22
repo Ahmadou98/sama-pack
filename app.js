@@ -37,10 +37,10 @@
   let cart = loadCart();
 
   function normalizeFallbackProduct(p) {
-    return { id: String(p.id), name: String(p.name || "Pack"), cat: String(p.cat || p.category || "Autre"), category: String(p.cat || p.category || "Autre"), price: Number(p.price || 0), desc: String(p.desc || p.description || ""), description: String(p.desc || p.description || ""), items: Array.isArray(p.items) ? p.items : [], image_path: p.image_path || "", active: p.active !== false, promo_active: p.promo_active === true, promo_price: p.promo_price == null || p.promo_price === "" ? null : Number(p.promo_price), promo_label: String(p.promo_label || "Offre spéciale"), promo_end_at: p.promo_end_at || null };
+    return { id: String(p.id), catalog_type: String(p.catalog_type || "pack"), name: String(p.name || "Pack"), cat: String(p.cat || p.category || "Autre"), category: String(p.cat || p.category || "Autre"), price: Number(p.price || 0), desc: String(p.desc || p.description || ""), description: String(p.desc || p.description || ""), items: Array.isArray(p.items) ? p.items : [], image_path: p.image_path || "", active: p.active !== false, promo_active: p.promo_active === true, promo_price: p.promo_price == null || p.promo_price === "" ? null : Number(p.promo_price), promo_label: String(p.promo_label || "Offre spéciale"), promo_end_at: p.promo_end_at || null };
   }
   function normalizeProduct(p) {
-    return { ...p, id: String(p.id), cat: String(p.category || p.cat || "Autre"), category: String(p.category || p.cat || "Autre"), price: Number(p.price || 0), desc: String(p.description || p.desc || ""), description: String(p.description || p.desc || ""), items: Array.isArray(p.items) ? p.items : [], image_path: String(p.image_path || ""), active: p.active !== false, promo_active: p.promo_active === true, promo_price: p.promo_price == null || p.promo_price === "" ? null : Number(p.promo_price), promo_label: String(p.promo_label || "Offre spéciale") };
+    return { ...p, id: String(p.id), catalog_type: String(p.catalog_type || "pack"), cat: String(p.category || p.cat || "Autre"), category: String(p.category || p.cat || "Autre"), price: Number(p.price || 0), desc: String(p.description || p.desc || ""), description: String(p.description || p.desc || ""), items: Array.isArray(p.items) ? p.items : [], image_path: String(p.image_path || ""), active: p.active !== false, promo_active: p.promo_active === true, promo_price: p.promo_price == null || p.promo_price === "" ? null : Number(p.promo_price), promo_label: String(p.promo_label || "Offre spéciale") };
   }
   function hasPromotion(p) {
     if (!p || p.promo_active !== true || p.promo_price == null || p.promo_price === "") return false;
@@ -229,10 +229,248 @@
     };
   }
 
+  let editingProspectId = null;
+  let editingCatalogItemId = null;
+
+  const PROSPECT_STATUSES = [
+    ["to_contact", "À prospecter"],
+    ["contacted", "Contacté"],
+    ["interested", "Intéressé"],
+    ["converted", "Devenu client"],
+    ["not_interested", "Pas intéressé"]
+  ];
+
+  function renderIndividualCatalogs() {
+    const productGrid = $("individualProductGrid");
+    const toolGrid = $("cleaningToolGrid");
+    if (productGrid) {
+      const items = products.filter(p => p.active && p.catalog_type === "product");
+      productGrid.innerHTML = items.map(productCard).join("") || '<div class="empty individual-catalog-empty">Les produits de nettoyage à l’unité seront bientôt disponibles.</div>';
+    }
+    if (toolGrid) {
+      const items = products.filter(p => p.active && p.catalog_type === "tool");
+      toolGrid.innerHTML = items.map(productCard).join("") || '<div class="empty individual-catalog-empty">Les outils et matériels de nettoyage seront bientôt disponibles.</div>';
+    }
+  }
+
+  function prospectStatusLabel(status) {
+    return (PROSPECT_STATUSES.find(option => option[0] === status) || ["", status || "À prospecter"])[1];
+  }
+
+  async function renderProspectsAdmin() {
+    const host = $("adminContent");
+    if (!host || !client || !isAdmin()) return;
+    const { data: rows, error } = await client.from("prospects")
+      .select("id,full_name,company,email,phone,position,address,source,notes,status,created_by,created_at,updated_at")
+      .order("created_at", { ascending: false });
+    if (error) {
+      host.innerHTML = '<div class="panel"><h3>Prospection</h3><p>Impossible de charger les prospects. Vérifie la connexion et les autorisations.</p></div>';
+      console.warn("Prospects load failed", error);
+      return toast(errorMessage(error), true);
+    }
+
+    const assignedIds = [...new Set((rows || []).map(row => row.created_by).filter(Boolean))];
+    const assignedLabels = Object.create(null);
+    if (assignedIds.length) {
+      const { data: admins, error: adminsError } = await client.from("profiles").select("id,full_name,email").in("id", assignedIds);
+      if (!adminsError) (admins || []).forEach(admin => {
+        assignedLabels[admin.id] = admin.full_name || admin.email || "Administrateur";
+      });
+    }
+    const editing = editingProspectId ? (rows || []).find(row => row.id === editingProspectId) : null;
+    if (editingProspectId && !editing) {
+      editingProspectId = null;
+      toast("Ce prospect n’est pas accessible ou n’existe plus.", true);
+    }
+    const current = editing || {};
+    const statusOptions = PROSPECT_STATUSES.map(([value, label]) => `<option value="${value}" ${current.status === value ? "selected" : ""}>${label}</option>`).join("");
+    const formHtml = `<div class="panel prospect-form-panel"><div class="section-head"><div><div class="eyebrow">SUIVI COMMERCIAL</div><h3>${editing ? "Modifier le prospect" : "Ajouter un prospect"}</h3></div>${editing ? '<button type="button" class="btn ghost small" onclick="editProspect(\'\')">Annuler</button>' : ""}</div>
+      <p class="small-note">Chaque prospect est attribué à l’administrateur connecté. Il faut au moins un numéro de téléphone ou une adresse e-mail.</p>
+      <form id="prospectForm" class="admin-form">
+        <label>Nom complet *<input class="input" name="full_name" required minlength="2" maxlength="160" value="${esc(current.full_name || "")}" placeholder="Nom du contact"></label>
+        <label>Entreprise / structure<input class="input" name="company" maxlength="180" value="${esc(current.company || "")}" placeholder="Entreprise"></label>
+        <label>Téléphone<input class="input" name="phone" maxlength="40" value="${esc(current.phone || "")}" placeholder="+221 …"></label>
+        <label>E-mail<input class="input" name="email" type="email" maxlength="254" value="${esc(current.email || "")}" placeholder="contact@entreprise.sn"></label>
+        <label>Fonction<input class="input" name="position" maxlength="140" value="${esc(current.position || "")}" placeholder="Responsable achats…"></label>
+        <label>Adresse / zone<input class="input" name="address" maxlength="300" value="${esc(current.address || "")}" placeholder="Dakar, quartier…"></label>
+        <label>Origine du contact<input class="input" name="source" maxlength="120" value="${esc(current.source || "")}" placeholder="Visite, recommandation…"></label>
+        <label>Statut<select class="input" name="status">${PROSPECT_STATUSES.map(([value,label]) => `<option value="${value}" ${(current.status || "to_contact") === value ? "selected" : ""}>${label}</option>`).join("")}</select></label>
+        <label class="full">Notes de prospection<textarea class="input" name="notes" maxlength="2000" rows="3" placeholder="Besoins, prochaines actions, compte rendu…">${esc(current.notes || "")}</textarea></label>
+        <div class="full"><button class="btn primary" type="submit">${editing ? "Enregistrer les modifications" : "Ajouter le prospect"}</button></div>
+      </form></div>`;
+
+    const listHtml = rows?.length ? `<div class="table-wrap"><table class="table"><thead><tr><th>Prospect</th><th>Coordonnées</th><th>Suivi</th><th>Responsable</th><th>Actions</th></tr></thead><tbody>${rows.map(row => `<tr>
+      <td><strong>${esc(row.full_name)}</strong><br><span class="small-note">${esc(row.company || "Structure non renseignée")}</span>${row.position ? `<br><span class="small-note">${esc(row.position)}</span>` : ""}</td>
+      <td>${row.phone ? `<div>${esc(row.phone)}</div>` : ""}${row.email ? `<div>${esc(row.email)}</div>` : ""}${row.address ? `<div class="small-note">${esc(row.address)}</div>` : ""}</td>
+      <td><label class="prospect-status-field"><span class="small-note">${esc(prospectStatusLabel(row.status))}</span><select class="input" aria-label="Statut de ${esc(row.full_name)}" onchange="setProspectStatus('${esc(row.id)}',this.value)">${PROSPECT_STATUSES.map(([value,label]) => `<option value="${value}" ${row.status === value ? "selected" : ""}>${label}</option>`).join("")}</select></label>${row.notes ? `<details class="prospect-notes"><summary>Notes</summary><p>${esc(row.notes)}</p></details>` : ""}</td>
+      <td><strong>${esc(assignedLabels[row.created_by] || "Administrateur")}</strong></td>
+      <td><div class="prospect-actions"><button class="btn ghost small" onclick="editProspect('${esc(row.id)}')">Modifier</button><button class="btn ghost small danger" onclick="deleteProspect('${esc(row.id)}')">Supprimer</button></div></td>
+    </tr>`).join("")}</tbody></table></div>` : '<div class="empty">Aucun prospect pour le moment. Ajoute le premier contact avec le formulaire ci-dessus.</div>';
+    host.innerHTML = `${formHtml}<div class="panel"><div class="section-head"><div><div class="eyebrow">CARNET DE PROSPECTION</div><h3>Prospects accessibles (${(rows || []).length})</h3></div></div>${listHtml}</div>`;
+
+    const form = $("prospectForm");
+    if (!form) return;
+    form.onsubmit = async event => {
+      event.preventDefault();
+      const data = new FormData(form);
+      const payload = {
+        full_name: String(data.get("full_name") || "").trim(),
+        company: String(data.get("company") || "").trim(),
+        phone: String(data.get("phone") || "").trim(),
+        email: String(data.get("email") || "").trim(),
+        position: String(data.get("position") || "").trim(),
+        address: String(data.get("address") || "").trim(),
+        source: String(data.get("source") || "").trim(),
+        notes: String(data.get("notes") || "").trim(),
+        status: String(data.get("status") || "to_contact"),
+        updated_at: new Date().toISOString()
+      };
+      if (!payload.phone && !payload.email) return toast("Renseigne au moins un téléphone ou une adresse e-mail.", true);
+      if (payload.full_name.length < 2) return toast("Le nom du prospect est trop court.", true);
+      setBusy(form, true, editingProspectId ? "Enregistrement…" : "Ajout…");
+      try {
+        let result;
+        if (editingProspectId) {
+          result = await client.from("prospects").update(payload).eq("id", editingProspectId);
+        } else {
+          result = await client.from("prospects").insert({ ...payload, created_by: currentUser.id });
+        }
+        if (result.error) return toast(errorMessage(result.error), true);
+        editingProspectId = null;
+        toast("Prospect enregistré.");
+        await renderProspectsAdmin();
+      } catch (err) {
+        toast(errorMessage(err), true);
+      } finally {
+        if (form.isConnected) setBusy(form, false);
+      }
+    };
+  }
+
+  async function editProspect(id) {
+    editingProspectId = id || null;
+    await renderProspectsAdmin();
+    if (editingProspectId) $("adminContent")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  async function setProspectStatus(id, status) {
+    if (!PROSPECT_STATUSES.some(option => option[0] === status)) return toast("Statut de prospect invalide.", true);
+    const { error } = await client.from("prospects").update({ status, updated_at: new Date().toISOString() }).eq("id", id);
+    if (error) return toast(errorMessage(error), true);
+    toast("Statut du prospect mis à jour.");
+    await renderProspectsAdmin();
+  }
+
+  async function deleteProspect(id) {
+    if (!window.confirm("Supprimer définitivement ce prospect ? Cette action est irréversible.")) return;
+    const { error } = await client.from("prospects").delete().eq("id", id);
+    if (error) return toast(errorMessage(error), true);
+    if (editingProspectId === id) editingProspectId = null;
+    toast("Prospect supprimé.");
+    await renderProspectsAdmin();
+  }
+
+  async function renderIndividualCatalogAdmin() {
+    const host = $("adminContent");
+    if (!host || !client || !isAdmin()) return;
+    const { data: rows, error } = await client.from("products")
+      .select("id,name,catalog_type,category,price,description,items,image_path,active,promo_active,promo_price,promo_label,promo_end_at")
+      .in("catalog_type", ["product", "tool"])
+      .order("name", { ascending: true });
+    if (error) {
+      host.innerHTML = '<div class="panel"><h3>Catalogue individuel</h3><p>Impossible de charger les produits et outils.</p></div>';
+      console.warn("Individual catalog load failed", error);
+      return toast(errorMessage(error), true);
+    }
+    const editing = editingCatalogItemId ? (rows || []).find(row => row.id === editingCatalogItemId) : null;
+    if (editingCatalogItemId && !editing) {
+      editingCatalogItemId = null;
+      toast("Cet article n’est pas accessible ou n’existe plus.", true);
+    }
+    const current = editing || {};
+    const itemsText = Array.isArray(current.items) ? current.items.join("\n") : "";
+    const formHtml = `<div class="panel"><div class="section-head"><div><div class="eyebrow">CATALOGUE CLIENT</div><h3>${editing ? "Modifier un article" : "Ajouter un produit ou un outil"}</h3></div>${editing ? '<button type="button" class="btn ghost small" onclick="editCatalogItem(\'\')">Annuler</button>' : ""}</div>
+      <p class="small-note">Les articles actifs seront visibles dans leur catalogue et pourront être ajoutés au panier. Les packs restent gérés dans « Gestion des packs ».</p>
+      <form id="individualCatalogForm" class="admin-form">
+        <label>Type d’article *<select class="input" name="catalog_type" required><option value="product" ${(current.catalog_type || "product") === "product" ? "selected" : ""}>Produit de nettoyage</option><option value="tool" ${current.catalog_type === "tool" ? "selected" : ""}>Outil / matériel de nettoyage</option></select></label>
+        <label>Nom *<input class="input" name="name" required minlength="2" maxlength="180" value="${esc(current.name || "")}" placeholder="Ex. Nettoyant sol 1 L"></label>
+        <label>Catégorie<input class="input" name="category" maxlength="100" value="${esc(current.category || "")}" placeholder="Lessive, désinfection…"></label>
+        <label>Prix de vente (FCFA) *<input class="input" name="price" type="number" required min="0" step="1" value="${Number(current.price || 0)}"></label>
+        <label class="full">Description<textarea class="input" name="description" maxlength="1200" rows="3" placeholder="Présente clairement l’article et son usage.">${esc(current.description || "")}</textarea></label>
+        <label class="full">Image (URL HTTPS ou chemin de l’image)<input class="input" name="image_path" maxlength="1000" value="${esc(current.image_path || "")}" placeholder="https://… ou images/produit.jpg"></label>
+        <label class="full">Contenu / caractéristiques (une ligne par élément)<textarea class="input" name="items" maxlength="3000" rows="4" placeholder="Format : 1 L&#10;Usage : sols carrelés&#10;Précautions : …">${esc(itemsText)}</textarea></label>
+        <label class="catalog-active-check"><input type="checkbox" name="active" ${current.active === false ? "" : "checked"}> Article visible dans le catalogue</label>
+        <div class="full"><button class="btn primary" type="submit">${editing ? "Enregistrer l’article" : "Ajouter au catalogue"}</button></div>
+      </form></div>`;
+    const listHtml = rows?.length ? `<div class="table-wrap"><table class="table"><thead><tr><th>Article</th><th>Type</th><th>Prix</th><th>Visibilité</th><th>Actions</th></tr></thead><tbody>${rows.map(row => `<tr>
+      <td><strong>${esc(row.name)}</strong><br><span class="small-note">${esc(row.category || "Sans catégorie")}</span></td>
+      <td>${row.catalog_type === "tool" ? "Outil / matériel" : "Produit de nettoyage"}</td>
+      <td>${money(row.price)}</td><td>${row.active ? '<span class="status delivered">Visible</span>' : '<span class="status cancelled">Masqué</span>'}</td>
+      <td><div class="prospect-actions"><button class="btn ghost small" onclick="editCatalogItem('${esc(row.id)}')">Modifier</button><button class="btn ghost small" onclick="archiveCatalogItem('${esc(row.id)}',${row.active ? "false" : "true"})">${row.active ? "Masquer" : "Publier"}</button></div></td>
+    </tr>`).join("")}</tbody></table></div>` : '<div class="empty">Aucun produit individuel ni outil enregistré. Utilise le formulaire pour ajouter le premier article.</div>';
+    host.innerHTML = `${formHtml}<div class="panel"><div class="section-head"><div><div class="eyebrow">GESTION DES ARTICLES</div><h3>Produits et outils enregistrés (${(rows || []).length})</h3></div></div>${listHtml}</div>`;
+
+    const form = $("individualCatalogForm");
+    if (!form) return;
+    form.onsubmit = async event => {
+      event.preventDefault();
+      const data = new FormData(form);
+      const name = String(data.get("name") || "").trim();
+      const price = Number(data.get("price"));
+      if (name.length < 2 || !Number.isFinite(price) || price < 0) return toast("Vérifie le nom et le prix de l’article.", true);
+      const payload = {
+        name,
+        catalog_type: data.get("catalog_type") === "tool" ? "tool" : "product",
+        category: String(data.get("category") || "").trim() || (data.get("catalog_type") === "tool" ? "Outils de nettoyage" : "Produits de nettoyage"),
+        price,
+        description: String(data.get("description") || "").trim(),
+        image_path: String(data.get("image_path") || "").trim(),
+        items: String(data.get("items") || "").split(/\r?\n/).map(x => x.trim()).filter(Boolean),
+        active: form.querySelector('[name="active"]').checked,
+        updated_at: new Date().toISOString()
+      };
+      setBusy(form, true, editingCatalogItemId ? "Enregistrement…" : "Ajout…");
+      try {
+        let result;
+        if (editingCatalogItemId) {
+          result = await client.from("products").update(payload).eq("id", editingCatalogItemId);
+        } else {
+          const id = `CAT-${Date.now()}-${Math.random().toString(36).slice(2, 7).toUpperCase()}`;
+          result = await client.from("products").insert({ ...payload, id, promo_active: false, promo_price: null, promo_label: "Offre spéciale" });
+        }
+        if (result.error) return toast(errorMessage(result.error), true);
+        editingCatalogItemId = null;
+        toast("Article enregistré dans le catalogue.");
+        await loadPublicData();
+        await renderIndividualCatalogAdmin();
+      } catch (err) {
+        toast(errorMessage(err), true);
+      } finally {
+        if (form.isConnected) setBusy(form, false);
+      }
+    };
+  }
+
+  async function editCatalogItem(id) {
+    editingCatalogItemId = id || null;
+    await renderIndividualCatalogAdmin();
+    if (editingCatalogItemId) $("adminContent")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  async function archiveCatalogItem(id, active) {
+    const action = active ? "rendre visible" : "masquer";
+    if (!window.confirm(`Confirmer : ${action} cet article dans le catalogue ?`)) return;
+    const { error } = await client.from("products").update({ active, updated_at: new Date().toISOString() }).eq("id", id);
+    if (error) return toast(errorMessage(error), true);
+    toast(active ? "Article publié." : "Article masqué du catalogue.");
+    await loadPublicData();
+    await renderIndividualCatalogAdmin();
+  }
+
   async function loadPublicData() {
     if (!client) return;
     const { data: rows, error } = await client.from("products")
-      .select("id,name,category,price,description,items,image_path,active,promo_active,promo_price,promo_label,promo_end_at")
+      .select("id,name,catalog_type,category,price,description,items,image_path,active,promo_active,promo_price,promo_label,promo_end_at")
       .order("id", { ascending: true });
     if (!error && Array.isArray(rows)) products = rows.map(normalizeProduct);
     else console.warn("Catalogue distant indisponible; affichage du catalogue de secours.", error);
@@ -243,13 +481,13 @@
       applyHomepageBackground();
     } else if (settingError) console.warn("Paramètres distants indisponibles.", settingError);
     await loadProductReviewStats();
-    const count = $("packCount"); if (count) count.textContent = String(products.filter(p => p.active).length);
+    const count = $("packCount"); if (count) count.textContent = String(products.filter(p => p.active && p.catalog_type === "pack").length);
     updateContact(); updateCategoryFilter(); renderTop(); renderProducts(); renderPromoCarousel(); updateCartCount();
   }
   function updateCategoryFilter() {
     const filter = $("categoryFilter"); if (!filter) return;
     const old = filter.value || "all";
-    const categories = [...new Set(products.filter(p => p.active || isAdmin()).map(p => p.cat).filter(Boolean))].sort((a,b) => a.localeCompare(b, "fr"));
+    const categories = [...new Set(products.filter(p => p.catalog_type === "pack" && (p.active || isAdmin())).map(p => p.cat).filter(Boolean))].sort((a,b) => a.localeCompare(b, "fr"));
     filter.innerHTML = '<option value="all">Toutes les catégories</option>' + categories.map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join("");
     filter.value = categories.includes(old) ? old : "all";
   }
@@ -279,7 +517,7 @@
 
   function renderTop() {
     const el = $("heroTopPacks"); if (!el) return;
-    const tops = products.filter(p => p.active).sort((a,b) => Number(hasPromotion(b)) - Number(hasPromotion(a))).slice(0, 3);
+    const tops = products.filter(p => p.active && p.catalog_type === "pack").sort((a,b) => Number(hasPromotion(b)) - Number(hasPromotion(a))).slice(0, 3);
     el.innerHTML = tops.map(p => `<div class="mini-pack"><div class="mini-icon">${iconById[p.id] || "📦"}</div><div><strong>${esc(p.name)}</strong><small>${money(getEffectivePrice(p))}${hasPromotion(p) ? " · Promo" : ""}</small></div></div>`).join("") || '<div class="empty">Les packs seront bientôt disponibles.</div>';
   }
   function promoImageOnly(p) {
@@ -305,7 +543,7 @@
   function renderPromoCarousel() {
     const section = $("promoSection"), carousel = $("promoCarousel"), dots = $("promoDots");
     if (!section || !carousel) return;
-    const promos = products.filter(p => p.active && hasPromotion(p));
+    const promos = products.filter(p => p.active && p.catalog_type === "pack" && hasPromotion(p));
     section.classList.remove("hidden");
     const topPacks = $("heroTopPacks");
     if (topPacks) topPacks.classList.remove("hidden");
@@ -356,7 +594,7 @@
     if (expired) { renderProducts(); renderPromoCarousel(); }
   }
   function movePromo(direction) {
-    const count = products.filter(p => p.active && hasPromotion(p)).length;
+    const count = products.filter(p => p.active && p.catalog_type === "pack" && hasPromotion(p)).length;
     if (count < 2) return;
     currentPromoIndex = (currentPromoIndex + direction + count) % count;
     renderPromoCarousel();
@@ -366,7 +604,7 @@
     if (promoCarouselTimer) window.clearInterval(promoCarouselTimer);
     if (promoCountdownTimer) window.clearInterval(promoCountdownTimer);
     promoCarouselTimer = window.setInterval(() => {
-      const count = products.filter(p => p.active && hasPromotion(p)).length;
+      const count = products.filter(p => p.active && p.catalog_type === "pack" && hasPromotion(p)).length;
       if (count > 1) { currentPromoIndex = (currentPromoIndex + 1) % count; renderPromoCarousel(); }
     }, PROMO_ROTATE_MS);
     promoCountdownTimer = window.setInterval(updatePromoCountdowns, 1000);
@@ -383,13 +621,14 @@
     const grid = $("productGrid"); if (!grid) return;
     const q = String($("searchBox")?.value || "").toLowerCase().trim();
     const c = $("categoryFilter")?.value || "all";
-    const arr = products.filter(p => p.active && (c === "all" || p.cat === c) && [p.name,p.desc,p.cat,...p.items].join(" ").toLowerCase().includes(q));
+    const arr = products.filter(p => p.active && p.catalog_type === "pack" && (c === "all" || p.cat === c) && [p.name,p.desc,p.cat,...p.items].join(" ").toLowerCase().includes(q));
     const pages = Math.max(1, Math.ceil(arr.length / PRODUCTS_PER_PAGE));
     currentProductPage = Math.min(Math.max(1, currentProductPage), pages);
     const start = (currentProductPage - 1) * PRODUCTS_PER_PAGE;
     grid.innerHTML = arr.slice(start, start + PRODUCTS_PER_PAGE).map(productCard).join("") || '<div class="empty">Aucun pack trouvé. Essaie une autre recherche.</div>';
     const pagination = $("productPagination");
     if (pagination) pagination.innerHTML = arr.length > PRODUCTS_PER_PAGE ? `<button class="btn ghost small" ${currentProductPage === 1 ? "disabled" : ""} onclick="goToProductPage(${currentProductPage - 1})">← Précédent</button><span>Page ${currentProductPage} / ${pages} · ${arr.length} packs</span><button class="btn ghost small" ${currentProductPage === pages ? "disabled" : ""} onclick="goToProductPage(${currentProductPage + 1})">Suivant →</button>` : "";
+    renderIndividualCatalogs();
   }
   function goToProductPage(page) {
     currentProductPage = Math.max(1, Number(page) || 1);
@@ -580,7 +819,17 @@
   function statusLabel(status) { return ({new:"Nouvelle",processing:"En préparation",delivered:"Livrée",cancelled:"Annulée",won:"Gagné",lost:"Perdu"})[status] || status || "—"; }
   function actionLabel(action) { return ({pack_created:"Pack créé",pack_updated:"Pack modifié",pack_deleted:"Pack supprimé",order_status_changed:"Statut de commande modifié",order_placed:"Commande passée",admin_bootstrap:"Premier administrateur configuré",admin_invited:"Administrateur invité",settings_updated:"Paramètres modifiés",stock_created:"Stock créé",stock_updated:"Stock modifié",supplier_created:"Fournisseur ajouté",supplier_updated:"Fournisseur modifié",supplier_deleted:"Fournisseur supprimé",expense_created:"Dépense ajoutée",expense_updated:"Dépense modifiée",expense_deleted:"Dépense supprimée",quote_created:"Demande de devis reçue",quote_updated:"Devis modifié",quote_deleted:"Devis supprimé"})[action] || action || "Action"; }
   async function showAdminView(view) {
-    if (!isAdmin()) { closeAdmin(); return toast("Accès administrateur requis.", true); }
+        if (view === "prospects" || view === "catalogs") {
+      if (!isAdmin()) return toast("Cette action n’est pas autorisée pour ce compte.", true);
+      currentAdminView = view;
+      document.querySelectorAll(".side-btn").forEach(button => button.classList.toggle("active", button.dataset.view === view));
+      const title = $("adminTitle");
+      if (title) title.textContent = view === "prospects" ? "Prospection" : "Produits & outils";
+      if (view === "prospects") await renderProspectsAdmin();
+      else await renderIndividualCatalogAdmin();
+      return;
+    }
+if (!isAdmin()) { closeAdmin(); return toast("Accès administrateur requis.", true); }
     currentAdminView = view; editingProductId = view === "packs" ? editingProductId : null;
     document.querySelectorAll(".side-btn").forEach(b => b.classList.toggle("active", b.dataset.view === view));
     const titles = {dashboard:"Tableau de bord",orders:"Commandes",customers:"Clients",stock:"Stock",products:"Gestion des packs",admins:"Administrateurs",activity:"Journal des actions",suppliers:"Fournisseurs",expenses:"Dépenses",quotes:"Devis",settings:"Paramètres"};
@@ -856,6 +1105,6 @@
   }
 
   // Functions called by inline storefront/admin controls.
-  Object.assign(window,{openProduct,addToCart,closeModal,changeQty,checkoutModal,showAccountHome,signOut,renderAuthForm,resetPassword,enableBrowserNotifications,loadAndShowNotifications,markNotificationRead,showAdminView,editPack,cancelPackEdit,togglePack,setOrderStatus,showOrder,setQuoteStatus,goToProductPage,movePromo,goToPromo,selectReviewRating});
+  Object.assign(window,{openProduct,addToCart,closeModal,changeQty,checkoutModal,showAccountHome,signOut,renderAuthForm,resetPassword,enableBrowserNotifications,loadAndShowNotifications,markNotificationRead,showAdminView,editPack,cancelPackEdit,togglePack,setOrderStatus,showOrder,setQuoteStatus,goToProductPage,movePromo,goToPromo,selectReviewRating,editProspect,deleteProspect,setProspectStatus,editCatalogItem,archiveCatalogItem});
   start().catch(err => { console.error(err); toast("Initialisation impossible. Recharge la page ou contacte l’administrateur.",true); });
 })();
