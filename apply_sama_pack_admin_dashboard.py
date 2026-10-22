@@ -82,6 +82,8 @@ DASHBOARD_BLOCK = r'''  function dashboardCompactMoney(value) {
   }
 
   async function adminDashboard() {
+    let activeAccounts = null;
+    try { activeAccounts = await countActiveAccounts(); } catch (error) { console.warn("Comptes actifs indisponibles", error); }
     const [orders, stock, expenses, quotes, productRows] = await Promise.all([
       readRows("orders"), readRows("stock"), readRows("expenses"), readRows("quotes"), readRows("products")
     ]);
@@ -133,10 +135,11 @@ DASHBOARD_BLOCK = r'''  function dashboardCompactMoney(value) {
       { label: "Commandes au total", value: String(orders.length), note: "Historique enregistré", css: "orders" },
       { label: "Panier moyen livré", value: money(averageDelivered), note: `${deliveredOrders.length} commande(s) livrée(s)`, css: "average" },
       { label: "Articles publiés", value: String(published), note: "Prix de vente renseigné", css: "published" },
-      { label: "Articles en rupture", value: String(outOfStock), note: "Disponibilité à vérifier", css: "stockout" }
+      { label: "Articles en rupture", value: String(outOfStock), note: "Disponibilité à vérifier", css: "stockout" },
+      { label: "Comptes actifs maintenant", value: activeAccounts === null ? "—" : String(activeAccounts), note: `Activité sur 90 s · actualisé à ${now.toLocaleTimeString("fr-SN", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}`, css: "active-users", live: true }
     ];
     return `<div class="dashboard-welcome"><div><div class="eyebrow">PILOTAGE COMMERCIAL</div><h2>Vue d’ensemble de SAMA-PACK</h2><p>Suivi des ventes, des commandes, du catalogue et des réapprovisionnements.</p></div><button class="btn ghost small" onclick="showAdminView('dashboard')">Actualiser les données</button></div>
-      <div class="dashboard-kpis">${cards.map(card=>`<article class="dashboard-kpi ${card.css}"><span class="dashboard-kpi-label">${esc(card.label)}</span><strong>${esc(card.value)}</strong><small>${esc(card.note)}</small></article>`).join("")}</div>
+      <div class="dashboard-kpis">${cards.map(card=>`<article class="dashboard-kpi ${card.css}"><span class="dashboard-kpi-label">${esc(card.label)}</span><strong ${card.live ? 'id="activeAccountsCount"' : ""}>${esc(card.value)}</strong><small ${card.live ? 'id="activeAccountsLastUpdated"' : ""}>${esc(card.note)}</small></article>`).join("")}</div>
       <div class="dashboard-chart-grid dashboard-chart-grid-main">
         <section class="panel dashboard-chart-panel"><div class="dashboard-panel-heading"><div><div class="eyebrow">TENDANCE · 14 JOURS</div><h3>Évolution des ventes</h3></div><span class="dashboard-chart-pill">${money(revenue30)} / 30 j</span></div>${dashboardLineChart(chartDays)}</section>
         <section class="panel dashboard-chart-panel"><div class="dashboard-panel-heading"><div><div class="eyebrow">SUIVI DES COMMANDES</div><h3>Répartition par statut</h3></div></div>${dashboardDonutChart(statusCounts)}</section>
@@ -190,6 +193,140 @@ ADMIN_ACCOUNTS_BLOCK = r'''  async function adminAccounts() {
 '''
 
 
+PRESENCE_BLOCK = r'''
+  const ACCOUNT_PRESENCE_WINDOW_MS = 90 * 1000;
+  let presenceHeartbeatTimer = null;
+  let presenceVisibilityHandler = null;
+  let presenceWriteInFlight = false;
+  let activeAccountsRefreshTimer = null;
+
+  async function recordAccountPresence(user = currentUser) {
+    if (!client || !user || document.visibilityState === "hidden" || presenceWriteInFlight) return;
+    presenceWriteInFlight = true;
+    try {
+      const { error } = await client.from("profiles")
+        .update({ last_seen_at: new Date().toISOString() })
+        .eq("id", user.id);
+      if (error) console.warn("Mise à jour de présence indisponible", error);
+    } catch (error) {
+      console.warn("Mise à jour de présence indisponible", error);
+    } finally {
+      presenceWriteInFlight = false;
+    }
+  }
+
+  function stopAccountPresence() {
+    if (presenceHeartbeatTimer) window.clearInterval(presenceHeartbeatTimer);
+    presenceHeartbeatTimer = null;
+    if (presenceVisibilityHandler) document.removeEventListener("visibilitychange", presenceVisibilityHandler);
+    presenceVisibilityHandler = null;
+  }
+
+  function setupAccountPresence(user) {
+    stopAccountPresence();
+    if (!user) return;
+    const pulse = () => {
+      if (document.visibilityState !== "hidden") void recordAccountPresence(user);
+    };
+    pulse();
+    presenceHeartbeatTimer = window.setInterval(pulse, 30_000);
+    presenceVisibilityHandler = () => {
+      if (document.visibilityState === "visible") {
+        pulse();
+        if (currentAdminView === "dashboard") void refreshDashboardActiveAccounts();
+      }
+    };
+    document.addEventListener("visibilitychange", presenceVisibilityHandler);
+  }
+
+  async function countActiveAccounts() {
+    if (!client) throw new Error("Connexion à la base de données indisponible.");
+    const cutoff = new Date(Date.now() - ACCOUNT_PRESENCE_WINDOW_MS).toISOString();
+    const { count, error } = await client.from("profiles")
+      .select("id", { count: "exact", head: true })
+      .gte("last_seen_at", cutoff);
+    if (error) throw error;
+    return Number(count || 0);
+  }
+
+  function stopDashboardPresencePolling() {
+    if (activeAccountsRefreshTimer) window.clearInterval(activeAccountsRefreshTimer);
+    activeAccountsRefreshTimer = null;
+  }
+
+  async function refreshDashboardActiveAccounts() {
+    if (!client || !isAdmin() || currentAdminView !== "dashboard") return;
+    const value = $("activeAccountsCount");
+    if (!value) return;
+    try {
+      value.textContent = String(await countActiveAccounts());
+      const meta = $("activeAccountsLastUpdated");
+      if (meta) meta.textContent = `Activité sur 90 s · actualisé à ${new Date().toLocaleTimeString("fr-SN", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}`;
+    } catch (error) {
+      console.warn("Comptage des comptes actifs indisponible", error);
+      if (value.textContent === "—") value.textContent = "N/D";
+    }
+  }
+
+  function startDashboardPresencePolling() {
+    stopDashboardPresencePolling();
+    if (currentAdminView !== "dashboard") return;
+    activeAccountsRefreshTimer = window.setInterval(() => {
+      if (currentAdminView === "dashboard" && document.visibilityState === "visible") {
+        void refreshDashboardActiveAccounts();
+      }
+    }, 30_000);
+  }
+'''
+
+PRESENCE_CSS_MARKER = "/* ===== SAMA-PACK active accounts presence ===== */"
+PRESENCE_CSS_ADDITION = r'''
+/* ===== SAMA-PACK active accounts presence ===== */
+.dashboard-kpis { grid-template-columns:repeat(4,minmax(0,1fr)); }
+.dashboard-kpi.active-users { --kpi-accent:#15946b; }
+@media (max-width:1050px) { .dashboard-kpis { grid-template-columns:repeat(3,minmax(0,1fr)); } }
+@media (max-width:650px) { .dashboard-kpis { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+'''
+
+
+
+
+def apply_presence_patch(app: str) -> str:
+    """Add authenticated-account heartbeat and the live KPI to either source version."""
+    if "function setupAccountPresence(user)" not in app:
+        anchor = '  function isAdmin() { return currentProfile?.role === "admin"; }\n'
+        app = replace_once(app, anchor, anchor + "\n" + PRESENCE_BLOCK + "\n", "ajout du suivi de présence des comptes")
+
+    auth_line = 'currentUser = user || null; currentProfile = currentUser ? await getProfile(currentUser) : null;'
+    if "setupAccountPresence(currentUser);" not in app:
+        app = replace_once(app, auth_line, auth_line + "\n    setupAccountPresence(currentUser);", "activation du suivi de présence à la connexion")
+
+    if 'id="activeAccountsCount"' not in app:
+        app = replace_once(
+            app,
+            '  async function adminDashboard() {\n    const [orders, stock, expenses, quotes, productRows] = await Promise.all([',
+            '  async function adminDashboard() {\n    let activeAccounts = null;\n    try { activeAccounts = await countActiveAccounts(); } catch (error) { console.warn("Comptes actifs indisponibles", error); }\n    const [orders, stock, expenses, quotes, productRows] = await Promise.all([',
+            "chargement du nombre de comptes actifs"
+        )
+        app = replace_once(
+            app,
+            '      { label: "Articles en rupture", value: String(outOfStock), note: "Disponibilité à vérifier", css: "stockout" }\n    ];',
+            '      { label: "Articles en rupture", value: String(outOfStock), note: "Disponibilité à vérifier", css: "stockout" },\n      { label: "Comptes actifs maintenant", value: activeAccounts === null ? "—" : String(activeAccounts), note: `Activité sur 90 s · actualisé à ${now.toLocaleTimeString("fr-SN", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}`, css: "active-users", live: true }\n    ];',
+            "ajout de la carte comptes actifs"
+        )
+        app = replace_once(
+            app,
+            '<strong>${esc(card.value)}</strong><small>${esc(card.note)}</small>',
+            '<strong ${card.live ? \'id="activeAccountsCount"\' : ""}>${esc(card.value)}</strong><small ${card.live ? \'id="activeAccountsLastUpdated"\' : ""}>${esc(card.note)}</small>',
+            "mise à jour de la carte comptes actifs"
+        )
+
+    if 'async function showAdminView(view) {\n    stopDashboardPresencePolling();' not in app:
+        app = replace_once(app, 'async function showAdminView(view) {', 'async function showAdminView(view) {\n    stopDashboardPresencePolling();', "arrêt de l’actualisation lorsqu’on quitte le tableau de bord")
+    if 'bindAdmin(view);\n      if (view === "dashboard") startDashboardPresencePolling();' not in app:
+        app = replace_once(app, '$("adminContent").innerHTML = html;\n      bindAdmin(view);', '$("adminContent").innerHTML = html;\n      bindAdmin(view);\n      if (view === "dashboard") startDashboardPresencePolling();', "actualisation périodique du nombre de comptes actifs")
+    return app
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Améliore le tableau de bord et sécurise la gestion des administrateurs SAMA-PACK.")
     parser.add_argument("--apply", action="store_true", help="écrit les modifications; sinon, simulation uniquement")
@@ -200,8 +337,39 @@ def main() -> int:
 
     app = APP.read_text(encoding="utf-8")
     css = CSS.read_text(encoding="utf-8")
-    if "function dashboardLineChart(points)" in app and "async function removeAdmin(id)" in app and MARKER in css:
-        print("Les modifications du tableau de bord et de la gestion des admins semblent déjà présentes. Aucun changement appliqué.")
+    base_already_applied = "function dashboardLineChart(points)" in app and "async function removeAdmin(id)" in app and MARKER in css
+    presence_already_applied = "function setupAccountPresence(user)" in app and 'id="activeAccountsCount"' in app and PRESENCE_CSS_MARKER in css
+    if base_already_applied:
+        if presence_already_applied:
+            print("Le tableau de bord inclut déjà le suivi des comptes actifs. Aucun changement appliqué.")
+            return 0
+        app = apply_presence_patch(app)
+        if PRESENCE_CSS_MARKER not in css:
+            css = css.rstrip() + "\n\n" + PRESENCE_CSS_ADDITION + "\n"
+        checks = {
+            "presence heartbeat": "function setupAccountPresence(user)" in app and "last_seen_at" in app,
+            "active accounts KPI": 'id="activeAccountsCount"' in app,
+            "active accounts auto-refresh": 'if (view === "dashboard") startDashboardPresencePolling();' in app,
+            "dashboard chart helper": "function dashboardLineChart(points)" in app,
+            "remove admin function": "async function removeAdmin(id)" in app,
+            "presence CSS": PRESENCE_CSS_MARKER in css and ".dashboard-kpi.active-users" in css,
+        }
+        failed = [name for name, ok in checks.items() if not ok]
+        if failed:
+            raise RuntimeError("Vérifications échouées : " + ", ".join(failed) + ". Aucun fichier n’a été écrit.")
+        if not args.apply:
+            print("SIMULATION OK — aucune modification écrite.")
+            for name in checks: print("  ✓", name)
+            print("Prochaines étapes : python apply_sama_pack_admin_dashboard.py --apply")
+            return 0
+        stamp = dt.datetime.now().strftime("%Y%m%d-%H%M%S")
+        shutil.copy2(APP, APP.with_name(f"app.js.backup-{stamp}"))
+        shutil.copy2(CSS, CSS.with_name(f"styles.css.backup-{stamp}"))
+        APP.write_text(app, encoding="utf-8")
+        CSS.write_text(css, encoding="utf-8")
+        print("CORRECTIF APPLIQUÉ : suivi des comptes actifs ajouté au tableau de bord.")
+        print(f"Sauvegardes : {APP.name}.backup-{stamp} et {CSS.name}.backup-{stamp}")
+        print("Vérifie maintenant : node --check app.js ; git diff --check")
         return 0
 
     original_app, original_css = app, css
@@ -224,6 +392,7 @@ def main() -> int:
     window_old = 'Object.assign(window,{openProduct,addToCart,closeModal,changeQty,checkoutModal,showAccountHome,signOut,renderAuthForm,resetPassword,enableBrowserNotifications,loadAndShowNotifications,markNotificationRead,showAdminView,editPack,cancelPackEdit,togglePack,setOrderStatus,showOrder,setQuoteStatus,goToProductPage,movePromo,goToPromo,selectReviewRating,editProspect,deleteProspect,setProspectStatus,editCatalogItem,archiveCatalogItem});'
     window_new = 'Object.assign(window,{openProduct,addToCart,closeModal,changeQty,checkoutModal,showAccountHome,signOut,renderAuthForm,resetPassword,enableBrowserNotifications,loadAndShowNotifications,markNotificationRead,showAdminView,editPack,cancelPackEdit,togglePack,setOrderStatus,showOrder,setQuoteStatus,goToProductPage,movePromo,goToPromo,selectReviewRating,editProspect,deleteProspect,setProspectStatus,editCatalogItem,archiveCatalogItem,removeAdmin});'
     app = replace_once(app, window_old, window_new, "exposition du bouton de retrait d’accès")
+    app = apply_presence_patch(app)
 
     css_addition = r'''/* ===== SAMA-PACK admin dashboard charts + super admin management ===== */
 .dashboard-welcome { display:flex; align-items:flex-start; justify-content:space-between; gap:18px; margin:0 0 18px; }
@@ -320,6 +489,8 @@ def main() -> int:
 '''
     if MARKER not in css:
         css = css.rstrip() + "\n\n" + css_addition + "\n"
+    if PRESENCE_CSS_MARKER not in css:
+        css = css.rstrip() + "\n\n" + PRESENCE_CSS_ADDITION + "\n"
 
     # Basic checks catch accidental partial or duplicate rewrites before writing any files.
     checks = {
@@ -330,6 +501,10 @@ def main() -> int:
         "remove admin function exported": "archiveCatalogItem,removeAdmin});" in app,
         "admin invitation panel condition": "const invitePanel = isGeneralAdmin" in app,
         "CSS dashboard rules": MARKER in css and ".dashboard-chart-grid" in css,
+        "presence heartbeat": "function setupAccountPresence(user)" in app and "last_seen_at" in app,
+        "active accounts KPI": 'id="activeAccountsCount"' in app,
+        "active accounts auto-refresh": 'if (view === "dashboard") startDashboardPresencePolling();' in app,
+        "presence CSS": PRESENCE_CSS_MARKER in css and ".dashboard-kpi.active-users" in css,
     }
     failed = [name for name, ok in checks.items() if not ok]
     if failed:
@@ -351,6 +526,8 @@ def main() -> int:
     print(f"Sauvegardes : {APP.name}.backup-{stamp} et {CSS.name}.backup-{stamp}")
     print("Fichiers modifiés : app.js, styles.css")
     print("Le backend sécurisé sama-invite-admin / sama-remove-admin est déjà déployé sur Supabase.")
+    print("Le comptage des comptes actifs suit les comptes authentifiés avec présence récente (< 90 s), actualisé toutes les 30 s.")
+    print("La colonne profiles.last_seen_at a été ajoutée à Supabase pour ce projet.")
     print("Vérifie maintenant : node --check app.js ; git diff --check")
     return 0
 
