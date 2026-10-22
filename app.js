@@ -370,6 +370,65 @@
     await renderProspectsAdmin();
   }
 
+  function readProductPricing(formData) {
+    const supplierRaw = String(formData.get("supplier_price") ?? "").trim();
+    const marginRaw = String(formData.get("margin_percent") ?? "").trim();
+    const supplierPrice = supplierRaw === "" ? null : Number(supplierRaw);
+    const marginPercent = marginRaw === "" ? null : Number(marginRaw);
+    if (supplierPrice !== null && (!Number.isFinite(supplierPrice) || supplierPrice < 0)) return { error: "Le prix fournisseur doit être un nombre positif ou nul." };
+    if (marginPercent !== null && (!Number.isFinite(marginPercent) || marginPercent < 0 || marginPercent > 1000)) return { error: "La marge doit être comprise entre 0 et 1 000 %." };
+    const enteredPrice = String(formData.get("price") ?? "").trim();
+    const manualPrice = enteredPrice === "" ? 0 : Number(enteredPrice);
+    if (!Number.isFinite(manualPrice) || manualPrice < 0) return { error: "Le prix de vente doit être un nombre positif ou nul." };
+    const salePrice = supplierPrice !== null && marginPercent !== null ? Math.round(supplierPrice * (1 + marginPercent / 100)) : manualPrice;
+    return { supplierPrice, marginPercent, salePrice };
+  }
+
+  async function saveProductPricing(productId, pricing) {
+    if (pricing.supplierPrice === null && pricing.marginPercent === null) {
+      const { error } = await client.from("product_costs").delete().eq("product_id", String(productId));
+      return error || null;
+    }
+    const { error } = await client.from("product_costs").upsert({
+      product_id: String(productId), supplier_price: pricing.supplierPrice,
+      margin_percent: pricing.marginPercent, updated_at: new Date().toISOString()
+    }, { onConflict: "product_id" });
+    return error || null;
+  }
+
+  function bindProductPriceCalculator(form) {
+    if (!form || form.dataset.priceCalculatorBound === "true") return;
+    const supplierField = form.querySelector('[name="supplier_price"]');
+    const marginField = form.querySelector('[name="margin_percent"]');
+    const saleField = form.querySelector('[name="price"]');
+    const feedback = form.querySelector("[data-pricing-feedback]");
+    if (!supplierField || !marginField || !saleField) return;
+    form.dataset.priceCalculatorBound = "true";
+    const recalculate = () => {
+      const supplierRaw = String(supplierField.value || "").trim();
+      const marginRaw = String(marginField.value || "").trim();
+      if (supplierRaw === "" || marginRaw === "") {
+        saleField.readOnly = false;
+        if (feedback) feedback.textContent = "Renseigne le prix fournisseur et la marge souhaitée pour calculer le prix automatiquement. Tant qu’une valeur manque, tu peux saisir le prix de vente manuellement.";
+        return;
+      }
+      const supplierPrice = Number(supplierRaw);
+      const marginPercent = Number(marginRaw);
+      if (!Number.isFinite(supplierPrice) || supplierPrice < 0 || !Number.isFinite(marginPercent) || marginPercent < 0 || marginPercent > 1000) {
+        saleField.readOnly = false;
+        if (feedback) feedback.textContent = "Vérifie le prix fournisseur et la marge (de 0 à 1 000 %).";
+        return;
+      }
+      const calculated = Math.round(supplierPrice * (1 + marginPercent / 100));
+      saleField.value = String(calculated);
+      saleField.readOnly = true;
+      if (feedback) feedback.textContent = "Prix calculé : " + money(calculated) + " (coût fournisseur " + money(supplierPrice) + " + majoration de " + marginPercent + " %).";
+    };
+    supplierField.addEventListener("input", recalculate);
+    marginField.addEventListener("input", recalculate);
+    recalculate();
+  }
+
   async function renderIndividualCatalogAdmin() {
     const host = $("adminContent");
     if (!host || !client || !isAdmin()) return;
@@ -382,7 +441,15 @@
       console.warn("Individual catalog load failed", error);
       return toast(errorMessage(error), true);
     }
-    const editing = editingCatalogItemId ? (rows || []).find(row => row.id === editingCatalogItemId) : null;
+    const { data: costRows, error: costError } = await client.from("product_costs").select("product_id,supplier_price,margin_percent");
+    if (costError) {
+      host.innerHTML = '<div class="panel"><h3>Catalogue individuel</h3><p>Impossible de charger les prix fournisseurs.</p></div>';
+      console.warn("Product costs load failed", costError);
+      return toast(errorMessage(costError), true);
+    }
+    const costsById = new Map((costRows || []).map(row => [row.product_id, row]));
+    const catalogRows = (rows || []).map(row => ({ ...row, ...(costsById.get(row.id) || { supplier_price: null, margin_percent: null }) }));
+    const editing = editingCatalogItemId ? catalogRows.find(row => row.id === editingCatalogItemId) : null;
     if (editingCatalogItemId && !editing) {
       editingCatalogItemId = null;
       toast("Cet article n’est pas accessible ou n’existe plus.", true);
@@ -390,34 +457,40 @@
     const current = editing || {};
     const itemsText = Array.isArray(current.items) ? current.items.join("\n") : "";
     const formHtml = `<div class="panel"><div class="section-head"><div><div class="eyebrow">CATALOGUE CLIENT</div><h3>${editing ? "Modifier un article" : "Ajouter un produit ou un outil"}</h3></div>${editing ? '<button type="button" class="btn ghost small" onclick="editCatalogItem(\'\')">Annuler</button>' : ""}</div>
-      <p class="small-note">Les articles actifs seront visibles dans leur catalogue et pourront être ajoutés au panier. Les packs restent gérés dans « Gestion des packs ».</p>
+      <p class="small-note">Les nouveaux articles sont masqués par défaut. Ajoute leur image puis utilise « Publier » quand ils sont prêts. Les packs restent gérés dans « Gestion des packs ».</p>
       <form id="individualCatalogForm" class="admin-form">
         <label>Type d’article *<select class="input" name="catalog_type" required><option value="product" ${(current.catalog_type || "product") === "product" ? "selected" : ""}>Produit de nettoyage</option><option value="tool" ${current.catalog_type === "tool" ? "selected" : ""}>Outil / matériel de nettoyage</option></select></label>
         <label>Nom *<input class="input" name="name" required minlength="2" maxlength="180" value="${esc(current.name || "")}" placeholder="Ex. Nettoyant sol 1 L"></label>
         <label>Catégorie<input class="input" name="category" maxlength="100" value="${esc(current.category || "")}" placeholder="Lessive, désinfection…"></label>
-        <label>Prix de vente (FCFA) *<input class="input" name="price" type="number" required min="0" step="1" value="${Number(current.price || 0)}"></label>
+        <label>Prix fournisseur / coût d’achat (FCFA)<input class="input" name="supplier_price" type="number" min="0" step="1" value="${current.supplier_price == null ? "" : Number(current.supplier_price)}" placeholder="Coût par unité ou par pack"></label>
+         <label>Marge souhaitée / majoration (%)<input class="input" name="margin_percent" type="number" min="0" max="1000" step="0.1" value="${current.margin_percent == null ? "" : Number(current.margin_percent)}" placeholder="Ex. 30"></label>
+         <label>Prix de vente calculé (FCFA) *<input class="input selling-price-input" name="price" type="number" required min="0" step="1" value="${Number(current.price || 0)}" ${current.supplier_price != null && current.margin_percent != null ? "readonly" : ""}></label>
+         <p class="small-note price-calculation-feedback full" data-pricing-feedback>Renseigne le prix fournisseur et la marge souhaitée pour calculer automatiquement le prix de vente.</p>
         <label class="full">Description<textarea class="input" name="description" maxlength="1200" rows="3" placeholder="Présente clairement l’article et son usage.">${esc(current.description || "")}</textarea></label>
         <label class="full">Image (URL HTTPS ou chemin de l’image)<input class="input" name="image_path" maxlength="1000" value="${esc(current.image_path || "")}" placeholder="https://… ou images/produit.jpg"></label>
         <label class="full">Contenu / caractéristiques (une ligne par élément)<textarea class="input" name="items" maxlength="3000" rows="4" placeholder="Format : 1 L&#10;Usage : sols carrelés&#10;Précautions : …">${esc(itemsText)}</textarea></label>
-        <label class="catalog-active-check"><input type="checkbox" name="active" ${current.active === false ? "" : "checked"}> Article visible dans le catalogue</label>
-        <div class="full"><button class="btn primary" type="submit">${editing ? "Enregistrer l’article" : "Ajouter au catalogue"}</button></div>
+        <label class="catalog-active-check"><input type="checkbox" name="active" ${editing && current.active ? "checked" : ""}> Article visible dans le catalogue</label>
+        <div class="full"><button class="btn primary" type="submit">${editing ? "Enregistrer l’article" : "Créer l’article masqué"}</button></div>
       </form></div>`;
-    const listHtml = rows?.length ? `<div class="table-wrap"><table class="table"><thead><tr><th>Article</th><th>Type</th><th>Prix</th><th>Visibilité</th><th>Actions</th></tr></thead><tbody>${rows.map(row => `<tr>
+    const listHtml = catalogRows.length ? `<div class="table-wrap"><table class="table"><thead><tr><th>Article</th><th>Type</th><th>Coût fournisseur</th><th>Marge</th><th>Prix de vente</th><th>Visibilité</th><th>Actions</th></tr></thead><tbody>${catalogRows.map(row => `<tr>
       <td><strong>${esc(row.name)}</strong><br><span class="small-note">${esc(row.category || "Sans catégorie")}</span></td>
       <td>${row.catalog_type === "tool" ? "Outil / matériel" : "Produit de nettoyage"}</td>
-      <td>${money(row.price)}</td><td>${row.active ? '<span class="status delivered">Visible</span>' : '<span class="status cancelled">Masqué</span>'}</td>
+      <td>${row.supplier_price == null ? "—" : money(row.supplier_price)}</td><td>${row.margin_percent == null ? "—" : Number(row.margin_percent) + " %"}</td><td>${money(row.price)}</td><td>${row.active ? '<span class="status delivered">Visible</span>' : '<span class="status cancelled">Masqué</span>'}</td>
       <td><div class="prospect-actions"><button class="btn ghost small" onclick="editCatalogItem('${esc(row.id)}')">Modifier</button><button class="btn ghost small" onclick="archiveCatalogItem('${esc(row.id)}',${row.active ? "false" : "true"})">${row.active ? "Masquer" : "Publier"}</button></div></td>
     </tr>`).join("")}</tbody></table></div>` : '<div class="empty">Aucun produit individuel ni outil enregistré. Utilise le formulaire pour ajouter le premier article.</div>';
-    host.innerHTML = `${formHtml}<div class="panel"><div class="section-head"><div><div class="eyebrow">GESTION DES ARTICLES</div><h3>Produits et outils enregistrés (${(rows || []).length})</h3></div></div>${listHtml}</div>`;
+    host.innerHTML = `${formHtml}<div class="panel"><div class="section-head"><div><div class="eyebrow">GESTION DES ARTICLES</div><h3>Produits et outils enregistrés (${catalogRows.length})</h3></div></div>${listHtml}</div>`;
 
     const form = $("individualCatalogForm");
     if (!form) return;
+    bindProductPriceCalculator(form);
     form.onsubmit = async event => {
       event.preventDefault();
       const data = new FormData(form);
       const name = String(data.get("name") || "").trim();
-      const price = Number(data.get("price"));
-      if (name.length < 2 || !Number.isFinite(price) || price < 0) return toast("Vérifie le nom et le prix de l’article.", true);
+      const pricing = readProductPricing(data);
+      if (name.length < 2) return toast("Le nom de l’article doit contenir au moins 2 caractères.", true);
+      if (pricing.error) return toast(pricing.error, true);
+      const price = pricing.salePrice;
       const payload = {
         name,
         catalog_type: data.get("catalog_type") === "tool" ? "tool" : "product",
@@ -432,13 +505,17 @@
       setBusy(form, true, editingCatalogItemId ? "Enregistrement…" : "Ajout…");
       try {
         let result;
+        let productId;
         if (editingCatalogItemId) {
-          result = await client.from("products").update(payload).eq("id", editingCatalogItemId);
+          productId = editingCatalogItemId;
+          result = await client.from("products").update(payload).eq("id", productId);
         } else {
-          const id = `CAT-${Date.now()}-${Math.random().toString(36).slice(2, 7).toUpperCase()}`;
-          result = await client.from("products").insert({ ...payload, id, promo_active: false, promo_price: null, promo_label: "Offre spéciale" });
+          productId = `CAT-${Date.now()}-${Math.random().toString(36).slice(2, 7).toUpperCase()}`;
+          result = await client.from("products").insert({ ...payload, id: productId, promo_active: false, promo_price: null, promo_label: "Offre spéciale" });
         }
         if (result.error) return toast(errorMessage(result.error), true);
+        const pricingError = await saveProductPricing(productId, pricing);
+        if (pricingError) return toast("Article enregistré, mais le coût fournisseur ou la marge n’a pas pu être enregistré : " + errorMessage(pricingError), true);
         editingCatalogItemId = null;
         toast("Article enregistré dans le catalogue.");
         await loadPublicData();
@@ -922,12 +999,17 @@ if (!isAdmin()) { closeAdmin(); return toast("Accès administrateur requis.", tr
     return "SP" + String(max + 1).padStart(2, "0");
   }
   async function adminPacks() {
-    const rows = await readRows("products"); products = rows.map(normalizeProduct); updateCategoryFilter(); renderProducts(); renderTop(); renderPromoCarousel();
+    const baseRows = await readRows("products");
+    const { data: costRows, error: costError } = await client.from("product_costs").select("product_id,supplier_price,margin_percent");
+    if (costError) throw costError;
+    const costsById = new Map((costRows || []).map(row => [row.product_id, row]));
+    const rows = baseRows.map(row => ({ ...row, ...(costsById.get(row.id) || { supplier_price: null, margin_percent: null }) }));
+    products = rows.map(normalizeProduct); updateCategoryFilter(); renderProducts(); renderTop(); renderPromoCarousel();
     const editing = editingProductId ? products.find(p => p.id === editingProductId) : null;
     const itemsStr = editing ? editing.items.join("\n") : "";
     const formTitle = editing ? `Modifier ${editing.id}` : "Ajouter un nouveau pack";
     const idLabel = editing ? editing.id : nextProductId();
-    return `<div class="panel"><div class="admin-panel-head"><h3>${formTitle}</h3><span class="small-note">ID proposé : ${esc(idLabel)}</span></div><form id="packForm" class="admin-form"><input class="input full" name="name" required maxlength="150" placeholder="Nom du pack" value="${esc(editing?.name||"")}"><input class="input" name="category" required maxlength="80" placeholder="Catégorie" value="${esc(editing?.cat||"")}"><input class="input" name="price" type="number" min="0" step="1" required placeholder="Prix en FCFA" value="${editing ? Number(editing.price) : ""}"><textarea class="input full" name="description" required maxlength="1500" placeholder="Description du pack">${esc(editing?.desc||"")}</textarea><textarea class="input full" name="items" required placeholder="Composition : un élément par ligne">${esc(itemsStr)}</textarea><input class="input full" name="image_path" maxlength="500" placeholder="Chemin de l’image ou URL (facultatif)" value="${esc(editing?.image_path||"")}"><div class="promo-admin-fields full"><label class="check-label"><input type="checkbox" name="promo_active" ${editing?.promo_active===true ? "checked" : ""}> Afficher ce pack dans les promotions</label><label>Prix promotionnel (FCFA)<input class="input" name="promo_price" type="number" min="0" step="1" placeholder="Ex. 12 000" value="${editing?.promo_price == null ? "" : Number(editing.promo_price)}"></label><label>Texte de la promotion<input class="input" name="promo_label" maxlength="80" placeholder="Vente flash" value="${esc(editing?.promo_label||"Vente flash")}"></label><label class="full">Date et heure de fin de la vente flash<input class="input" type="datetime-local" name="promo_end_at" value="${esc(toLocalDateTimeInput(editing?.promo_end_at))}"></label><p class="small-note">Le prix promotionnel doit être inférieur au prix normal. La date de fin déclenche le compte à rebours et désactive la réduction automatiquement à son échéance.</p></div><label class="full">Photo du pack (facultatif, JPG/PNG/WebP, 5 Mo maximum)<input class="input" name="image_file" type="file" accept="image/jpeg,image/png,image/webp"></label><label class="check-label full"><input type="checkbox" name="active" ${editing?.active===false?"":"checked"}> Publier ce pack dans le catalogue</label><div class="form-actions full"><button class="btn primary" type="submit">${editing ? "Enregistrer les modifications" : "Ajouter le pack"}</button>${editing ? `<button class="btn ghost" type="button" onclick="cancelPackEdit()">Annuler</button>` : ""}</div></form></div><div style="height:16px"></div><div class="panel"><div class="admin-panel-head"><h3>Catalogue complet (${rows.length} packs)</h3><span class="small-note">Les packs masqués restent dans la gestion et le stock.</span></div>${rows.length ? `<div class="table-wrap"><table class="table"><thead><tr><th>Pack</th><th>Catégorie</th><th>Prix</th><th>Visibilité</th><th>Actions</th></tr></thead><tbody>${rows.map(p=>`<tr><td><strong>${esc(p.name)}</strong><br><span class="small-note">${esc(p.id)}</span></td><td>${esc(p.cat)}</td><td>${money(p.price)}</td><td><span class="status ${p.active?"delivered":"cancelled"}">${p.active?"Publié":"Masqué"}</span></td><td><div class="table-actions"><button class="btn small ghost" onclick="editPack('${esc(p.id)}')">Modifier</button><button class="btn small ${p.active?"ghost":"secondary"}" onclick="togglePack('${esc(p.id)}',${!p.active})">${p.active?"Masquer":"Publier"}</button></div></td></tr>`).join("")}</tbody></table></div>` : '<div class="empty">Aucun pack disponible.</div>'}</div>`;
+    return `<div class="panel"><div class="admin-panel-head"><h3>${formTitle}</h3><span class="small-note">ID proposé : ${esc(idLabel)}</span></div><form id="packForm" class="admin-form"><input class="input full" name="name" required maxlength="150" placeholder="Nom du pack" value="${esc(editing?.name||"")}"><input class="input" name="category" required maxlength="80" placeholder="Catégorie" value="${esc(editing?.cat||"")}"><label>Prix fournisseur / coût d’achat (FCFA)<input class="input" name="supplier_price" type="number" min="0" step="1" value="${editing?.supplier_price == null ? "" : Number(editing.supplier_price)}" placeholder="Coût total du pack"></label><label>Marge souhaitée / majoration (%)<input class="input" name="margin_percent" type="number" min="0" max="1000" step="0.1" value="${editing?.margin_percent == null ? "" : Number(editing.margin_percent)}" placeholder="Ex. 30"></label><label>Prix de vente calculé (FCFA)<input class="input selling-price-input" name="price" type="number" min="0" step="1" required placeholder="Prix en FCFA" value="${editing ? Number(editing.price) : ""}" ${editing?.supplier_price != null && editing?.margin_percent != null ? "readonly" : ""}></label><p class="small-note price-calculation-feedback full" data-pricing-feedback>Renseigne le coût total du pack et la marge pour calculer le prix de vente automatiquement.</p><textarea class="input full" name="description" required maxlength="1500" placeholder="Description du pack">${esc(editing?.desc||"")}</textarea><textarea class="input full" name="items" required placeholder="Composition : un élément par ligne">${esc(itemsStr)}</textarea><input class="input full" name="image_path" maxlength="500" placeholder="Chemin de l’image ou URL (facultatif)" value="${esc(editing?.image_path||"")}"><div class="promo-admin-fields full"><label class="check-label"><input type="checkbox" name="promo_active" ${editing?.promo_active===true ? "checked" : ""}> Afficher ce pack dans les promotions</label><label>Prix promotionnel (FCFA)<input class="input" name="promo_price" type="number" min="0" step="1" placeholder="Ex. 12 000" value="${editing?.promo_price == null ? "" : Number(editing.promo_price)}"></label><label>Texte de la promotion<input class="input" name="promo_label" maxlength="80" placeholder="Vente flash" value="${esc(editing?.promo_label||"Vente flash")}"></label><label class="full">Date et heure de fin de la vente flash<input class="input" type="datetime-local" name="promo_end_at" value="${esc(toLocalDateTimeInput(editing?.promo_end_at))}"></label><p class="small-note">Le prix promotionnel doit être inférieur au prix normal. La date de fin déclenche le compte à rebours et désactive la réduction automatiquement à son échéance.</p></div><label class="full">Photo du pack (facultatif, JPG/PNG/WebP, 5 Mo maximum)<input class="input" name="image_file" type="file" accept="image/jpeg,image/png,image/webp"></label><label class="check-label full"><input type="checkbox" name="active" ${editing?.active===true?"checked":""}> Publier ce pack dans le catalogue</label><div class="form-actions full"><button class="btn primary" type="submit">${editing ? "Enregistrer les modifications" : "Créer le pack masqué"}</button>${editing ? `<button class="btn ghost" type="button" onclick="cancelPackEdit()">Annuler</button>` : ""}</div></form></div><div style="height:16px"></div><div class="panel"><div class="admin-panel-head"><h3>Catalogue complet (${rows.length} packs)</h3><span class="small-note">Les packs masqués restent dans la gestion et le stock.</span></div>${rows.length ? `<div class="table-wrap"><table class="table"><thead><tr><th>Pack</th><th>Catégorie</th><th>Coût fournisseur</th><th>Marge</th><th>Prix de vente</th><th>Visibilité</th><th>Actions</th></tr></thead><tbody>${rows.map(p=>`<tr><td><strong>${esc(p.name)}</strong><br><span class="small-note">${esc(p.id)}</span></td><td>${esc(p.cat)}</td><td>${p.supplier_price == null ? "—" : money(p.supplier_price)}</td><td>${p.margin_percent == null ? "—" : Number(p.margin_percent) + " %"}</td><td>${money(p.price)}</td><td><span class="status ${p.active?"delivered":"cancelled"}">${p.active?"Publié":"Masqué"}</span></td><td><div class="table-actions"><button class="btn small ghost" onclick="editPack('${esc(p.id)}')">Modifier</button><button class="btn small ${p.active?"ghost":"secondary"}" onclick="togglePack('${esc(p.id)}',${!p.active})">${p.active?"Masquer":"Publier"}</button></div></td></tr>`).join("")}</tbody></table></div>` : '<div class="empty">Aucun pack disponible.</div>'}</div>`;
   }
   function editPack(id) { editingProductId = id; showAdminView("packs"); }
   function cancelPackEdit() { editingProductId = null; showAdminView("packs"); }
@@ -985,9 +1067,9 @@ if (!isAdmin()) { closeAdmin(); return toast("Accès administrateur requis.", tr
   }
   function bindAdmin(view) {
     if (view === "packs" || view === "products") {
-      const form = $("packForm"); if (form) form.onsubmit = async e => {
+      const form = $("packForm"); if (form) { bindProductPriceCalculator(form); form.onsubmit = async e => {
         e.preventDefault(); if (!isAdmin()) return toast("Accès refusé.", true); setBusy(form,true,"Enregistrement…");
-        const fd = new FormData(form); const uploadFile = fd.get("image_file"); const promoPriceInput = String(fd.get("promo_price")||"").trim(); const promoEndInput = String(fd.get("promo_end_at")||"").trim(); const payload = { name:String(fd.get("name")||"").trim(),category:String(fd.get("category")||"").trim(),price:Number(fd.get("price")),description:String(fd.get("description")||"").trim(),items:String(fd.get("items")||"").split(/\r?\n/).map(x=>x.trim()).filter(Boolean),image_path:String(fd.get("image_path")||"").trim(),active:fd.get("active")==="on",promo_active:fd.get("promo_active")==="on",promo_price:promoPriceInput === "" ? null : Number(promoPriceInput),promo_label:String(fd.get("promo_label")||"Vente flash").trim() || "Vente flash",promo_end_at:promoEndInput ? new Date(promoEndInput).toISOString() : null };
+        const fd = new FormData(form); const pricing = readProductPricing(fd); if (pricing.error) { setBusy(form,false); return toast(pricing.error,true); } const uploadFile = fd.get("image_file"); const promoPriceInput = String(fd.get("promo_price")||"").trim(); const promoEndInput = String(fd.get("promo_end_at")||"").trim(); const payload = { name:String(fd.get("name")||"").trim(),category:String(fd.get("category")||"").trim(),price:pricing.salePrice,description:String(fd.get("description")||"").trim(),items:String(fd.get("items")||"").split(/\r?\n/).map(x=>x.trim()).filter(Boolean),image_path:String(fd.get("image_path")||"").trim(),active:fd.get("active")==="on",promo_active:fd.get("promo_active")==="on",promo_price:promoPriceInput === "" ? null : Number(promoPriceInput),promo_label:String(fd.get("promo_label")||"Vente flash").trim() || "Vente flash",promo_end_at:promoEndInput ? new Date(promoEndInput).toISOString() : null };
         if (!payload.name || !payload.category || !payload.description || !payload.items.length || !Number.isFinite(payload.price) || payload.price < 0) { setBusy(form,false); return toast("Complète le nom, la catégorie, le prix, la description et la composition.",true); } if (payload.promo_active && (!Number.isFinite(payload.promo_price) || payload.promo_price < 0 || payload.promo_price >= payload.price)) { setBusy(form,false); return toast("Le prix promotionnel doit être positif et inférieur au prix normal.",true); } if (payload.promo_active && payload.promo_end_at && new Date(payload.promo_end_at).getTime() <= Date.now()) { setBusy(form,false); return toast("La fin de la vente flash doit être dans le futur.",true); } if (!payload.promo_active && !Number.isFinite(payload.promo_price)) payload.promo_price = null;
         if (payload.image_path && !/^https:\/\//i.test(payload.image_path) && /^(?:javascript:|data:|vbscript:)/i.test(payload.image_path)) { setBusy(form,false); return toast("Le chemin de l’image n’est pas valide.",true); }
         let productId = editingProductId || nextProductId();
@@ -1003,10 +1085,13 @@ if (!isAdmin()) { closeAdmin(); return toast("Accès administrateur requis.", tr
         let result;
         if (editingProductId) result = await client.from("products").update(payload).eq("id",editingProductId);
         else result = await client.from("products").insert({id:productId,...payload});
+        if (result.error) { setBusy(form,false); return toast(errorMessage(result.error),true); }
+        const pricingError = await saveProductPricing(productId, pricing);
         setBusy(form,false);
-        if (result.error) return toast(errorMessage(result.error),true);
+        if (pricingError) return toast("Pack enregistré, mais le coût fournisseur ou la marge n’a pas pu être enregistré : " + errorMessage(pricingError),true);
         const wasEditing = Boolean(editingProductId); editingProductId = null; toast(wasEditing ? "Pack modifié." : "Nouveau pack ajouté."); await loadPublicData(); await showAdminView("packs");
       };
+      }
     }
     if (view === "stock") document.querySelectorAll(".stock-field").forEach(input => {
       input.addEventListener("change", async () => {
