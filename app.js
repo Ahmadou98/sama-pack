@@ -96,7 +96,7 @@
 
   async function getProfile(user = currentUser) {
     if (!client || !user) return null;
-    const { data, error } = await client.from("profiles").select("id,full_name,phone,email,role,created_at").eq("id", user.id).maybeSingle();
+    const { data, error } = await client.from("profiles").select("id,full_name,phone,email,role,is_super_admin,invited_by,created_at").eq("id", user.id).maybeSingle();
     if (error) { console.warn("Profile unavailable", error); return null; }
     return data;
   }
@@ -972,7 +972,7 @@
   }
   function closeAdmin() { $("adminPanel").classList.add("hidden"); }
   function statusLabel(status) { return ({new:"Nouvelle",processing:"En préparation",delivered:"Livrée",cancelled:"Annulée",won:"Gagné",lost:"Perdu"})[status] || status || "—"; }
-  function actionLabel(action) { return ({pack_created:"Pack créé",pack_updated:"Pack modifié",pack_deleted:"Pack supprimé",order_status_changed:"Statut de commande modifié",order_placed:"Commande passée",admin_bootstrap:"Premier administrateur configuré",admin_invited:"Administrateur invité",settings_updated:"Paramètres modifiés",stock_created:"Stock créé",stock_updated:"Stock modifié",supplier_created:"Fournisseur ajouté",supplier_updated:"Fournisseur modifié",supplier_deleted:"Fournisseur supprimé",expense_created:"Dépense ajoutée",expense_updated:"Dépense modifiée",expense_deleted:"Dépense supprimée",quote_created:"Demande de devis reçue",quote_updated:"Devis modifié",quote_deleted:"Devis supprimé"})[action] || action || "Action"; }
+  function actionLabel(action) { return ({pack_created:"Pack créé",pack_updated:"Pack modifié",pack_deleted:"Pack supprimé",order_status_changed:"Statut de commande modifié",order_placed:"Commande passée",admin_bootstrap:"Premier administrateur configuré",admin_invited:"Administrateur invité",admin_removed:"Droits administrateur retirés",settings_updated:"Paramètres modifiés",stock_created:"Stock créé",stock_updated:"Stock modifié",supplier_created:"Fournisseur ajouté",supplier_updated:"Fournisseur modifié",supplier_deleted:"Fournisseur supprimé",expense_created:"Dépense ajoutée",expense_updated:"Dépense modifiée",expense_deleted:"Dépense supprimée",quote_created:"Demande de devis reçue",quote_updated:"Devis modifié",quote_deleted:"Devis supprimé"})[action] || action || "Action"; }
   async function showAdminView(view) {
         if (view === "prospects" || view === "catalogs") {
       if (!isAdmin()) return toast("Cette action n’est pas autorisée pour ce compte.", true);
@@ -1015,17 +1015,118 @@ if (!isAdmin()) { closeAdmin(); return toast("Accès administrateur requis.", tr
     if (error) throw error;
     return data || [];
   }
+  function dashboardCompactMoney(value) {
+    const n = Number(value) || 0;
+    return new Intl.NumberFormat("fr-FR", { notation: "compact", maximumFractionDigits: 1 }).format(n);
+  }
+
+  function dashboardLineChart(points) {
+    const w = 760, h = 270, left = 58, right = 22, top = 24, bottom = 48;
+    const plotW = w - left - right, plotH = h - top - bottom;
+    const values = points.map(p => Math.max(0, Number(p.value) || 0));
+    const maxValue = Math.max(1, ...values);
+    const xAt = i => left + (points.length <= 1 ? plotW / 2 : (i / (points.length - 1)) * plotW);
+    const yAt = value => top + plotH - (Math.max(0, value) / maxValue) * plotH;
+    const path = points.map((p, i) => `${i === 0 ? "M" : "L"}${xAt(i).toFixed(1)},${yAt(Number(p.value) || 0).toFixed(1)}`).join(" ");
+    const grid = [0, .25, .5, .75, 1].map(t => {
+      const y = top + plotH * (1 - t), value = maxValue * t;
+      return `<line x1="${left}" y1="${y.toFixed(1)}" x2="${w-right}" y2="${y.toFixed(1)}" class="dashboard-chart-gridline"/><text x="${left-10}" y="${(y+4).toFixed(1)}" text-anchor="end" class="dashboard-chart-axis">${esc(dashboardCompactMoney(value))}</text>`;
+    }).join("");
+    const pointsSvg = points.map((p, i) => `<circle cx="${xAt(i).toFixed(1)}" cy="${yAt(Number(p.value)||0).toFixed(1)}" r="3.5" class="dashboard-chart-point"><title>${esc(p.label)} : ${money(p.value)}</title></circle>`).join("");
+    const labelIdx = [...new Set([0, Math.floor((points.length-1)/3), Math.floor(2*(points.length-1)/3), Math.max(0, points.length-1)])];
+    const labels = labelIdx.map(i => `<text x="${xAt(i).toFixed(1)}" y="${h-18}" text-anchor="middle" class="dashboard-chart-axis">${esc(points[i]?.label || "")}</text>`).join("");
+    return `<div class="dashboard-line-wrap"><div class="dashboard-chart-summary"><span>Ventes non annulées</span><strong>${money(values.reduce((sum, n) => sum + n, 0))}</strong></div><svg class="dashboard-line-svg" viewBox="0 0 ${w} ${h}" role="img" aria-label="Courbe des ventes quotidiennes sur les 14 derniers jours"><title>Ventes quotidiennes sur les 14 derniers jours</title>${grid}<path d="${path}" class="dashboard-chart-line"/>${pointsSvg}${labels}</svg><p class="small-note">Montants issus des commandes enregistrées, hors commandes annulées. Ce graphique ne confirme pas les paiements effectivement encaissés.</p></div>`;
+  }
+
+  function dashboardDonutChart(statuses) {
+    const total = statuses.reduce((sum, item) => sum + Number(item.value || 0), 0);
+    const radius = 48, circumference = 2 * Math.PI * radius;
+    let offset = 0;
+    const ring = total > 0 ? statuses.filter(x => x.value > 0).map(item => {
+      const length = circumference * Number(item.value) / total;
+      const circle = `<circle cx="80" cy="80" r="${radius}" class="dashboard-donut-segment ${item.css}" stroke-dasharray="${length.toFixed(2)} ${(circumference-length).toFixed(2)}" stroke-dashoffset="${(-offset).toFixed(2)}"><title>${esc(item.label)} : ${Number(item.value)}</title></circle>`;
+      offset += length;
+      return circle;
+    }).join("") : `<circle cx="80" cy="80" r="${radius}" class="dashboard-donut-empty"/>`;
+    const legend = statuses.map(item => `<div class="dashboard-chart-legend-item"><span class="dashboard-legend-dot ${item.css}"></span><span>${esc(item.label)}</span><strong>${Number(item.value || 0)}</strong></div>`).join("");
+    return `<div class="dashboard-donut-layout"><svg class="dashboard-donut-svg" viewBox="0 0 160 160" role="img" aria-label="Répartition des commandes par statut"><title>Répartition des commandes</title><g transform="rotate(-90 80 80)">${ring}</g><text x="80" y="76" class="dashboard-donut-total">${total}</text><text x="80" y="96" class="dashboard-donut-caption">commandes</text></svg><div class="dashboard-chart-legend">${legend}</div></div>`;
+  }
+
+  function dashboardAvailabilityChart(available, outOfStock) {
+    const total = Math.max(1, Number(available || 0) + Number(outOfStock || 0));
+    const rows = [
+      { label: "Disponible", value: Number(available || 0), css: "available" },
+      { label: "Rupture de stock", value: Number(outOfStock || 0), css: "out" }
+    ];
+    return `<div class="dashboard-availability-bars">${rows.map(row => `<div class="dashboard-availability-row"><div><span>${esc(row.label)}</span><strong>${row.value}</strong></div><div class="dashboard-bar-track"><span class="dashboard-bar-fill ${row.css}" style="width:${Math.min(100, Math.max(0, row.value / total * 100)).toFixed(1)}%"></span></div></div>`).join("")}<p class="small-note">Disponibilité déclarée dans le catalogue. Les nouveaux articles SNAD restent en rupture jusqu’à validation physique du stock.</p></div>`;
+  }
+
   async function adminDashboard() {
-    const [orders, stock, expenses, quotes, packRows] = await Promise.all([
+    const [orders, stock, expenses, quotes, productRows] = await Promise.all([
       readRows("orders"), readRows("stock"), readRows("expenses"), readRows("quotes"), readRows("products")
     ]);
-    cachedOrders = orders.sort((a,b) => new Date(b.created_at) - new Date(a.created_at)); stockRows = stock; cachedExpenses = expenses; cachedQuotes = quotes;
-    const ca = orders.filter(o => o.status !== "cancelled").reduce((s,o) => s + Number(o.total || 0), 0);
-    const pending = orders.filter(o => ["new","processing"].includes(o.status)).length;
-    const stockValue = stock.reduce((s,x) => s + Number(x.quantity || 0) * Number(x.unit_cost || 0), 0);
-    const low = stock.filter(x => Number(x.min_quantity || 0) > 0 && Number(x.quantity || 0) <= Number(x.min_quantity || 0)).length;
-    const recent = orders.slice(0, 7);
-    return `<div class="admin-cards"><div class="kpi"><div class="label">Chiffre d’affaires enregistré</div><div class="value">${money(ca)}</div></div><div class="kpi"><div class="label">Commandes à traiter</div><div class="value">${pending}</div></div><div class="kpi"><div class="label">Valeur du stock</div><div class="value">${money(stockValue)}</div></div><div class="kpi"><div class="label">Packs actifs</div><div class="value">${packRows.filter(p=>p.active).length}</div></div></div><div class="admin-grid"><div class="panel"><h3>Commandes récentes</h3>${recent.length ? `<div class="table-wrap"><table class="table"><thead><tr><th>Référence</th><th>Client</th><th>Total</th><th>Statut</th></tr></thead><tbody>${recent.map(o=>`<tr><td>${esc(o.id)}</td><td>${esc(o.customer_name || "Client historique")}</td><td>${money(o.total)}</td><td><span class="status ${esc(o.status)}">${esc(statusLabel(o.status))}</span></td></tr>`).join("")}</tbody></table></div>` : '<div class="empty">Aucune commande.</div>'}<button class="btn ghost small" onclick="showAdminView('orders')">Voir toutes les commandes</button></div><div class="panel"><h3>À surveiller</h3><p>Stock sous le seuil : <strong>${low}</strong></p><p>Demandes de devis : <strong>${quotes.filter(q=>q.status === "new").length}</strong></p><p>Dépenses enregistrées : <strong>${money(expenses.reduce((s,x)=>s+Number(x.amount||0),0))}</strong></p><p>Administrateur connecté : <strong>${esc(currentProfile?.full_name || currentUser.email)}</strong></p></div></div>`;
+    const sortedOrders = [...orders].sort((a,b) => new Date(b.created_at) - new Date(a.created_at));
+    cachedOrders = sortedOrders; stockRows = stock; cachedExpenses = expenses; cachedQuotes = quotes;
+    const now = new Date();
+    const dayStart = new Date(now); dayStart.setHours(0,0,0,0);
+    const last30Start = new Date(dayStart); last30Start.setDate(last30Start.getDate() - 29);
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const validOrder = o => o.status !== "cancelled";
+    const revenue30 = orders.filter(o => validOrder(o) && new Date(o.created_at) >= last30Start).reduce((sum,o) => sum + Number(o.total || 0), 0);
+    const revenueMonth = orders.filter(o => validOrder(o) && new Date(o.created_at) >= monthStart).reduce((sum,o) => sum + Number(o.total || 0), 0);
+    const pendingOrders = orders.filter(o => ["new","processing"].includes(o.status)).length;
+    const deliveredOrders = orders.filter(o => o.status === "delivered");
+    const averageDelivered = deliveredOrders.length ? deliveredOrders.reduce((sum,o) => sum + Number(o.total || 0), 0) / deliveredOrders.length : 0;
+    const stockValue = stock.reduce((sum,row) => sum + Number(row.quantity || 0) * Number(row.unit_cost || 0), 0);
+    const lowStockRows = stock.filter(row => Number(row.min_quantity || 0) > 0 && Number(row.quantity || 0) <= Number(row.min_quantity || 0));
+    const newQuotes = quotes.filter(q => q.status === "new").length;
+    const expenseTotal = expenses.reduce((sum,row) => sum + Number(row.amount || 0), 0);
+    const monthExpenses = expenses.filter(row => {
+      const d = new Date(`${row.expense_date || row.created_at || ""}`);
+      return Number.isFinite(d.getTime()) && d >= monthStart;
+    }).reduce((sum,row) => sum + Number(row.amount || 0), 0);
+    const published = productRows.filter(p => p.active && Number(p.price || 0) > 0).length;
+    const available = productRows.filter(p => p.availability_status === "available" && Number(p.price || 0) > 0).length;
+    const outOfStock = productRows.filter(p => p.availability_status !== "available" || Number(p.price || 0) <= 0).length;
+    const dayKey = date => `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,"0")}-${String(date.getDate()).padStart(2,"0")}`;
+    const chartDays = Array.from({ length: 14 }, (_, index) => {
+      const d = new Date(dayStart); d.setDate(d.getDate() - (13 - index));
+      return { key: dayKey(d), label: d.toLocaleDateString("fr-SN", { day: "2-digit", month: "short" }).replace(/\.$/, ""), value: 0 };
+    });
+    const dayLookup = new Map(chartDays.map(point => [point.key, point]));
+    orders.forEach(order => {
+      if (!validOrder(order) || !order.created_at) return;
+      const created = new Date(order.created_at);
+      const target = dayLookup.get(dayKey(created));
+      if (target) target.value += Number(order.total || 0);
+    });
+    const statusCounts = [
+      { label: "Nouvelles", value: orders.filter(o=>o.status === "new").length, css: "new" },
+      { label: "En préparation", value: orders.filter(o=>o.status === "processing").length, css: "processing" },
+      { label: "Livrées", value: orders.filter(o=>o.status === "delivered").length, css: "delivered" },
+      { label: "Annulées", value: orders.filter(o=>o.status === "cancelled").length, css: "cancelled" }
+    ];
+    const recent = sortedOrders.slice(0, 8);
+    const cards = [
+      { label: "Ventes sur 30 jours", value: money(revenue30), note: "Hors commandes annulées", css: "revenue" },
+      { label: "Commandes à traiter", value: String(pendingOrders), note: "Nouvelles + en préparation", css: "pending" },
+      { label: "Commandes au total", value: String(orders.length), note: "Historique enregistré", css: "orders" },
+      { label: "Panier moyen livré", value: money(averageDelivered), note: `${deliveredOrders.length} commande(s) livrée(s)`, css: "average" },
+      { label: "Articles publiés", value: String(published), note: "Prix de vente renseigné", css: "published" },
+      { label: "Articles en rupture", value: String(outOfStock), note: "Disponibilité à vérifier", css: "stockout" }
+    ];
+    return `<div class="dashboard-welcome"><div><div class="eyebrow">PILOTAGE COMMERCIAL</div><h2>Vue d’ensemble de SAMA-PACK</h2><p>Suivi des ventes, des commandes, du catalogue et des réapprovisionnements.</p></div><button class="btn ghost small" onclick="showAdminView('dashboard')">Actualiser les données</button></div>
+      <div class="dashboard-kpis">${cards.map(card=>`<article class="dashboard-kpi ${card.css}"><span class="dashboard-kpi-label">${esc(card.label)}</span><strong>${esc(card.value)}</strong><small>${esc(card.note)}</small></article>`).join("")}</div>
+      <div class="dashboard-chart-grid dashboard-chart-grid-main">
+        <section class="panel dashboard-chart-panel"><div class="dashboard-panel-heading"><div><div class="eyebrow">TENDANCE · 14 JOURS</div><h3>Évolution des ventes</h3></div><span class="dashboard-chart-pill">${money(revenue30)} / 30 j</span></div>${dashboardLineChart(chartDays)}</section>
+        <section class="panel dashboard-chart-panel"><div class="dashboard-panel-heading"><div><div class="eyebrow">SUIVI DES COMMANDES</div><h3>Répartition par statut</h3></div></div>${dashboardDonutChart(statusCounts)}</section>
+      </div>
+      <div class="dashboard-chart-grid dashboard-chart-grid-secondary">
+        <section class="panel dashboard-chart-panel"><div class="dashboard-panel-heading"><div><div class="eyebrow">DISPONIBILITÉ</div><h3>État du catalogue</h3></div><button class="btn ghost small" onclick="showAdminView('stock')">Gérer le stock</button></div>${dashboardAvailabilityChart(available, outOfStock)}</section>
+        <section class="panel dashboard-alert-panel"><div class="dashboard-panel-heading"><div><div class="eyebrow">ACTIONS À SUIVRE</div><h3>Points de vigilance</h3></div></div><div class="dashboard-alert-list"><div class="dashboard-alert-item ${lowStockRows.length ? "is-warning" : ""}"><span class="dashboard-alert-icon">${lowStockRows.length ? "!" : "✓"}</span><div><strong>${lowStockRows.length} référence(s) sous le seuil de stock</strong><small>Vérifie les quantités à réapprovisionner.</small></div><button class="btn ghost small" onclick="showAdminView('stock')">Voir</button></div><div class="dashboard-alert-item ${newQuotes ? "is-warning" : ""}"><span class="dashboard-alert-icon">${newQuotes ? "!" : "✓"}</span><div><strong>${newQuotes} devis en attente</strong><small>Demandes reçues qui nécessitent un suivi.</small></div><button class="btn ghost small" onclick="showAdminView('quotes')">Voir</button></div><div class="dashboard-alert-item"><span class="dashboard-alert-icon">₣</span><div><strong>Dépenses du mois : ${money(monthExpenses)}</strong><small>Dépenses enregistrées au total : ${money(expenseTotal)}.</small></div><button class="btn ghost small" onclick="showAdminView('expenses')">Voir</button></div><div class="dashboard-alert-item"><span class="dashboard-alert-icon">▦</span><div><strong>Valeur du stock enregistré : ${money(stockValue)}</strong><small>Selon les quantités et coûts saisis dans Stock.</small></div><button class="btn ghost small" onclick="showAdminView('stock')">Voir</button></div></div></section>
+      </div>
+      <section class="panel dashboard-recent-panel"><div class="dashboard-panel-heading"><div><div class="eyebrow">DERNIÈRES ACTIVITÉS</div><h3>Commandes récentes</h3></div><button class="btn ghost small" onclick="showAdminView('orders')">Toutes les commandes</button></div>${recent.length ? `<div class="table-wrap"><table class="table"><thead><tr><th>Référence</th><th>Date</th><th>Client</th><th>Total</th><th>Statut</th><th></th></tr></thead><tbody>${recent.map(o=>`<tr><td><strong>${esc(o.id)}</strong></td><td>${esc(fmtDate(o.created_at))}</td><td>${esc(o.customer_name || "Client historique")}<br><span class="small-note">${esc(o.customer_phone || "")}</span></td><td>${money(o.total)}</td><td><span class="status ${esc(o.status)}">${esc(statusLabel(o.status))}</span></td><td><button class="btn ghost small" onclick="showOrder('${esc(o.id)}')">Détails</button></td></tr>`).join("")}</tbody></table></div>` : '<div class="empty">Aucune commande pour le moment. Les nouvelles commandes apparaîtront ici.</div>'}</section>
+      <p class="small-note dashboard-data-footnote">Dernière actualisation : ${esc(now.toLocaleString("fr-SN", { dateStyle: "medium", timeStyle: "short" }))}. Les indicateurs s’appuient sur les enregistrements actuels de Supabase.</p>`;
   }
   async function loadOrdersWithItems() {
     const [orders, customers] = await Promise.all([readRows("orders"), readRows("customers")]);
@@ -1122,10 +1223,41 @@ if (!isAdmin()) { closeAdmin(); return toast("Accès administrateur requis.", tr
     toast(active ? "Pack publié dans le catalogue." : "Pack masqué du catalogue."); await loadPublicData(); await showAdminView("packs");
   }
   async function adminAccounts() {
-    const { data, error } = await client.from("profiles").select("id,full_name,phone,email,role,created_at").order("created_at", { ascending: true });
+    const { data, error } = await client.from("profiles")
+      .select("id,full_name,phone,email,role,is_super_admin,invited_by,created_at")
+      .eq("role", "admin").order("created_at", { ascending: true });
     if (error) throw error;
-    const admins = (data || []).filter(p=>p.role === "admin");
-    return `<div class="panel"><h3>Inviter un administrateur</h3><p>Chaque administrateur utilise son propre compte. Les actions enregistrées dans le journal seront attribuées à son nom.</p><form id="inviteAdminForm" class="admin-form"><input class="input" name="full_name" required minlength="2" placeholder="Nom complet"><input class="input" name="email" type="email" required placeholder="Adresse e-mail"><button class="btn primary full" type="submit">Envoyer l’invitation</button></form><p class="small-note">L’invitation est envoyée par e-mail. Vérifie la configuration e-mail de Supabase si elle n’arrive pas.</p></div><div style="height:16px"></div><div class="panel"><h3>Administrateurs (${admins.length})</h3>${admins.length ? `<div class="table-wrap"><table class="table"><thead><tr><th>Nom</th><th>Compte</th><th>Rôle</th><th>Créé le</th></tr></thead><tbody>${admins.map(a=>`<tr><td>${esc(a.full_name||"Sans nom")}</td><td>${esc(a.email||"—")}<br><span class="small-note">${esc(a.phone||"")}</span></td><td><span class="status processing">Administrateur</span></td><td>${esc(fmtDate(a.created_at))}</td></tr>`).join("")}</tbody></table></div>` : '<div class="empty">Aucun administrateur n’est configuré.</div>'}</div>`;
+    const admins = data || [];
+    const isGeneralAdmin = currentProfile?.is_super_admin === true;
+    const inviterIds = [...new Set(admins.map(row => row.invited_by).filter(Boolean))];
+    const inviterLabels = Object.create(null);
+    if (inviterIds.length) {
+      const { data: inviters, error: inviterError } = await client.from("profiles")
+        .select("id,full_name,email").in("id", inviterIds);
+      if (!inviterError) (inviters || []).forEach(row => { inviterLabels[row.id] = row.full_name || row.email || "Administrateur"; });
+    }
+    const invitePanel = isGeneralAdmin
+      ? `<div class="panel admin-invite-panel"><div class="eyebrow">ACCÈS ET SÉCURITÉ</div><h3>Inviter un administrateur</h3><p>Seul l’administrateur général peut ajouter ou retirer des accès administrateur. Chaque compte doit rester nominatif.</p><form id="inviteAdminForm" class="admin-form"><label>Nom complet<input class="input" name="full_name" required minlength="2" maxlength="120" placeholder="Nom complet"></label><label>Adresse e-mail<input class="input" name="email" type="email" required maxlength="254" placeholder="personne@entreprise.sn"></label><button class="btn primary full" type="submit">Envoyer l’invitation</button></form><p class="small-note">L’invité reçoit un lien par e-mail. La journalisation conserve l’auteur de l’invitation.</p></div>`
+      : `<div class="panel admin-permission-note"><h3>Gestion des accès</h3><p>Tu peux consulter la liste des administrateurs, mais seul l’administrateur général peut inviter un administrateur ou lui retirer ses droits.</p></div>`;
+    const tableHtml = admins.length ? `<div class="table-wrap"><table class="table"><thead><tr><th>Administrateur</th><th>Compte</th><th>Niveau d’accès</th><th>Invité par</th><th>Depuis</th>${isGeneralAdmin ? "<th>Actions</th>" : ""}</tr></thead><tbody>${admins.map(a => {
+      const general = a.is_super_admin === true;
+      const canRemove = isGeneralAdmin && !general && a.id !== currentUser?.id;
+      return `<tr><td><strong>${esc(a.full_name || "Sans nom")}</strong><br><span class="small-note">${general ? "Propriétaire de l’espace" : "Compte administrateur"}</span></td><td>${esc(a.email || "—")}<br><span class="small-note">${esc(a.phone || "")}</span></td><td><span class="status ${general ? "delivered" : "processing"}">${general ? "Administrateur général" : "Administrateur"}</span></td><td>${general ? "—" : esc(inviterLabels[a.invited_by] || (a.invited_by ? "Administrateur général" : "Ancien compte"))}</td><td>${esc(fmtDate(a.created_at))}</td>${isGeneralAdmin ? `<td>${canRemove ? `<button class="btn small danger" onclick="removeAdmin('${esc(a.id)}')">Retirer les droits</button>` : `<span class="small-note">${general ? "Compte protégé" : "Ton compte"}</span>`}</td>` : ""}</tr>`;
+    }).join("")}</tbody></table></div>` : '<div class="empty">Aucun administrateur n’est enregistré.</div>';
+    return `${invitePanel}<div class="panel admin-accounts-list"><div class="dashboard-panel-heading"><div><div class="eyebrow">ACCÈS AU BACK-OFFICE</div><h3>Administrateurs (${admins.length})</h3></div><span class="small-note">${isGeneralAdmin ? "Tu es administrateur général." : "Consultation uniquement."}</span></div>${tableHtml}<p class="small-note">« Retirer les droits » transforme le compte en compte client et le retire de cette liste. L’historique des commandes et des actions est conservé.</p></div>`;
+  }
+
+  async function removeAdmin(id) {
+    if (currentProfile?.is_super_admin !== true) return toast("Seul l’administrateur général peut retirer les droits d’un administrateur.", true);
+    if (!id || id === currentUser?.id) return toast("Tu ne peux pas retirer tes propres droits administrateur général.", true);
+    const target = (await client.from("profiles").select("full_name,email,is_super_admin").eq("id", id).maybeSingle()).data;
+    if (target?.is_super_admin) return toast("L’administrateur général est protégé.", true);
+    const label = target?.full_name || target?.email || "cet administrateur";
+    if (!window.confirm(`Retirer les droits administrateur de ${label} ? Le compte restera disponible comme compte client et l’historique sera conservé.`)) return;
+    const { data, error } = await client.functions.invoke("sama-remove-admin", { body: { user_id: id } });
+    if (error || data?.error) return toast(data?.error || errorMessage(error), true);
+    toast(data?.message || "Droits administrateur retirés.");
+    await showAdminView("admins");
   }
   async function adminActivity() {
     const { data, error } = await client.from("audit_logs").select("id,actor_user_id,actor_label,action,entity_type,entity_id,details,created_at").order("created_at", { ascending: false }).limit(150);
@@ -1317,6 +1449,6 @@ if (!isAdmin()) { closeAdmin(); return toast("Accès administrateur requis.", tr
   }
 
   // Functions called by inline storefront/admin controls.
-  Object.assign(window,{openProduct,addToCart,closeModal,changeQty,checkoutModal,showAccountHome,signOut,renderAuthForm,resetPassword,enableBrowserNotifications,loadAndShowNotifications,markNotificationRead,showAdminView,editPack,cancelPackEdit,togglePack,setOrderStatus,showOrder,setQuoteStatus,goToProductPage,movePromo,goToPromo,selectReviewRating,editProspect,deleteProspect,setProspectStatus,editCatalogItem,archiveCatalogItem});
+  Object.assign(window,{openProduct,addToCart,closeModal,changeQty,checkoutModal,showAccountHome,signOut,renderAuthForm,resetPassword,enableBrowserNotifications,loadAndShowNotifications,markNotificationRead,showAdminView,editPack,cancelPackEdit,togglePack,setOrderStatus,showOrder,setQuoteStatus,goToProductPage,movePromo,goToPromo,selectReviewRating,editProspect,deleteProspect,setProspectStatus,editCatalogItem,archiveCatalogItem,removeAdmin});
   start().catch(err => { console.error(err); toast("Initialisation impossible. Recharge la page ou contacte l’administrateur.",true); });
 })();
