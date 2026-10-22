@@ -108,6 +108,92 @@
   }
   function isAdmin() { return currentProfile?.role === "admin"; }
 
+
+  const ACCOUNT_PRESENCE_WINDOW_MS = 90 * 1000;
+  let presenceHeartbeatTimer = null;
+  let presenceVisibilityHandler = null;
+  let presenceWriteInFlight = false;
+  let activeAccountsRefreshTimer = null;
+
+  async function recordAccountPresence(user = currentUser) {
+    if (!client || !user || document.visibilityState === "hidden" || presenceWriteInFlight) return;
+    presenceWriteInFlight = true;
+    try {
+      const { error } = await client.from("profiles")
+        .update({ last_seen_at: new Date().toISOString() })
+        .eq("id", user.id);
+      if (error) console.warn("Mise à jour de présence indisponible", error);
+    } catch (error) {
+      console.warn("Mise à jour de présence indisponible", error);
+    } finally {
+      presenceWriteInFlight = false;
+    }
+  }
+
+  function stopAccountPresence() {
+    if (presenceHeartbeatTimer) window.clearInterval(presenceHeartbeatTimer);
+    presenceHeartbeatTimer = null;
+    if (presenceVisibilityHandler) document.removeEventListener("visibilitychange", presenceVisibilityHandler);
+    presenceVisibilityHandler = null;
+  }
+
+  function setupAccountPresence(user) {
+    stopAccountPresence();
+    if (!user) return;
+    const pulse = () => {
+      if (document.visibilityState !== "hidden") void recordAccountPresence(user);
+    };
+    pulse();
+    presenceHeartbeatTimer = window.setInterval(pulse, 30_000);
+    presenceVisibilityHandler = () => {
+      if (document.visibilityState === "visible") {
+        pulse();
+        if (currentAdminView === "dashboard") void refreshDashboardActiveAccounts();
+      }
+    };
+    document.addEventListener("visibilitychange", presenceVisibilityHandler);
+  }
+
+  async function countActiveAccounts() {
+    if (!client) throw new Error("Connexion à la base de données indisponible.");
+    const cutoff = new Date(Date.now() - ACCOUNT_PRESENCE_WINDOW_MS).toISOString();
+    const { count, error } = await client.from("profiles")
+      .select("id", { count: "exact", head: true })
+      .gte("last_seen_at", cutoff);
+    if (error) throw error;
+    return Number(count || 0);
+  }
+
+  function stopDashboardPresencePolling() {
+    if (activeAccountsRefreshTimer) window.clearInterval(activeAccountsRefreshTimer);
+    activeAccountsRefreshTimer = null;
+  }
+
+  async function refreshDashboardActiveAccounts() {
+    if (!client || !isAdmin() || currentAdminView !== "dashboard") return;
+    const value = $("activeAccountsCount");
+    if (!value) return;
+    try {
+      value.textContent = String(await countActiveAccounts());
+      const meta = $("activeAccountsLastUpdated");
+      if (meta) meta.textContent = `Activité sur 90 s · actualisé à ${new Date().toLocaleTimeString("fr-SN", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}`;
+    } catch (error) {
+      console.warn("Comptage des comptes actifs indisponible", error);
+      if (value.textContent === "—") value.textContent = "N/D";
+    }
+  }
+
+  function startDashboardPresencePolling() {
+    stopDashboardPresencePolling();
+    if (currentAdminView !== "dashboard") return;
+    activeAccountsRefreshTimer = window.setInterval(() => {
+      if (currentAdminView === "dashboard" && document.visibilityState === "visible") {
+        void refreshDashboardActiveAccounts();
+      }
+    }, 30_000);
+  }
+
+
   function renderProductRatingSummary(productId) {
     const stats = productReviewStats[String(productId)];
     const average = Number(stats?.average || 0);
@@ -863,6 +949,7 @@
   async function signOut() { await client.auth.signOut(); await syncAuth(null); closeModal(); toast("Tu es déconnecté."); }
   async function syncAuth(user) {
     currentUser = user || null; currentProfile = currentUser ? await getProfile(currentUser) : null;
+    setupAccountPresence(currentUser);
     adminInitialized = await isAdminInitialized();
     updateAccountButtons();
     await loadNotifications();
@@ -974,6 +1061,7 @@
   function statusLabel(status) { return ({new:"Nouvelle",processing:"En préparation",delivered:"Livrée",cancelled:"Annulée",won:"Gagné",lost:"Perdu"})[status] || status || "—"; }
   function actionLabel(action) { return ({pack_created:"Pack créé",pack_updated:"Pack modifié",pack_deleted:"Pack supprimé",order_status_changed:"Statut de commande modifié",order_placed:"Commande passée",admin_bootstrap:"Premier administrateur configuré",admin_invited:"Administrateur invité",admin_removed:"Droits administrateur retirés",settings_updated:"Paramètres modifiés",stock_created:"Stock créé",stock_updated:"Stock modifié",supplier_created:"Fournisseur ajouté",supplier_updated:"Fournisseur modifié",supplier_deleted:"Fournisseur supprimé",expense_created:"Dépense ajoutée",expense_updated:"Dépense modifiée",expense_deleted:"Dépense supprimée",quote_created:"Demande de devis reçue",quote_updated:"Devis modifié",quote_deleted:"Devis supprimé"})[action] || action || "Action"; }
   async function showAdminView(view) {
+    stopDashboardPresencePolling();
         if (view === "prospects" || view === "catalogs") {
       if (!isAdmin()) return toast("Cette action n’est pas autorisée pour ce compte.", true);
       currentAdminView = view;
@@ -1005,6 +1093,7 @@ if (!isAdmin()) { closeAdmin(); return toast("Accès administrateur requis.", tr
       else if (view === "settings") html = await adminSettings();
       $("adminContent").innerHTML = html;
       bindAdmin(view);
+      if (view === "dashboard") startDashboardPresencePolling();
     } catch (error) {
       console.error("Admin view failed", error);
       $("adminContent").innerHTML = `<div class="panel"><h3>Chargement impossible</h3><p>${esc(errorMessage(error))}</p><button class="btn ghost" onclick="showAdminView('${esc(view)}')">Réessayer</button></div>`;
@@ -1062,6 +1151,8 @@ if (!isAdmin()) { closeAdmin(); return toast("Accès administrateur requis.", tr
   }
 
   async function adminDashboard() {
+    let activeAccounts = null;
+    try { activeAccounts = await countActiveAccounts(); } catch (error) { console.warn("Comptes actifs indisponibles", error); }
     const [orders, stock, expenses, quotes, productRows] = await Promise.all([
       readRows("orders"), readRows("stock"), readRows("expenses"), readRows("quotes"), readRows("products")
     ]);
@@ -1113,10 +1204,11 @@ if (!isAdmin()) { closeAdmin(); return toast("Accès administrateur requis.", tr
       { label: "Commandes au total", value: String(orders.length), note: "Historique enregistré", css: "orders" },
       { label: "Panier moyen livré", value: money(averageDelivered), note: `${deliveredOrders.length} commande(s) livrée(s)`, css: "average" },
       { label: "Articles publiés", value: String(published), note: "Prix de vente renseigné", css: "published" },
-      { label: "Articles en rupture", value: String(outOfStock), note: "Disponibilité à vérifier", css: "stockout" }
+      { label: "Articles en rupture", value: String(outOfStock), note: "Disponibilité à vérifier", css: "stockout" },
+      { label: "Comptes actifs maintenant", value: activeAccounts === null ? "—" : String(activeAccounts), note: `Activité sur 90 s · actualisé à ${now.toLocaleTimeString("fr-SN", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}`, css: "active-users", live: true }
     ];
     return `<div class="dashboard-welcome"><div><div class="eyebrow">PILOTAGE COMMERCIAL</div><h2>Vue d’ensemble de SAMA-PACK</h2><p>Suivi des ventes, des commandes, du catalogue et des réapprovisionnements.</p></div><button class="btn ghost small" onclick="showAdminView('dashboard')">Actualiser les données</button></div>
-      <div class="dashboard-kpis">${cards.map(card=>`<article class="dashboard-kpi ${card.css}"><span class="dashboard-kpi-label">${esc(card.label)}</span><strong>${esc(card.value)}</strong><small>${esc(card.note)}</small></article>`).join("")}</div>
+      <div class="dashboard-kpis">${cards.map(card=>`<article class="dashboard-kpi ${card.css}"><span class="dashboard-kpi-label">${esc(card.label)}</span><strong ${card.live ? 'id="activeAccountsCount"' : ""}>${esc(card.value)}</strong><small ${card.live ? 'id="activeAccountsLastUpdated"' : ""}>${esc(card.note)}</small></article>`).join("")}</div>
       <div class="dashboard-chart-grid dashboard-chart-grid-main">
         <section class="panel dashboard-chart-panel"><div class="dashboard-panel-heading"><div><div class="eyebrow">TENDANCE · 14 JOURS</div><h3>Évolution des ventes</h3></div><span class="dashboard-chart-pill">${money(revenue30)} / 30 j</span></div>${dashboardLineChart(chartDays)}</section>
         <section class="panel dashboard-chart-panel"><div class="dashboard-panel-heading"><div><div class="eyebrow">SUIVI DES COMMANDES</div><h3>Répartition par statut</h3></div></div>${dashboardDonutChart(statusCounts)}</section>

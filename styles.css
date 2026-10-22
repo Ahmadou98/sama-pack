@@ -1830,3 +1830,10 @@ tr[hidden]{display:none!important}
   .dashboard-data-footnote { text-align:left; }
 }
 
+
+/* ===== SAMA-PACK active accounts presence ===== */
+.dashboard-kpis { grid-template-columns:repeat(4,minmax(0,1fr)); }
+.dashboard-kpi.active-users { --kpi-accent:#15946b; }
+@media (max-width:1050px) { .dashboard-kpis { grid-template-columns:repeat(3,minmax(0,1fr)); } }
+@media (max-width:650px) { .dashboard-kpis { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+
