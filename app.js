@@ -938,10 +938,13 @@
   async function showAccountHome() {
     if (!currentUser) { renderAuthForm("login"); return; }
     const p = currentProfile || await getProfile();
-    const { data: rows, error } = await client.from("orders").select("id,created_at,status,total,subtotal,delivery,customer_name,customer_phone,delivery_address,delivery_zone").eq("user_id", currentUser.id).order("created_at", { ascending: false }).limit(15);
+    const { data: rows, error } = await client.from("orders").select("id,created_at,status,total,subtotal,delivery,customer_name,customer_phone,delivery_address,delivery_zone,payment_choice,payment_status,amount_paid").eq("user_id", currentUser.id).order("created_at", { ascending: false }).limit(15);
     const orders = error ? [] : (rows || []);
     const initialized = await isAdminInitialized(); adminInitialized = initialized;
-    const orderHtml = orders.length ? `<div class="table-wrap"><table class="table"><thead><tr><th>Commande</th><th>Date</th><th>Total</th><th>Statut</th></tr></thead><tbody>${orders.map(o => `<tr><td>${esc(o.id)}</td><td>${esc(fmtDate(o.created_at))}</td><td>${money(o.total)}</td><td><span class="status ${esc(o.status)}">${esc(statusLabel(o.status))}</span></td></tr>`).join("")}</tbody></table></div>` : '<div class="empty compact-empty">Tu n’as pas encore passé de commande en ligne.</div>';
+    const orderHtml = orders.length ? `<div class="table-wrap"><table class="table"><thead><tr><th>Commande</th><th>Date</th><th>Total</th><th>Paiement</th><th>Statut</th><th>Action</th></tr></thead><tbody>${orders.map(o => {
+      const paymentPending = ["awaiting_payment","awaiting_delivery_payment"].includes(o.status);
+      return `<tr><td>${esc(o.id)}</td><td>${esc(fmtDate(o.created_at))}</td><td>${money(o.total)}</td><td><span class="small-note">${esc(paymentStatusLabel(o.payment_status))}</span><br><span class="small-note">Payé : ${money(o.amount_paid || 0)}</span></td><td><span class="status ${esc(o.status)}">${esc(statusLabel(o.status))}</span></td><td>${paymentPending ? `<button class="btn small primary" onclick="retryOrderPayment('${esc(o.id)}')">Payer</button>` : "—"}</td></tr>`;
+    }).join("")}</tbody></table></div>` : '<div class="empty compact-empty">Tu n’as pas encore passé de commande en ligne.</div>';
     showModal(`<div class="modal-head"><div><div class="eyebrow">MON COMPTE</div><h2>${esc(p?.full_name || currentUser.email || "Client")}</h2><p class="small-note">${esc(currentUser.email || "")}</p></div><button class="close" onclick="closeModal()">✕</button></div><div class="account-buttons"><button class="btn secondary" onclick="enableBrowserNotifications()">🔔 Activer les alertes du navigateur</button><button class="btn ghost" onclick="loadAndShowNotifications()">Mes notifications (${userNotifications.filter(n=>!n.read_at).length})</button></div><div class="panel account-orders"><h3>Mes commandes</h3>${orderHtml}</div><div class="panel account-password"><h3>${currentUser?.last_sign_in_at ? "Sécurité du compte" : "Définir un mot de passe"}</h3><form id="changePasswordForm" class="checkout-grid"><input class="input full" name="password" type="password" minlength="8" required placeholder="Nouveau mot de passe (8 caractères minimum)"><button class="btn ghost full" type="submit">Enregistrer le mot de passe</button></form></div>${!initialized ? `<div class="panel bootstrap-panel"><h3>Configurer le premier administrateur</h3><p>Cette option n’apparaît que tant qu’aucun administrateur n’est configuré. Utilise le code initial transmis par le propriétaire.</p><form id="bootstrapAdminForm" class="checkout-grid"><input class="input full" name="bootstrap_token" autocomplete="off" required placeholder="Code initial du propriétaire"><button class="btn primary full" type="submit">Devenir le premier administrateur</button></form></div>` : ""}<button class="btn ghost full" onclick="signOut()">Se déconnecter</button>`);
     const pw = $("changePasswordForm"); pw.onsubmit = async e => { e.preventDefault(); const form = e.currentTarget; const password = String(new FormData(form).get("password") || ""); if (password.length < 8) return toast("Choisis au moins 8 caractères.", true); setBusy(form, true, "Enregistrement…"); const { error } = await client.auth.updateUser({ password }); if (error) toast(errorMessage(error), true); else { toast("Mot de passe mis à jour."); form.reset(); } setBusy(form, false); };
     const bootstrap = $("bootstrapAdminForm"); if (bootstrap) bootstrap.onsubmit = async e => { e.preventDefault(); const form = e.currentTarget; setBusy(form, true, "Configuration…"); const token = String(new FormData(form).get("bootstrap_token") || "").trim(); const { data, error } = await client.rpc("sama_bootstrap_first_admin", { p_token: token }); setBusy(form, false); if (error) return toast(errorMessage(error), true); await syncAuth(currentUser); closeModal(); toast(data?.message || "Compte administrateur configuré."); };
@@ -1015,30 +1018,168 @@
     if (!cart.length) return toast("Ton panier est vide.", true);
     const unavailableLines = cart.filter(line => { const p = getP(line.id); return !canSellProduct(p); });
     if (unavailableLines.length) return toast("Retire les articles en rupture ou sans prix confirmé du panier avant de commander.", true);
-    if (!currentUser) { closeModal(); renderAuthForm("login", "Connecte-toi ou crée un compte pour confirmer ta commande sans passer par WhatsApp."); return; }
-    const total = cartTotals(); const profile = currentProfile || {};
-    showModal(`<div class="modal-head"><div><div class="eyebrow">COMMANDE EN LIGNE</div><h2>Finaliser la commande</h2></div><button class="close" onclick="closeModal()">✕</button></div><form id="checkoutForm" class="checkout-grid"><input class="input full" name="name" required minlength="2" maxlength="120" placeholder="Nom complet" value="${esc(profile.full_name || currentUser.user_metadata?.full_name || "")}"><input class="input" name="phone" required minlength="8" maxlength="25" placeholder="Téléphone" value="${esc(profile.phone || currentUser.user_metadata?.phone || "")}"><input class="input" name="zone" placeholder="Zone / quartier" maxlength="100"><input class="input full" name="address" required minlength="4" maxlength="300" placeholder="Adresse de livraison"><input class="input full" name="slot" placeholder="Créneau souhaité (facultatif)" maxlength="120"><select class="input full" name="payment"><option>Paiement à la livraison</option><option>À confirmer</option></select><div class="summary full"><div class="summary-row"><span>Estimation</span><strong>${money(total.total)}</strong></div><div class="small-note">Le montant final est recalculé côté serveur. Une confirmation apparaîtra dans ton compte.</div></div><button class="btn primary full" type="submit">Confirmer ma commande</button></form>`);
+    if (!currentUser) { closeModal(); renderAuthForm("login", "Connecte-toi ou crée un compte pour confirmer ta commande en ligne."); return; }
+    const totals = cartTotals(); const profile = currentProfile || {};
+    const deliveryAllowed = Number(totals.delivery) > 0;
+    showModal(`<div class="modal-head"><div><div class="eyebrow">COMMANDE EN LIGNE</div><h2>Finaliser la commande</h2></div><button class="close" onclick="closeModal()">✕</button></div>
+      <form id="checkoutForm" class="checkout-grid">
+        <input class="input full" name="name" required minlength="2" maxlength="120" placeholder="Nom complet" value="${esc(profile.full_name || currentUser.user_metadata?.full_name || "")}">
+        <input class="input" name="phone" required minlength="8" maxlength="25" placeholder="Téléphone" value="${esc(profile.phone || currentUser.user_metadata?.phone || "")}">
+        <input class="input" name="zone" placeholder="Zone / quartier" maxlength="100">
+        <input class="input full" name="address" required minlength="4" maxlength="300" placeholder="Adresse de livraison">
+        <input class="input full" name="slot" placeholder="Créneau souhaité (facultatif)" maxlength="120">
+        <div class="payment-choice-list full">
+          <div class="eyebrow">COMMENT SOUHAITES-TU PAYER ?</div>
+          <label class="payment-choice-card is-selected">
+            <input type="radio" name="payment_choice" value="pay_now" checked>
+            <span class="payment-choice-copy"><strong>Payer maintenant</strong><small>Règle la totalité de la commande via Wave, Orange Money ou un autre moyen disponible sur la page sécurisée.</small></span>
+            <strong class="payment-choice-amount">${money(totals.total)}</strong>
+          </label>
+          <label class="payment-choice-card ${deliveryAllowed ? "" : "is-disabled"}">
+            <input type="radio" name="payment_choice" value="pay_later" ${deliveryAllowed ? "" : "disabled"}>
+            <span class="payment-choice-copy"><strong>Payer plus tard</strong><small>Tu règles les frais de livraison maintenant. Le solde des produits est payé à la livraison. Aucun livreur ne part avant confirmation de ce paiement.</small></span>
+            <strong class="payment-choice-amount">${money(totals.delivery)}</strong>
+          </label>
+          ${deliveryAllowed ? "" : '<p class="small-note">Les frais de livraison sont nuls ou indisponibles : seul le paiement intégral est proposé.</p>'}
+        </div>
+        <div class="summary full">
+          <div class="summary-row"><span>Sous-total des articles</span><strong>${money(totals.subtotal)}</strong></div>
+          <div class="summary-row"><span>Frais de livraison</span><strong>${money(totals.delivery)}</strong></div>
+          <div class="summary-row"><span>Total de la commande</span><strong>${money(totals.total)}</strong></div>
+          <div class="summary-row total"><span>À payer maintenant</span><strong id="checkoutAmountNow">${money(totals.total)}</strong></div>
+          <div class="summary-row"><span>Solde prévu à la livraison</span><strong id="checkoutAmountLater">0 FCFA</strong></div>
+          <p id="paymentChoiceHint" class="small-note">Le paiement est confirmé par le prestataire avant que la commande passe en préparation.</p>
+        </div>
+        <button class="btn primary full" type="submit">Continuer vers le paiement sécurisé</button>
+      </form>`);
     const form = $("checkoutForm");
+    const syncPaymentChoice = () => {
+      const selected = form.querySelector('input[name="payment_choice"]:checked')?.value || "pay_now";
+      form.querySelectorAll(".payment-choice-card").forEach(card => card.classList.toggle("is-selected", card.querySelector('input[name="payment_choice"]')?.value === selected));
+      const amountNow = selected === "pay_now" ? totals.total : totals.delivery;
+      const amountLater = selected === "pay_now" ? 0 : totals.subtotal;
+      if ($("checkoutAmountNow")) $("checkoutAmountNow").textContent = money(amountNow);
+      if ($("checkoutAmountLater")) $("checkoutAmountLater").textContent = money(amountLater);
+      if ($("paymentChoiceHint")) $("paymentChoiceHint").textContent = selected === "pay_now"
+        ? "La commande ne sera confirmée qu’après vérification du paiement intégral par le prestataire."
+        : "Seuls les frais de livraison sont payés maintenant. Le solde reste dû à la livraison. Pas de départ du livreur avant confirmation du paiement de la livraison.";
+    };
+    form.querySelectorAll('input[name="payment_choice"]').forEach(input => input.addEventListener("change", syncPaymentChoice));
+    syncPaymentChoice();
     form.onsubmit = async e => {
-      e.preventDefault(); if (!currentUser) return toast("Reconnecte-toi avant de confirmer la commande.", true);
-      setBusy(form, true, "Enregistrement de la commande…"); const f = new FormData(form);
+      e.preventDefault();
+      if (!currentUser) return toast("Reconnecte-toi avant de confirmer la commande.", true);
+      const f = new FormData(form);
+      const paymentChoice = String(f.get("payment_choice") || "pay_now");
+      if (paymentChoice === "pay_later" && !deliveryAllowed) return toast("Le paiement plus tard exige des frais de livraison à régler maintenant.", true);
+      setBusy(form, true, "Création de la commande…");
       const payload = {
         customer: { name: String(f.get("name") || "").trim(), phone: String(f.get("phone") || "").trim(), address: String(f.get("address") || "").trim(), zone: String(f.get("zone") || "").trim() },
-        slot: String(f.get("slot") || "").trim(), payment: String(f.get("payment") || "Paiement à la livraison"),
+        slot: String(f.get("slot") || "").trim(),
+        payment_choice: paymentChoice,
         items: cart.map(i => ({ product_id: i.id, quantity: i.qty }))
       };
       const { data, error } = await client.rpc("sama_place_order", { p_payload: payload });
       setBusy(form, false);
       if (error) return toast(errorMessage(error), true);
       const order = data?.order;
-      if (!data?.ok || !order?.id) return toast("La commande n’a pas pu être confirmée. Réessaie.", true);
+      if (!data?.ok || !order?.id) return toast("La commande n’a pas pu être préparée. Réessaie.", true);
       const profileUpdate = await client.from("profiles").update({full_name:payload.customer.name,phone:payload.customer.phone}).eq("id",currentUser.id);
       if (!profileUpdate.error) currentProfile = {...(currentProfile||{}),full_name:payload.customer.name,phone:payload.customer.phone};
-      cart = []; saveCart(); updateCartCount(); closeModal();
-      toast(`Commande ${order.id} enregistrée !`);
-      showModal(`<div class="modal-head"><div><div class="eyebrow">COMMANDE CONFIRMÉE</div><h2>Merci pour ta commande !</h2></div><button class="close" onclick="closeModal()">✕</button></div><div class="confirmation-mark">✓</div><p>Ta commande est enregistrée dans Sama-Pack. Tu peux la suivre depuis ton compte sans passer par WhatsApp.</p><div class="summary"><div class="summary-row"><span>Référence</span><strong>${esc(order.id)}</strong></div><div class="summary-row"><span>Sous-total</span><strong>${money(order.subtotal)}</strong></div><div class="summary-row"><span>Livraison</span><strong>${money(order.delivery)}</strong></div><div class="summary-row total"><span>Total</span><strong>${money(order.total)}</strong></div></div><div style="height:12px"></div><button class="btn primary full" onclick="showAccountHome()">Suivre ma commande</button>`);
-      await loadNotifications();
+      cart = []; saveCart(); updateCartCount();
+      try { localStorage.setItem("sama_pack_pending_payment_v1", order.id); } catch { /* stockage facultatif */ }
+      closeModal();
+      await retryOrderPayment(order.id);
     };
+  }
+
+  async function paymentFunctionError(error, fallback) {
+    try {
+      const response = error?.context;
+      if (response && typeof response.clone === "function") {
+        const body = await response.clone().json();
+        if (body?.error) return String(body.error);
+      }
+    } catch { /* fallback below */ }
+    return fallback || errorMessage(error);
+  }
+
+  async function retryOrderPayment(orderId) {
+    if (!currentUser) { openAccountModal(); return toast("Connecte-toi pour reprendre le paiement.", true); }
+    if (!orderId) {
+      try { orderId = localStorage.getItem("sama_pack_pending_payment_v1") || ""; } catch { orderId = ""; }
+    }
+    if (!orderId) return toast("Aucune commande en attente de paiement n’a été trouvée.", true);
+    toast("Préparation du paiement sécurisé…");
+    const { data, error } = await client.functions.invoke("sama-payment-checkout", { body: { action: "create_checkout", order_id: orderId } });
+    if (error || data?.error) {
+      const message = data?.error || await paymentFunctionError(error, "Le paiement n’a pas pu être lancé. Vérifie que les clés PayDunya sont configurées dans les secrets Supabase.");
+      showModal(`<div class="modal-head"><div><div class="eyebrow">PAIEMENT EN ATTENTE</div><h2>Commande ${esc(orderId)}</h2></div><button class="close" onclick="closeModal()">✕</button></div>
+        <p>La commande n’est pas encore confirmée et ne sera pas préparée tant que le paiement requis n’est pas vérifié.</p>
+        <div class="inline-message">${esc(message)}</div>
+        <button class="btn primary full" onclick="retryOrderPayment('${esc(orderId)}')">Réessayer le paiement</button>
+        <button class="btn ghost full" onclick="showAccountHome()">Voir mes commandes</button>`);
+      return;
+    }
+    if (data?.already_confirmed) {
+      try { localStorage.removeItem("sama_pack_pending_payment_v1"); } catch { /* stockage facultatif */ }
+      await showAccountHome();
+      toast("Cette commande est déjà confirmée.");
+      return;
+    }
+    if (!data?.payment_url) return toast("Le prestataire n’a pas renvoyé de lien de paiement. Réessaie.", true);
+    window.location.assign(data.payment_url);
+  }
+
+  async function handlePaymentReturn() {
+    let params;
+    try { params = new URLSearchParams(window.location.search); } catch { return; }
+    const invoiceToken = params.get("token");
+    if (!invoiceToken) return;
+    if (!currentUser) {
+      toast("Connecte-toi avec le compte utilisé pour cette commande afin de vérifier le paiement.", true);
+      return;
+    }
+    let storedOrderId = "";
+    try { storedOrderId = localStorage.getItem("sama_pack_pending_payment_v1") || ""; } catch { storedOrderId = ""; }
+    const { data, error } = await client.functions.invoke("sama-payment-checkout", { body: { action: "verify_return", invoice_token: invoiceToken } });
+    try {
+      params.delete("token");
+      const query = params.toString();
+      window.history.replaceState({}, document.title, window.location.pathname + (query ? "?" + query : "") + window.location.hash);
+    } catch { /* l'URL de retour reste utilisable même si l'historique est indisponible */ }
+    const orderId = data?.order_id || data?.order?.id || storedOrderId;
+    if (error || data?.error) {
+      const message = data?.error || await paymentFunctionError(error, "Le statut du paiement n’a pas encore pu être vérifié.");
+      showModal(`<div class="modal-head"><div><div class="eyebrow">VÉRIFICATION DU PAIEMENT</div><h2>Statut en cours de vérification</h2></div><button class="close" onclick="closeModal()">✕</button></div>
+        <p>Ne relance pas un nouveau paiement si ton portefeuille a déjà été débité. Vérifie ton historique de transaction puis réessaie de vérifier ici.</p>
+        <div class="inline-message">${esc(message)}</div>
+        ${orderId ? `<button class="btn primary full" onclick="retryOrderPayment('${esc(orderId)}')">Reprendre le paiement</button>` : ""}
+        <button class="btn ghost full" onclick="showAccountHome()">Voir mes commandes</button>`);
+      return;
+    }
+    if (data?.order_status === "new" && data?.order) {
+      try { localStorage.removeItem("sama_pack_pending_payment_v1"); } catch { /* stockage facultatif */ }
+      cart = []; saveCart(); updateCartCount();
+      await loadNotifications();
+      const order = data.order;
+      showModal(`<div class="modal-head"><div><div class="eyebrow">PAIEMENT CONFIRMÉ</div><h2>Merci pour ta commande !</h2></div><button class="close" onclick="closeModal()">✕</button></div>
+        <div class="confirmation-mark">✓</div>
+        <p>Le prestataire a confirmé le paiement. La commande ${esc(order.id)} est maintenant enregistrée pour traitement.</p>
+        <div class="summary">
+          <div class="summary-row"><span>Montant de la commande</span><strong>${money(order.total)}</strong></div>
+          <div class="summary-row"><span>Montant encaissé</span><strong>${money(order.amount_paid)}</strong></div>
+          <div class="summary-row total"><span>Reste à payer</span><strong>${money(Math.max(0, Number(order.total || 0) - Number(order.amount_paid || 0)))}</strong></div>
+        </div>
+        <button class="btn primary full" onclick="showAccountHome()">Suivre ma commande</button>`);
+      return;
+    }
+    showModal(`<div class="modal-head"><div><div class="eyebrow">PAIEMENT NON CONFIRMÉ</div><h2>La commande attend encore le paiement</h2></div><button class="close" onclick="closeModal()">✕</button></div>
+      <p>Le prestataire n’a pas confirmé le paiement. Aucun livreur ne sera envoyé à ce stade.</p>
+      <div class="inline-message">Statut du paiement : ${esc(data?.gateway_status || "en attente")}</div>
+      ${orderId ? `<button class="btn primary full" onclick="retryOrderPayment('${esc(orderId)}')">Réessayer le paiement</button>` : ""}
+      <button class="btn ghost full" onclick="showAccountHome()">Voir mes commandes</button>`);
+    await loadNotifications();
   }
 
   function openQuoteModal() {
@@ -1058,7 +1199,8 @@
     $("adminPanel").classList.remove("hidden"); await showAdminView("dashboard");
   }
   function closeAdmin() { $("adminPanel").classList.add("hidden"); }
-  function statusLabel(status) { return ({new:"Nouvelle",processing:"En préparation",delivered:"Livrée",cancelled:"Annulée",won:"Gagné",lost:"Perdu"})[status] || status || "—"; }
+  function statusLabel(status) { return ({new:"Nouvelle",processing:"En préparation",delivered:"Livrée",cancelled:"Annulée",awaiting_payment:"Paiement intégral en attente",awaiting_delivery_payment:"Frais de livraison à payer",won:"Gagné",lost:"Perdu"})[status] || status || "—"; }
+  function paymentStatusLabel(status) { return ({unpaid:"Non payé",pending:"Paiement en attente",partially_paid:"Partiellement payé",paid:"Payé",failed:"Échec du paiement",refund_review:"Paiement à vérifier / rembourser"})[status] || status || "Non renseigné"; }
   function actionLabel(action) { return ({pack_created:"Pack créé",pack_updated:"Pack modifié",pack_deleted:"Pack supprimé",order_status_changed:"Statut de commande modifié",order_placed:"Commande passée",admin_bootstrap:"Premier administrateur configuré",admin_invited:"Administrateur invité",admin_removed:"Droits administrateur retirés",settings_updated:"Paramètres modifiés",stock_created:"Stock créé",stock_updated:"Stock modifié",supplier_created:"Fournisseur ajouté",supplier_updated:"Fournisseur modifié",supplier_deleted:"Fournisseur supprimé",expense_created:"Dépense ajoutée",expense_updated:"Dépense modifiée",expense_deleted:"Dépense supprimée",quote_created:"Demande de devis reçue",quote_updated:"Devis modifié",quote_deleted:"Devis supprimé"})[action] || action || "Action"; }
   async function showAdminView(view) {
     stopDashboardPresencePolling();
@@ -1162,7 +1304,8 @@ if (!isAdmin()) { closeAdmin(); return toast("Accès administrateur requis.", tr
     const dayStart = new Date(now); dayStart.setHours(0,0,0,0);
     const last30Start = new Date(dayStart); last30Start.setDate(last30Start.getDate() - 29);
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-    const validOrder = o => o.status !== "cancelled";
+    const validOrder = o => !["cancelled","awaiting_payment","awaiting_delivery_payment"].includes(o.status);
+    const awaitingPaymentOrders = orders.filter(o => ["awaiting_payment","awaiting_delivery_payment"].includes(o.status)).length;
     const revenue30 = orders.filter(o => validOrder(o) && new Date(o.created_at) >= last30Start).reduce((sum,o) => sum + Number(o.total || 0), 0);
     const revenueMonth = orders.filter(o => validOrder(o) && new Date(o.created_at) >= monthStart).reduce((sum,o) => sum + Number(o.total || 0), 0);
     const pendingOrders = orders.filter(o => ["new","processing"].includes(o.status)).length;
@@ -1201,6 +1344,7 @@ if (!isAdmin()) { closeAdmin(); return toast("Accès administrateur requis.", tr
     const cards = [
       { label: "Ventes sur 30 jours", value: money(revenue30), note: "Hors commandes annulées", css: "revenue" },
       { label: "Commandes à traiter", value: String(pendingOrders), note: "Nouvelles + en préparation", css: "pending" },
+      { label: "Paiements en attente", value: String(awaitingPaymentOrders), note: "Aucune préparation avant confirmation", css: "payment-pending" },
       { label: "Commandes au total", value: String(orders.length), note: "Historique enregistré", css: "orders" },
       { label: "Panier moyen livré", value: money(averageDelivered), note: `${deliveredOrders.length} commande(s) livrée(s)`, css: "average" },
       { label: "Articles publiés", value: String(published), note: "Prix de vente renseigné", css: "published" },
@@ -1233,22 +1377,32 @@ if (!isAdmin()) { closeAdmin(); return toast("Accès administrateur requis.", tr
   }
   async function adminOrders() {
     const orders = await loadOrdersWithItems();
-    return `<div class="panel"><div class="admin-panel-head"><h3>Commandes (${orders.length})</h3><button class="btn ghost small" onclick="showAdminView('orders')">Actualiser</button></div>${orders.length ? `<div class="table-wrap"><table class="table"><thead><tr><th>Référence</th><th>Date</th><th>Client</th><th>Total</th><th>Statut</th><th>Détails</th></tr></thead><tbody>${orders.map(o=>`<tr><td>${esc(o.id)}</td><td>${esc(fmtDate(o.created_at))}</td><td>${esc(o.customer_name)}<br><span class="small-note">${esc(o.customer_phone)}</span></td><td>${money(o.total)}</td><td><select class="input" onchange="setOrderStatus('${esc(o.id)}',this.value)">${["new","processing","delivered","cancelled"].map(s=>`<option ${o.status===s?"selected":""} value="${s}">${esc(statusLabel(s))}</option>`).join("")}</select></td><td><button class="btn small ghost" onclick="showOrder('${esc(o.id)}')">Voir</button></td></tr>`).join("")}</tbody></table></div>` : '<div class="empty">Aucune commande pour le moment.</div>'}</div>`;
+    return `<div class="panel"><div class="admin-panel-head"><h3>Commandes (${orders.length})</h3><button class="btn ghost small" onclick="showAdminView('orders')">Actualiser</button></div><p class="small-note">Les commandes en attente de paiement ne doivent pas être préparées. Les frais de livraison doivent être encaissés et confirmés avant le départ du livreur.</p>${orders.length ? `<div class="table-wrap"><table class="table"><thead><tr><th>Référence</th><th>Date</th><th>Client</th><th>Total</th><th>Paiement reçu</th><th>Statut</th><th>Détails</th></tr></thead><tbody>${orders.map(o=>{
+      const pendingPayment = ["awaiting_payment","awaiting_delivery_payment"].includes(o.status);
+      const options = pendingPayment ? [o.status,"cancelled"] : ["new","processing","delivered","cancelled"];
+      return `<tr><td>${esc(o.id)}</td><td>${esc(fmtDate(o.created_at))}</td><td>${esc(o.customer_name)}<br><span class="small-note">${esc(o.customer_phone)}</span></td><td>${money(o.total)}</td><td>${money(o.amount_paid || 0)}<br><span class="small-note">${esc(paymentStatusLabel(o.payment_status))}</span></td><td><select class="input" onchange="setOrderStatus('${esc(o.id)}',this.value)">${options.map(s=>`<option ${o.status===s?"selected":""} value="${s}">${esc(statusLabel(s))}</option>`).join("")}</select></td><td><button class="btn small ghost" onclick="showOrder('${esc(o.id)}')">Voir</button></td></tr>`;
+    }).join("")}</tbody></table></div>` : '<div class="empty">Aucune commande pour le moment.</div>'}</div>`;
   }
   function showOrder(id) {
     const o = cachedOrders.find(x => x.id === id); if (!o) return toast("Commande introuvable.", true);
     const customer = cachedCustomers.find(c => c.id === o.customer_id) || {};
     const lines = cachedOrderItems.filter(x => x.order_id === o.id);
     const name = o.customer_name || customer.name || "Client"; const phone = o.customer_phone || customer.phone || "";
-    showModal(`<div class="modal-head"><div><div class="eyebrow">COMMANDE</div><h2>${esc(o.id)}</h2></div><button class="close" onclick="closeModal()">✕</button></div><p><strong>${esc(name)}</strong> · ${esc(phone)}<br>${esc(o.delivery_address || customer.address || "")} ${esc(o.delivery_zone || customer.zone || "")}<br><span class="small-note">Créée le ${esc(fmtDate(o.created_at))}</span></p><ul class="pack-items">${lines.map(i=>`<li>${Number(i.quantity)} × ${esc(i.product_name)} — ${money(i.unit_price)}</li>`).join("") || "<li>Détails des lignes indisponibles pour cette ancienne commande.</li>"}</ul><div class="summary"><div class="summary-row"><span>Sous-total</span><strong>${money(o.subtotal)}</strong></div><div class="summary-row"><span>Livraison</span><strong>${money(o.delivery)}</strong></div><div class="summary-row"><span>Paiement</span><strong>${esc(o.payment || "Paiement à la livraison")}</strong></div><div class="summary-row total"><span>Total</span><strong>${money(o.total)}</strong></div></div>`);
+    showModal(`<div class="modal-head"><div><div class="eyebrow">COMMANDE</div><h2>${esc(o.id)}</h2></div><button class="close" onclick="closeModal()">✕</button></div><p><strong>${esc(name)}</strong> · ${esc(phone)}<br>${esc(o.delivery_address || customer.address || "")} ${esc(o.delivery_zone || customer.zone || "")}<br><span class="small-note">Créée le ${esc(fmtDate(o.created_at))}</span></p><ul class="pack-items">${lines.map(i=>`<li>${Number(i.quantity)} × ${esc(i.product_name)} — ${money(i.unit_price)}</li>`).join("") || "<li>Détails des lignes indisponibles pour cette ancienne commande.</li>"}</ul><div class="summary"><div class="summary-row"><span>Sous-total</span><strong>${money(o.subtotal)}</strong></div><div class="summary-row"><span>Livraison</span><strong>${money(o.delivery)}</strong></div><div class="summary-row"><span>Mode choisi</span><strong>${esc(o.payment || "Non renseigné")}</strong></div><div class="summary-row"><span>Statut du paiement</span><strong>${esc(paymentStatusLabel(o.payment_status))}</strong></div><div class="summary-row"><span>Déjà encaissé</span><strong>${money(o.amount_paid || 0)}</strong></div><div class="summary-row"><span>Solde restant</span><strong>${money(Math.max(0, Number(o.total || 0)-Number(o.amount_paid || 0)))}</strong></div><div class="summary-row total"><span>Total</span><strong>${money(o.total)}</strong></div></div>${["awaiting_payment","awaiting_delivery_payment"].includes(o.status) ? `<button class="btn primary full" onclick="retryOrderPayment('${esc(o.id)}')">Reprendre le paiement</button>` : ""}`);
   }
   async function setOrderStatus(id, status) {
     if (!isAdmin()) return toast("Accès refusé.", true);
-    const allowed = ["new","processing","delivered","cancelled"];
+    const allowed = ["new","processing","delivered","cancelled","awaiting_payment","awaiting_delivery_payment"];
     if (!allowed.includes(status)) return toast("Statut invalide.", true);
+    const order = cachedOrders.find(row => row.id === id);
+    if (order && ["awaiting_payment","awaiting_delivery_payment"].includes(order.status) && status !== "cancelled" && status !== order.status) {
+      toast("Préparation bloquée : attends la confirmation du paiement requis.", true);
+      return showAdminView("orders");
+    }
     const { error } = await client.from("orders").update({ status }).eq("id", id);
     if (error) { toast(errorMessage(error), true); return showAdminView("orders"); }
-    toast("Statut modifié. Le client sera notifié si sa commande est associée à un compte."); await showAdminView("orders");
+    toast(status === "cancelled" ? "Commande annulée." : "Statut modifié. Le client sera notifié.");
+    await showAdminView("orders");
   }
   async function adminCustomers() {
     const rows = await readRows("customers"); cachedCustomers = rows;
@@ -1537,10 +1691,11 @@ if (!isAdmin()) { closeAdmin(); return toast("Accès administrateur requis.", tr
     const {data,error}=await client.auth.getSession();
     if(error) console.warn("Session check:",error);
     await syncAuth(data?.session?.user || null);
-    client.auth.onAuthStateChange((_event, session) => { setTimeout(() => { void syncAuth(session?.user || null); }, 0); });
+    await handlePaymentReturn();
+    client.auth.onAuthStateChange((_event, session) => { setTimeout(async () => { await syncAuth(session?.user || null); await handlePaymentReturn(); }, 0); });
   }
 
   // Functions called by inline storefront/admin controls.
-  Object.assign(window,{openProduct,addToCart,closeModal,changeQty,checkoutModal,showAccountHome,signOut,renderAuthForm,resetPassword,enableBrowserNotifications,loadAndShowNotifications,markNotificationRead,showAdminView,editPack,cancelPackEdit,togglePack,setOrderStatus,showOrder,setQuoteStatus,goToProductPage,movePromo,goToPromo,selectReviewRating,editProspect,deleteProspect,setProspectStatus,editCatalogItem,archiveCatalogItem,removeAdmin});
+  Object.assign(window,{openProduct,addToCart,closeModal,changeQty,checkoutModal,retryOrderPayment,showAccountHome,signOut,renderAuthForm,resetPassword,enableBrowserNotifications,loadAndShowNotifications,markNotificationRead,showAdminView,editPack,cancelPackEdit,togglePack,setOrderStatus,showOrder,setQuoteStatus,goToProductPage,movePromo,goToPromo,selectReviewRating,editProspect,deleteProspect,setProspectStatus,editCatalogItem,archiveCatalogItem,removeAdmin});
   start().catch(err => { console.error(err); toast("Initialisation impossible. Recharge la page ou contacte l’administrateur.",true); });
 })();
