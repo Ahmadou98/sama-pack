@@ -726,9 +726,20 @@
     filter.value = categories.includes(old) ? old : "all";
   }
   function updateContact() {
-    const contact = $("contactPhone"); const n = waNumber();
-    if (contact) contact.textContent = n ? "+" + n : "WhatsApp à configurer";
+    const n = waNumber();
+    const card = document.querySelector(".contact-card");
+    const intro = $("contactText");
+    if (n) {
+      if (card && !$("contactPhone")) card.innerHTML = '<div class="contact-icon">✉</div><div><strong>WhatsApp</strong><p id="contactPhone"></p></div><button class="btn secondary" id="contactWhatsApp">Ouvrir WhatsApp</button>';
+      const phone = $("contactPhone"); if (phone) phone.textContent = "+" + n;
+      const button = $("contactWhatsApp"); if (button) button.onclick = () => openWA("Bonjour SAMA-PACK, je souhaite avoir plus d’informations sur vos produits.");
+      if (intro) intro.textContent = "Notre équipe répond à vos questions sur les produits et les commandes.";
+      return;
+    }
+    if (intro) intro.textContent = "Consultez notre guide client ou envoyez une demande de devis à notre équipe.";
+    if (card) card.innerHTML = '<div class="contact-icon">ⓘ</div><div><strong>Besoin d’aide ?</strong><p>Retrouvez les étapes de commande et les réponses aux questions fréquentes.</p></div><a class="btn secondary" href="comment-ca-marche.html">Voir le guide client</a>';
   }
+
   function applyHomepageBackground() {
     const hero = $("home");
     if (!hero) return;
@@ -860,7 +871,7 @@
     const pages = Math.max(1, Math.ceil(arr.length / PRODUCTS_PER_PAGE));
     currentProductPage = Math.min(Math.max(1, currentProductPage), pages);
     const start = (currentProductPage - 1) * PRODUCTS_PER_PAGE;
-    grid.innerHTML = arr.slice(start, start + PRODUCTS_PER_PAGE).map(productCard).join("") || '<div class="empty">Aucun pack trouvé. Essaie une autre recherche.</div>';
+    grid.innerHTML = arr.slice(start, start + PRODUCTS_PER_PAGE).map(productCard).join("") || '<div class="empty">' + (currentType === "product" ? "Aucun produit ne correspond à votre recherche." : "Aucun pack ne correspond à votre recherche.") + '</div>';
     const pagination = $("productPagination");
     if (pagination) pagination.innerHTML = arr.length > PRODUCTS_PER_PAGE ? `<button class="btn ghost small" ${currentProductPage === 1 ? "disabled" : ""} onclick="goToProductPage(${currentProductPage - 1})">← Précédent</button><span>Page ${currentProductPage} / ${pages} · ${arr.length} packs</span><button class="btn ghost small" ${currentProductPage === pages ? "disabled" : ""} onclick="goToProductPage(${currentProductPage + 1})">Suivant →</button>` : "";
     renderIndividualCatalogs();
@@ -870,18 +881,36 @@
     renderProducts();
     $("catalogue")?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
+  function cleaningBottleSvg() {
+    return `<svg class="cleaning-bottle-icon" viewBox="0 0 64 80" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
+      <path d="M24 7h16v8l7 7v46a5 5 0 0 1-5 5H18a5 5 0 0 1-5-5V27a5 5 0 0 1 5-5h6z" fill="#dcfce7" stroke="#166534" stroke-width="2.5" stroke-linejoin="round"/>
+      <path d="M24 7h16M27 15h10M18 37h24" fill="none" stroke="#166534" stroke-width="2.5" stroke-linecap="round"/>
+      <rect x="21" y="46" width="21" height="14" rx="2" fill="#fff" stroke="#86b99a" stroke-width="1.8"/>
+      <path d="M25 51h13M25 55h9" stroke="#86b99a" stroke-width="1.8" stroke-linecap="round"/>
+    </svg>`;
+  }
+
   function productCard(p) {
-    const photo = p.image_path ? `<img class="product-photo" src="${esc(/^https?:\/\//i.test(p.image_path) ? p.image_path : p.image_path.replace(/^\//,""))}" alt="${esc(p.name)}" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">` : "";
+    const path = String(p.image_path || "").trim();
+    const hasImage = Boolean(path);
+    const src = /^https?:\/\//i.test(path) ? path : path.replace(/^\//, "");
+    const photo = hasImage ? `<img class="product-photo" src="${esc(src)}" alt="${esc(p.name)}" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='grid'">` : "";
+    const fallback = `<div class="product-placeholder ${hasImage ? "photo-fallback" : ""}" ${hasImage ? 'style="display:none"' : ""}>${cleaningBottleSvg()}</div>`;
     const out = p.availability_status === "out_of_stock";
     const canAdd = canSellProduct(p);
-    return `<article class="product-card"><div class="pack-visual ${p.image_path ? "has-photo" : ""}">${photo}<div class="pack-box ${p.image_path ? "photo-fallback" : ""}" ${p.image_path ? "style=\"display:none\"" : ""}><div class="emoji">${iconById[p.id] || "📦"}</div><div class="pack-code">${esc(publicProductRef(p))}</div></div>${hasPromotion(p) ? `<span class="product-promo-ribbon">${esc(p.promo_label || "Promo")}</span>` : ""}</div><div class="product-body">${availabilityBadgeHtml(p)}<div class="product-reference">Réf. SAMA-PACK : <strong>${esc(publicProductRef(p))}</strong></div><div class="product-cat">${esc(p.cat)}</div><div class="product-name">${esc(p.name)}</div>${renderProductRatingSummary(p.id)}<div class="price-row">${priceDisplayHtml(p)}<span class="small-note">TTC</span></div><div class="product-actions"><button class="btn ghost" onclick="openProduct('${esc(p.id)}')">Détails</button><button class="btn primary" onclick="addToCart('${esc(p.id)}')" ${canAdd ? "" : "disabled"}>${out ? "Rupture" : canAdd ? "Ajouter" : "Prix à confirmer"}</button></div></div></article>`;
+    const description = p.catalog_type === "product" && p.desc ? `<p class="product-desc">${esc(p.desc)}</p>` : "";
+    return `<article class="product-card"><div class="pack-visual ${hasImage ? "has-photo" : ""}">${photo}${fallback}${hasPromotion(p) ? `<span class="product-promo-ribbon">${esc(p.promo_label || "Promo")}</span>` : ""}</div><div class="product-body">${availabilityBadgeHtml(p)}<div class="product-cat">${esc(p.cat)}</div><div class="product-name">${esc(p.name)}</div>${description}${renderProductRatingSummary(p.id)}<div class="price-row">${priceDisplayHtml(p)}</div><div class="product-actions"><button class="btn ghost" onclick="openProduct('${esc(p.id)}')">Détails</button><button class="btn primary" onclick="addToCart('${esc(p.id)}')" ${canAdd ? "" : "disabled"}>${out ? "Rupture" : canAdd ? "Ajouter" : "Prix à confirmer"}</button></div></div></article>`;
   }
 
   function openProduct(id) {
     const p = getP(id); if (!p) return;
-    const photo = p.image_path ? `<img class="product-photo product-photo-detail" src="${esc(/^https?:\/\//i.test(p.image_path) ? p.image_path : p.image_path.replace(/^\//,""))}" alt="${esc(p.name)}" onerror="this.style.display='none'">` : `<div class="pack-visual"><div class="pack-box"><div class="emoji">${iconById[p.id] || "📦"}</div><div class="pack-code">${esc(publicProductRef(p))}</div></div></div>`;
+    const path = String(p.image_path || "").trim();
+    const src = /^https?:\/\//i.test(path) ? path : path.replace(/^\//, "");
+    const photo = path
+      ? `<div class="product-detail-image-wrap"><img class="product-photo product-photo-detail" src="${esc(src)}" alt="${esc(p.name)}" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='grid'"><div class="product-placeholder" style="display:none">${cleaningBottleSvg()}</div></div>`
+      : `<div class="product-detail-placeholder product-placeholder">${cleaningBottleSvg()}</div>`;
     const canAdd = canSellProduct(p);
-    showModal(`<div class="modal-head"><div><div class="eyebrow">${esc(p.cat)}</div><h2>${esc(p.name)}</h2></div><button class="close" onclick="closeModal()">✕</button></div>${photo}<div class="product-detail-meta"><span class="product-reference">Réf. SAMA-PACK : <strong>${esc(publicProductRef(p))}</strong></span>${availabilityBadgeHtml(p)}</div><div id="productRatingSummaryDetail">${renderProductRatingSummary(p.id)}</div><p>${esc(p.desc)}</p><ul class="pack-items">${p.items.map(i => `<li>${esc(i)}</li>`).join("")}</ul><div class="price-row">${priceDisplayHtml(p)}<button class="btn primary" ${canAdd ? `onclick="addToCart('${esc(p.id)}');closeModal()"` : "disabled"}>${p.availability_status === "out_of_stock" ? "Rupture de stock" : canAdd ? "Ajouter au panier" : "Prix à confirmer"}</button></div><section id="productReviewsPanel" class="product-reviews-panel" data-product-id="${esc(p.id)}"><p class="review-loading">Chargement des avis…</p></section>`);
+    showModal(`<div class="modal-head"><div><div class="eyebrow">${esc(p.cat)}</div><h2>${esc(p.name)}</h2></div><button class="close" onclick="closeModal()">✕</button></div>${photo}<div class="product-detail-meta">${availabilityBadgeHtml(p)}</div><div id="productRatingSummaryDetail">${renderProductRatingSummary(p.id)}</div><p>${esc(p.desc)}</p><ul class="pack-items">${p.items.map(i => `<li>${esc(i)}</li>`).join("")}</ul><div class="price-row">${priceDisplayHtml(p)}<button class="btn primary" ${canAdd ? `onclick="addToCart('${esc(p.id)}');closeModal()"` : "disabled"}>${p.availability_status === "out_of_stock" ? "Rupture de stock" : canAdd ? "Ajouter au panier" : "Prix à confirmer"}</button></div><section id="productReviewsPanel" class="product-reviews-panel" data-product-id="${esc(p.id)}"><p class="review-loading">Chargement des avis…</p></section>`);
     void renderProductReviews(p.id);
   }
 
@@ -889,7 +918,7 @@
     const p = getP(id); if (!p || !p.active) { toast("Cet article n’est plus publié.", true); return; } if (p.availability_status === "out_of_stock") { toast("Cet article est en rupture de stock.", true); return; } if (Number(p.price) <= 0) { toast("Le prix de cet article doit être confirmé avant la commande.", true); return; }
     const line = cart.find(i => i.id === id);
     if (line) line.qty = Math.min(99, line.qty + 1); else cart.push({ id, qty: 1 });
-    saveCart(); updateCartCount(); toast("Pack ajouté au panier.");
+    saveCart(); updateCartCount(); toast("Article ajouté au panier.");
   }
   function updateCartCount() { const el = $("cartCount"); if (el) el.textContent = String(cart.reduce((sum, i) => sum + i.qty, 0)); }
   function saveAndRenderCart() { saveCart(); updateCartCount(); renderCartModal(); }
@@ -899,7 +928,7 @@
   function renderCartModal() {
     if (!cart.length) { showModal(`<div class="modal-head"><h2>Ton panier</h2><button class="close" onclick="closeModal()">✕</button></div><div class="empty">Ton panier est vide.<br><br><a class="btn primary" href="#catalogue" onclick="closeModal()">Voir le catalogue</a></div>`); return; }
     const t = cartTotals();
-    showModal(`<div class="modal-head"><div><div class="eyebrow">COMMANDE EN LIGNE</div><h2>Ton panier</h2></div><button class="close" onclick="closeModal()">✕</button></div><div class="cart-list">${cart.map(i => { const p = getP(i.id); if (!p) return ""; return `<div class="cart-item"><div class="mini-icon">${iconById[p.id] || "📦"}</div><div><strong>${esc(p.name)}</strong><div class="small-note">${money(getEffectivePrice(p))} / pack</div></div><div class="qty"><button onclick="changeQty('${esc(p.id)}',-1)" aria-label="Retirer une unité">−</button><b>${i.qty}</b><button onclick="changeQty('${esc(p.id)}',1)" aria-label="Ajouter une unité">+</button></div></div>`; }).join("")}</div><div class="summary"><div class="summary-row"><span>Sous-total</span><strong>${money(t.subtotal)}</strong></div><div class="summary-row"><span>Livraison</span><strong>${money(t.delivery)}</strong></div><div class="summary-row total"><span>Total estimé</span><strong>${money(t.total)}</strong></div></div><p class="small-note">Le total définitif est calculé et validé par le serveur au moment de confirmer la commande.</p><button class="btn primary full" onclick="checkoutModal()">Passer la commande</button>`);
+    showModal(`<div class="modal-head"><div><div class="eyebrow">COMMANDE EN LIGNE</div><h2>Ton panier</h2></div><button class="close" onclick="closeModal()">✕</button></div><div class="cart-list">${cart.map(i => { const p = getP(i.id); if (!p) return ""; return `<div class="cart-item"><div class="cart-product-icon">${cleaningBottleSvg()}</div><div><strong>${esc(p.name)}</strong><div class="small-note">${money(getEffectivePrice(p))} / ${p.catalog_type === "product" ? "unité" : "pack"}</div></div><div class="qty"><button onclick="changeQty('${esc(p.id)}',-1)" aria-label="Retirer une unité">−</button><b>${i.qty}</b><button onclick="changeQty('${esc(p.id)}',1)" aria-label="Ajouter une unité">+</button></div></div>`; }).join("")}</div><div class="summary"><div class="summary-row"><span>Sous-total</span><strong>${money(t.subtotal)}</strong></div><div class="summary-row"><span>Livraison</span><strong>${money(t.delivery)}</strong></div><div class="summary-row total"><span>Total estimé</span><strong>${money(t.total)}</strong></div></div><p class="small-note">Le total définitif est calculé et validé par le serveur au moment de confirmer la commande.</p><button class="btn primary full" onclick="checkoutModal()">Passer la commande</button>`);
   }
   function changeQty(id, delta) { const x = cart.find(i => i.id === id); if (!x) return; x.qty += delta; if (x.qty <= 0) cart = cart.filter(i => i.id !== id); if (x.qty > 99) x.qty = 99; saveAndRenderCart(); }
 

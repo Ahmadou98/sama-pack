@@ -1860,3 +1860,12 @@ tr[hidden]{display:none!important}
   .payment-choice-copy small { font-size:10px; }
   .payment-choice-amount { font-size:11px; white-space:normal; text-align:right; }
 }
+
+
+/* Nettoyage SAMA-PACK : interface client claire et fiches produits homogènes */
+.how-teaser{display:flex;align-items:center;justify-content:space-between;gap:28px}.how-teaser>div{max-width:760px}.how-teaser h2{margin:7px 0 10px}.how-teaser p{margin:0;color:var(--muted);font-size:15px;line-height:1.7}.how-teaser>.btn{flex-shrink:0}
+.product-card .product-desc{font-size:12px;line-height:1.5;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden;min-height:0}.product-placeholder{width:100%;min-height:165px;display:grid;place-items:center;background:linear-gradient(135deg,#f0fdf4,#fff)}.product-placeholder .cleaning-bottle-icon{width:66px;height:84px;display:block}.product-card .pack-visual.has-photo .product-placeholder.photo-fallback{height:190px;min-height:190px;padding:0}
+.product-detail-image-wrap{position:relative;min-height:220px;display:grid;place-items:center;margin:12px 0 16px;border-radius:14px;overflow:hidden;background:#f8fafc}.product-detail-image-wrap .product-photo-detail{width:100%;height:auto;min-height:220px;max-height:300px;object-fit:contain;margin:0;padding:12px}.product-detail-image-wrap .product-placeholder{position:absolute;inset:0;height:100%;min-height:220px}.product-detail-placeholder{margin:12px 0 16px;border-radius:14px;overflow:hidden}.product-detail-placeholder.product-placeholder{min-height:220px}.product-detail-placeholder .cleaning-bottle-icon{width:82px;height:108px}
+.cart-product-icon{width:42px;height:46px;flex:0 0 42px;display:grid;place-items:center;background:#ecfdf5;border-radius:12px}.cart-product-icon .cleaning-bottle-icon{width:22px;height:31px}
+.catalog-unavailable{min-height:48vh;display:flex;flex-direction:column;align-items:flex-start;justify-content:center;gap:14px}.catalog-unavailable h1{font-size:clamp(32px,4vw,48px);margin:0;line-height:1.08}.catalog-unavailable p{max-width:660px;margin:0;color:var(--muted);font-size:16px;line-height:1.75}.catalog-unavailable-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:8px}
+@media(max-width:700px){.how-teaser{align-items:stretch;flex-direction:column;gap:18px}.how-teaser>.btn{width:100%}.catalog-unavailable{min-height:55vh}.catalog-unavailable-actions{width:100%;flex-direction:column}.catalog-unavailable-actions .btn{width:100%}}
