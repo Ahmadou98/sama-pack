@@ -943,7 +943,12 @@
     const initialized = await isAdminInitialized(); adminInitialized = initialized;
     const orderHtml = orders.length ? `<div class="table-wrap"><table class="table"><thead><tr><th>Commande</th><th>Date</th><th>Total</th><th>Paiement</th><th>Statut</th><th>Action</th></tr></thead><tbody>${orders.map(o => {
       const paymentPending = ["awaiting_payment","awaiting_delivery_payment"].includes(o.status);
-      return `<tr><td>${esc(o.id)}</td><td>${esc(fmtDate(o.created_at))}</td><td>${money(o.total)}</td><td><span class="small-note">${esc(paymentStatusLabel(o.payment_status))}</span><br><span class="small-note">Payé : ${money(o.amount_paid || 0)}</span></td><td><span class="status ${esc(o.status)}">${esc(statusLabel(o.status))}</span></td><td>${paymentPending ? `<button class="btn small primary" onclick="retryOrderPayment('${esc(o.id)}')">Payer</button>` : "—"}</td></tr>`;
+      const actionHtml = paymentPending
+        ? '<button class="btn small primary" onclick="retryOrderPayment(\'' + esc(o.id) + '\')">Payer</button>'
+        : ["paid", "partially_paid"].includes(o.payment_status)
+          ? '<button class="btn small ghost" onclick="resendPaymentConfirmation(\'' + esc(o.id) + '\')">Renvoyer le reçu</button>'
+          : "—";
+      return '<tr><td>' + esc(o.id) + '</td><td>' + esc(fmtDate(o.created_at)) + '</td><td>' + money(o.total) + '</td><td><span class="small-note">' + esc(paymentStatusLabel(o.payment_status)) + '</span><br><span class="small-note">Payé : ' + money(o.amount_paid || 0) + '</span></td><td><span class="status ' + esc(o.status) + '">' + esc(statusLabel(o.status)) + '</span></td><td>' + actionHtml + '</td></tr>';
     }).join("")}</tbody></table></div>` : '<div class="empty compact-empty">Tu n’as pas encore passé de commande en ligne.</div>';
     showModal(`<div class="modal-head"><div><div class="eyebrow">MON COMPTE</div><h2>${esc(p?.full_name || currentUser.email || "Client")}</h2><p class="small-note">${esc(currentUser.email || "")}</p></div><button class="close" onclick="closeModal()">✕</button></div><div class="account-buttons"><button class="btn secondary" onclick="enableBrowserNotifications()">🔔 Activer les alertes du navigateur</button><button class="btn ghost" onclick="loadAndShowNotifications()">Mes notifications (${userNotifications.filter(n=>!n.read_at).length})</button></div><div class="panel account-orders"><h3>Mes commandes</h3>${orderHtml}</div><div class="panel account-password"><h3>${currentUser?.last_sign_in_at ? "Sécurité du compte" : "Définir un mot de passe"}</h3><form id="changePasswordForm" class="checkout-grid"><input class="input full" name="password" type="password" minlength="8" required placeholder="Nouveau mot de passe (8 caractères minimum)"><button class="btn ghost full" type="submit">Enregistrer le mot de passe</button></form></div>${!initialized ? `<div class="panel bootstrap-panel"><h3>Configurer le premier administrateur</h3><p>Cette option n’apparaît que tant qu’aucun administrateur n’est configuré. Utilise le code initial transmis par le propriétaire.</p><form id="bootstrapAdminForm" class="checkout-grid"><input class="input full" name="bootstrap_token" autocomplete="off" required placeholder="Code initial du propriétaire"><button class="btn primary full" type="submit">Devenir le premier administrateur</button></form></div>` : ""}<button class="btn ghost full" onclick="signOut()">Se déconnecter</button>`);
     const pw = $("changePasswordForm"); pw.onsubmit = async e => { e.preventDefault(); const form = e.currentTarget; const password = String(new FormData(form).get("password") || ""); if (password.length < 8) return toast("Choisis au moins 8 caractères.", true); setBusy(form, true, "Enregistrement…"); const { error } = await client.auth.updateUser({ password }); if (error) toast(errorMessage(error), true); else { toast("Mot de passe mis à jour."); form.reset(); } setBusy(form, false); };
@@ -1129,6 +1134,28 @@
     }
     if (!data?.payment_url) return toast("Le prestataire n’a pas renvoyé de lien de paiement. Réessaie.", true);
     window.location.assign(data.payment_url);
+  }
+
+  async function resendPaymentConfirmation(orderId) {
+    if (!currentUser) { openAccountModal(); return toast("Connecte-toi pour recevoir ton reçu.", true); }
+    if (!orderId) return toast("Référence de commande manquante.", true);
+    toast("Vérification du paiement et envoi du reçu…");
+    const { data, error } = await client.functions.invoke("sama-payment-checkout", {
+      body: { action: "send_payment_confirmation", order_id: String(orderId) },
+    });
+    if (error || data?.error) {
+      const message = data?.error || await paymentFunctionError(error, "Le reçu n’a pas pu être envoyé. Le statut du paiement reste consultable dans Mes commandes.");
+      toast(message, true);
+      return;
+    }
+    if (data?.confirmation_email_status === "sent") {
+      toast("Confirmation et reçu envoyés à " + String(currentUser.email || "l’adresse e-mail du compte") + ".");
+    } else if (data?.confirmation_email_status === "sending") {
+      toast("L’envoi du reçu est déjà en cours. Vérifie ta boîte mail dans quelques instants.");
+    } else {
+      toast("Le paiement reste confirmé, mais l’e-mail n’a pas pu être envoyé. Réessaie ou contacte SAMA-PACK.", true);
+    }
+    await showAccountHome();
   }
 
   async function handlePaymentReturn() {
@@ -1696,6 +1723,6 @@ if (!isAdmin()) { closeAdmin(); return toast("Accès administrateur requis.", tr
   }
 
   // Functions called by inline storefront/admin controls.
-  Object.assign(window,{openProduct,addToCart,closeModal,changeQty,checkoutModal,retryOrderPayment,showAccountHome,signOut,renderAuthForm,resetPassword,enableBrowserNotifications,loadAndShowNotifications,markNotificationRead,showAdminView,editPack,cancelPackEdit,togglePack,setOrderStatus,showOrder,setQuoteStatus,goToProductPage,movePromo,goToPromo,selectReviewRating,editProspect,deleteProspect,setProspectStatus,editCatalogItem,archiveCatalogItem,removeAdmin});
+  Object.assign(window,{openProduct,addToCart,closeModal,changeQty,checkoutModal,retryOrderPayment,resendPaymentConfirmation,showAccountHome,signOut,renderAuthForm,resetPassword,enableBrowserNotifications,loadAndShowNotifications,markNotificationRead,showAdminView,editPack,cancelPackEdit,togglePack,setOrderStatus,showOrder,setQuoteStatus,goToProductPage,movePromo,goToPromo,selectReviewRating,editProspect,deleteProspect,setProspectStatus,editCatalogItem,archiveCatalogItem,removeAdmin});
   start().catch(err => { console.error(err); toast("Initialisation impossible. Recharge la page ou contacte l’administrateur.",true); });
 })();
