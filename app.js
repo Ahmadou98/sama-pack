@@ -1521,14 +1521,52 @@
       return '<tr><td><strong>' + esc(o.id) + '</strong></td><td>' + esc(fmtDate(o.created_at)) + '</td><td>' + money(o.total) + '</td><td><span class="small-note">' + esc(paymentStatusLabel(o.payment_status)) + '</span><br><span class="small-note">Payé : ' + money(o.amount_paid || 0) + '</span><br><span class="small-note">Solde : ' + money(balance) + '</span></td><td><span class="status ' + esc(o.status) + '">' + esc(statusLabel(o.status)) + '</span>' + orderTrackingHtml(o) + slotHtml + '</td><td>' + actionHtml + '</td></tr>';
     }).join("") + '</tbody></table></div>' : '<div class="empty compact-empty">Tu n’as pas encore passé de commande en ligne.</div>';
     const subscriptionsHtml = renderSubscriptionsHtml(cachedSubscriptions);
-    showModal('<div class="modal-head"><div><div class="eyebrow">MON COMPTE</div><h2>' + esc(p?.full_name || currentUser.email || "Client") + '</h2><p class="small-note">' + esc(currentUser.email || "") + '</p></div><button class="close" onclick="closeModal()">✕</button></div>' + salesLinkHtml + customerProfileFormHtml(p) +
-      '<div class="panel account-business-launch"><div><h3>Vous êtes un professionnel ?</h3><p class="small-note">Enregistrez votre entreprise, demandez des devis détaillés et retrouvez ses commandes en quantité.</p></div><button class="btn secondary" onclick="openB2BWorkspace()">Espace professionnel</button></div>' +
-      '<div class="account-buttons"><button class="btn secondary" onclick="enableBrowserNotifications()">🔔 Activer les alertes du navigateur</button><button class="btn ghost" onclick="loadAndShowNotifications()">Mes notifications (' + userNotifications.filter(n=>!n.read_at).length + ')</button></div>' +
-      '<div class="panel account-orders"><div class="subscription-panel-heading"><h3>Mes commandes</h3><p class="small-note">Le suivi affiche l’avancement, le montant déjà payé, le solde et le créneau prévu.</p></div>' + orderHtml + '</div>' +
-      '<div class="panel account-subscriptions"><div class="subscription-panel-heading"><div><h3>Mes réapprovisionnements</h3><p class="small-note">Programme tes rappels, modifie les produits ou suspends-les à tout moment. Aucune commande ou aucun paiement automatique.</p></div><button class="btn primary small" onclick="openSubscriptionEditor()">+ Nouveau rappel</button></div>' + subscriptionsHtml + '</div>' +
-      '<div class="panel account-password"><h3>' + (currentUser?.last_sign_in_at ? "Sécurité du compte" : "Définir un mot de passe") + '</h3><form id="changePasswordForm" class="checkout-grid"><input class="input full" name="password" type="password" minlength="8" required placeholder="Nouveau mot de passe (8 caractères minimum)"><button class="btn ghost full" type="submit">Enregistrer le mot de passe</button></form></div>' +
-      (!initialized ? '<div class="panel bootstrap-panel"><h3>Configurer le premier administrateur</h3><p>Cette option n’apparaît que tant qu’aucun administrateur n’est configuré. Utilise le code initial transmis par le propriétaire.</p><form id="bootstrapAdminForm" class="checkout-grid"><input class="input full" name="bootstrap_token" autocomplete="off" required placeholder="Code initial du propriétaire"><button class="btn primary full" type="submit">Devenir le premier administrateur</button></form></div>' : '') +
-      '<button class="btn ghost full" onclick="signOut()">Se déconnecter</button>');
+    const accountNotificationsHtml = userNotifications.length ? userNotifications.map(n => '<article class="notification-item ' + (n.read_at ? 'read' : 'unread') + '"><div class="notification-title">' + esc(n.title) + '</div><div class="notification-message">' + esc(n.message) + '</div><div class="notification-meta">' + esc(fmtDate(n.created_at)) + (n.read_at ? ' · Lue' : ' · <button class="link-btn dark-link" onclick="markNotificationRead(\'' + esc(n.id) + '\')">Marquer comme lue</button>') + '</div></article>').join("") : '<div class="empty compact-empty">Aucune notification pour le moment.</div>';
+    showModal(
+      '<div class="modal-head account-modal-header"><div><div class="eyebrow">ESPACE CLIENT</div><h2>Mon compte</h2><p class="small-note">Gère tes informations et tes commandes depuis un seul espace.</p></div><button class="close" onclick="closeModal()" aria-label="Fermer">✕</button></div>' +
+      '<div class="account-workspace">' +
+        '<nav class="account-tabs" role="tablist" aria-label="Rubriques du compte">' +
+          '<button type="button" class="account-tab is-active" role="tab" aria-selected="true" data-account-tab="profile"><span class="account-tab-icon">◉</span><span>Mon profil</span></button>' +
+          '<button type="button" class="account-tab" role="tab" aria-selected="false" data-account-tab="orders"><span class="account-tab-icon">▤</span><span>Commandes</span><span class="account-tab-count">' + orders.length + '</span></button>' +
+          '<button type="button" class="account-tab" role="tab" aria-selected="false" data-account-tab="replenishments"><span class="account-tab-icon">↻</span><span>Rappels</span></button>' +
+          '<button type="button" class="account-tab" role="tab" aria-selected="false" data-account-tab="notifications"><span class="account-tab-icon">♧</span><span>Alertes</span><span class="account-tab-count">' + userNotifications.filter(n=>!n.read_at).length + '</span></button>' +
+          '<button type="button" class="account-tab" role="tab" aria-selected="false" data-account-tab="security"><span class="account-tab-icon">⌑</span><span>Sécurité</span></button>' +
+        '</nav>' +
+        '<section class="account-tab-panel" id="accountTab-profile" role="tabpanel">' +
+          salesLinkHtml + customerProfileFormHtml(p) +
+          '<div class="panel account-business-launch"><div><h3>Vous êtes un professionnel ?</h3><p class="small-note">Enregistrez votre entreprise, demandez des devis détaillés et retrouvez ses commandes en quantité.</p></div><button class="btn secondary" onclick="openB2BWorkspace()">Espace professionnel</button></div>' +
+        '</section>' +
+        '<section class="account-tab-panel hidden" id="accountTab-orders" role="tabpanel">' +
+          '<div class="account-section-heading"><div><div class="eyebrow">ACTIVITÉ</div><h3>Mes commandes</h3><p class="small-note">Consulte le suivi, le paiement, le solde et le créneau de livraison.</p></div><span class="account-section-badge">' + orders.length + ' commande(s)</span></div>' +
+          '<div class="panel account-orders">' + orderHtml + '</div>' +
+        '</section>' +
+        '<section class="account-tab-panel hidden" id="accountTab-replenishments" role="tabpanel">' +
+          '<div class="account-section-heading"><div><div class="eyebrow">PLANIFICATION</div><h3>Mes réapprovisionnements</h3><p class="small-note">Programme des rappels sans déclencher automatiquement de commande ni de paiement.</p></div><button class="btn primary small" onclick="openSubscriptionEditor()">+ Nouveau rappel</button></div>' +
+          '<div class="panel account-subscriptions">' + subscriptionsHtml + '</div>' +
+        '</section>' +
+        '<section class="account-tab-panel hidden" id="accountTab-notifications" role="tabpanel">' +
+          '<div class="account-section-heading"><div><div class="eyebrow">CENTRE D’ALERTES</div><h3>Mes notifications</h3><p class="small-note">Retrouve les informations importantes liées à ton compte et à tes commandes.</p></div><button class="btn secondary small" onclick="enableBrowserNotifications()">Activer les alertes</button></div>' +
+          '<div class="notification-list account-notification-list" id="accountNotificationList">' + accountNotificationsHtml + '</div>' +
+        '</section>' +
+        '<section class="account-tab-panel hidden" id="accountTab-security" role="tabpanel">' +
+          '<div class="account-section-heading"><div><div class="eyebrow">PROTECTION</div><h3>Sécurité du compte</h3><p class="small-note">Gère ton mot de passe et ferme ta session lorsque tu as terminé.</p></div></div>' +
+          '<div class="panel account-password"><h3>' + (currentUser?.last_sign_in_at ? "Changer mon mot de passe" : "Définir un mot de passe") + '</h3><form id="changePasswordForm" class="checkout-grid"><input class="input full" name="password" type="password" minlength="8" required placeholder="Nouveau mot de passe (8 caractères minimum)"><button class="btn primary full" type="submit">Enregistrer le mot de passe</button></form></div>' +
+          (!initialized ? '<div class="panel bootstrap-panel"><h3>Configurer le premier administrateur</h3><p>Cette option n’apparaît que tant qu’aucun administrateur n’est configuré. Utilise le code initial transmis par le propriétaire.</p><form id="bootstrapAdminForm" class="checkout-grid"><input class="input full" name="bootstrap_token" autocomplete="off" required placeholder="Code initial du propriétaire"><button class="btn primary full" type="submit">Devenir le premier administrateur</button></form></div>' : '') +
+          '<button class="btn ghost full account-signout" onclick="signOut()">Se déconnecter</button>' +
+        '</section>' +
+      '</div>'
+    );
+    const accountTabButtons = [...document.querySelectorAll("[data-account-tab]")];
+    const activateAccountTab = (tabName) => {
+      accountTabButtons.forEach(button => {
+        const active = button.dataset.accountTab === tabName;
+        button.classList.toggle("is-active", active);
+        button.setAttribute("aria-selected", active ? "true" : "false");
+      });
+      document.querySelectorAll(".account-tab-panel").forEach(panel => panel.classList.toggle("hidden", panel.id !== "accountTab-" + tabName));
+    };
+    accountTabButtons.forEach(button => button.addEventListener("click", () => activateAccountTab(button.dataset.accountTab)));
+
     const profileEditBtn = $("editProfileBtn");
     const profileSummary = $("profileSummary");
     const profileForm = $("profileForm");
