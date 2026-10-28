@@ -2242,3 +2242,60 @@ tr[hidden]{display:none!important}
 @media(max-width:600px) {
   .account-modal-card { padding:15px; border-radius:18px; max-height:94vh; }
 }
+
+
+/* Ajustement global mobile : interface plus compacte sans réduire la lisibilité */
+@media (max-width: 600px) {
+  html { -webkit-text-size-adjust: 100%; }
+  body { font-size: 14px; line-height: 1.45; }
+  .container, .site-container, .page-container { padding-left: 12px; padding-right: 12px; }
+  section { scroll-margin-top: 76px; }
+  section, .section, .section-block { margin-top: 22px; margin-bottom: 22px; }
+  h1 { font-size: clamp(24px, 6.5vw, 30px); line-height: 1.15; }
+  h2 { font-size: clamp(20px, 5.5vw, 25px); line-height: 1.2; }
+  h3 { font-size: 17px; line-height: 1.25; }
+  h4 { font-size: 15px; }
+  p { line-height: 1.5; }
+  .btn, button.btn, a.btn { min-height: 38px; padding: 9px 12px; font-size: 12px; border-radius: 9px; }
+  input, select, textarea { min-height: 39px; padding: 9px 10px; font-size: 13px; border-radius: 9px; }
+  textarea { min-height: 88px; }
+  label { margin-bottom: 5px; font-size: 12px; }
+  .card, .panel, .surface, .product-card, .pack-card, .promo-card { border-radius: 13px; }
+  .card, .panel { padding: 12px; }
+  .grid, .cards-grid, .product-grid, .packs-grid { gap: 10px; }
+  .section-heading, .section-header { gap: 8px; margin-bottom: 12px; }
+  .section-heading h2, .section-header h2 { margin-bottom: 4px; }
+  .small-note, .muted, .text-muted { font-size: 11px; line-height: 1.45; }
+  .badge, .tag, .pill { padding: 4px 7px; font-size: 10px; }
+  .modal-card, .modal-content { padding: 15px; border-radius: 16px; max-height: 92dvh; }
+  .modal-card h2, .modal-content h2 { font-size: 20px; }
+  .form-grid, .form-row { gap: 10px; }
+  .site-header, header.site-header { min-height: 56px; }
+  .site-header .logo, .brand-logo { max-height: 34px; }
+  .hero { min-height: 0; padding-top: 28px; padding-bottom: 28px; }
+  .hero h1 { margin-bottom: 10px; }
+  .hero p { margin-bottom: 14px; font-size: 13px; }
+  .hero .btn { min-height: 40px; }
+  .product-card img, .pack-card img, .product-image, .pack-image { max-height: 180px; }
+  .product-card .card-body, .pack-card .card-body { padding: 10px; }
+  .product-card h3, .pack-card h3 { font-size: 14px; margin-bottom: 5px; }
+  .product-card .price, .pack-card .price { font-size: 15px; }
+  .product-card .btn, .pack-card .btn { min-height: 34px; padding: 7px 9px; }
+  .account-modal-card { padding: 13px; }
+  .account-tabs { padding: 4px; margin-bottom: 10px; }
+  .account-tab { min-height: 36px; padding: 7px 8px; font-size: 10px; }
+  .account-section-heading { margin-bottom: 10px; }
+  .account-section-heading h3 { font-size: 16px; }
+  .account-profile-panel { padding: 12px; }
+  .profile-avatar { flex-basis: 48px; width: 48px; height: 48px; font-size: 16px; }
+  .profile-summary-item { padding: 9px 10px; }
+  .profile-summary-item > strong { font-size: 12px; }
+  .account-notification-list .panel, .account-orders .panel, .account-subscriptions .panel { padding: 10px; }
+}
+@media (max-width: 380px) {
+  .container, .site-container, .page-container { padding-left: 10px; padding-right: 10px; }
+  .btn, button.btn, a.btn { padding: 8px 10px; font-size: 11px; }
+  .product-grid, .packs-grid, .cards-grid { gap: 8px; }
+  .product-card img, .pack-card img, .product-image, .pack-image { max-height: 150px; }
+  .account-tab { gap: 4px; padding: 7px 6px; font-size: 9px; }
+}
