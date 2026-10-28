@@ -1556,6 +1556,8 @@
         '</section>' +
       '</div>'
     );
+    const accountModalCard = document.querySelector(".modal-card");
+    if (accountModalCard) accountModalCard.classList.add("account-modal-card");
     const accountTabButtons = [...document.querySelectorAll("[data-account-tab]")];
     const activateAccountTab = (tabName) => {
       accountTabButtons.forEach(button => {
