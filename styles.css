@@ -1969,3 +1969,134 @@ tr[hidden]{display:none!important}
   .budget-builder-qty button { width: 27px; height: 27px; }
   .account-order-actions { min-width: 0; }
 }
+
+
+/* Order tracking and replenishment subscriptions */
+.order-track {
+  display: flex;
+  list-style: none;
+  gap: 0;
+  width: 390px;
+  max-width: 100%;
+  margin: 10px 0 6px;
+  padding: 0;
+}
+.order-track li {
+  flex: 1 1 0;
+  min-width: 0;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  text-align: center;
+}
+.order-track li:not(:last-child)::after {
+  content: "";
+  height: 2px;
+  position: absolute;
+  top: 9px;
+  left: calc(50% + 10px);
+  right: calc(-50% + 10px);
+  background: var(--border, #e5e7eb);
+}
+.order-track li.is-done::after { background: #15803d; }
+.order-track-dot {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border: 1px solid var(--border, #d1d5db);
+  border-radius: 50%;
+  background: #fff;
+  color: #6b7280;
+  font-size: 10px;
+  font-weight: 700;
+}
+.order-track li.is-done .order-track-dot,
+.order-track li.is-current .order-track-dot {
+  border-color: #15803d;
+  background: #15803d;
+  color: #fff;
+}
+.order-track li.is-current .order-track-dot { box-shadow: 0 0 0 3px rgba(21,128,61,.12); }
+.order-track-label { font-size: 10px; line-height: 1.2; color: var(--muted, #6b7280); }
+.order-track li.is-current .order-track-label { color: var(--text, #1f2937); font-weight: 700; }
+.order-tracking-pending,
+.order-tracking-cancelled { font-size: 12px; line-height: 1.45; margin-top: 7px; }
+.order-tracking-pending { color: #92400e; }
+.order-tracking-cancelled { color: #b91c1c; font-weight: 600; }
+.order-slot { margin-top: 6px; max-width: 260px; white-space: normal; }
+.subscription-panel-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+.subscription-panel-heading h3 { margin: 0 0 5px; }
+.subscription-panel-heading p { margin: 0; max-width: 650px; }
+.subscription-list { display: grid; gap: 12px; }
+.subscription-card {
+  border: 1px solid var(--border, #e5e7eb);
+  border-radius: 14px;
+  padding: 14px;
+  background: var(--surface, #fff);
+}
+.subscription-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+.subscription-card-head h4 { margin: 0 0 4px; font-size: 15px; }
+.subscription-card-head .small-note { margin: 0; }
+.subscription-items { margin: 12px 0; padding-left: 20px; }
+.subscription-items li { margin: 4px 0; font-size: 13px; }
+.subscription-estimate {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin: 10px 0 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--surface-muted, #f8fafc);
+  font-size: 13px;
+}
+.subscription-estimate strong { display: inline; }
+.subscription-estimate span { color: var(--muted, #6b7280); font-size: 11px; }
+.subscription-actions { display: flex; flex-wrap: wrap; gap: 7px; }
+.subscription-form { display: grid; gap: 13px; }
+.subscription-field,
+.subscription-product-field,
+.subscription-quantity-field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.subscription-field > span,
+.subscription-product-field > span,
+.subscription-quantity-field > span { font-size: 12px; font-weight: 650; color: var(--muted, #6b7280); }
+.subscription-lines-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 4px; }
+.subscription-line {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 86px 36px;
+  align-items: end;
+  gap: 8px;
+  margin: 8px 0;
+}
+.subscription-remove-line { min-width: 36px; padding-left: 0; padding-right: 0; }
+.subscription-schedule-grid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 12px; }
+.account-subscriptions { margin-top: 14px; }
+@media (max-width: 700px) {
+  .subscription-panel-heading { flex-direction: column; align-items: stretch; }
+  .subscription-panel-heading > .btn { align-self: flex-start; }
+  .subscription-schedule-grid { grid-template-columns: 1fr; }
+  .subscription-actions .btn { flex: 1 1 auto; }
+  .order-track { width: 350px; }
+  .order-track-label { font-size: 9px; }
+  .subscription-card { padding: 11px; }
+}
+@media (max-width: 420px) {
+  .subscription-line { grid-template-columns: minmax(0,1fr) 70px 32px; gap: 6px; }
+  .order-track { width: 315px; }
+  .order-track-label { font-size: 8px; }
+}
