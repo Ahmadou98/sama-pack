@@ -1644,11 +1644,13 @@
       e.preventDefault();
       if (!currentUser) return toast("Reconnecte-toi avant de confirmer la commande.", true);
       const f = new FormData(form);
+      const orderPhone = normalizeWhatsAppNumber(f.get("phone"));
+      if (!orderPhone) return toast("Saisis un numéro WhatsApp valide pour cette commande.", true);
       const paymentChoice = String(f.get("payment_choice") || "pay_now");
       if (paymentChoice === "pay_later" && !deliveryAllowed) return toast("Le paiement plus tard exige des frais de livraison à régler maintenant.", true);
       setBusy(form, true, "Création de la commande…");
       const payload = {
-        customer: { name: String(f.get("name") || "").trim(), phone: String(f.get("phone") || "").trim(), address: String(f.get("address") || "").trim(), zone: String(f.get("zone") || "").trim() },
+        customer: { name: String(f.get("name") || "").trim(), phone: orderPhone, address: String(f.get("address") || "").trim(), zone: String(f.get("zone") || "").trim() },
         slot: String(f.get("slot") || "").trim(),
         payment_choice: paymentChoice,
         business_account_id: currentBusinessAccount?.id || null,
