@@ -2100,8 +2100,3 @@ tr[hidden]{display:none!important}
   .order-track { width: 315px; }
   .order-track-label { font-size: 8px; }
 }
-
-/* Statuts du parcours de livraison SAMA-PACK */
-.status.confirmed { background:#dcfce7; color:#166534; border-color:#bbf7d0; }
-.status.prepared { background:#dbeafe; color:#1d4ed8; border-color:#bfdbfe; }
-.status.out_for_delivery { background:#e0e7ff; color:#3730a3; border-color:#c7d2fe; }
