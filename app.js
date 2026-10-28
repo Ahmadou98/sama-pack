@@ -35,6 +35,7 @@
   let cachedSuppliers = [];
   let appSettings = { company: "SAMA-PACK", whatsapp: "", deliveryFee: 1500, currency: "FCFA", homepageBackgroundUrl: "" };
   let cart = loadCart();
+  let budgetBuilderState = { budget: 5000, category: "all", items: [] };
 
   function normalizeFallbackProduct(p) {
     return { id: String(p.id), public_ref: String(p.public_ref || p.id), availability_status: String(p.availability_status || "available"), catalog_type: String(p.catalog_type || "pack"), name: String(p.name || "Pack"), cat: String(p.cat || p.category || "Autre"), category: String(p.cat || p.category || "Autre"), price: Number(p.price || 0), desc: String(p.desc || p.description || ""), description: String(p.desc || p.description || ""), items: Array.isArray(p.items) ? p.items : [], image_path: p.image_path || "", active: p.active !== false, promo_active: p.promo_active === true, promo_price: p.promo_price == null || p.promo_price === "" ? null : Number(p.promo_price), promo_label: String(p.promo_label || "Offre spéciale"), promo_end_at: p.promo_end_at || null };
@@ -932,6 +933,160 @@
   }
   function changeQty(id, delta) { const x = cart.find(i => i.id === id); if (!x) return; x.qty += delta; if (x.qty <= 0) cart = cart.filter(i => i.id !== id); if (x.qty > 99) x.qty = 99; saveAndRenderCart(); }
 
+  function getBudgetBuilderProducts(category = "all") {
+    return products.filter(p => p && p.catalog_type !== "pack" && canSellProduct(p) &&
+      (category === "all" || String(p.cat || "") === category));
+  }
+  function budgetBuilderImage(p) {
+    const path = String(p?.image_path || "").trim();
+    if (!path) return cleaningBottleSvg();
+    const src = /^https?:\/\//i.test(path) ? path : path.replace(/^\//, "");
+    return '<img class="budget-builder-thumb-img" src="' + esc(src) + '" alt="' + esc(p.name) + '" loading="lazy" onerror="this.style.display=\'none\'">';
+  }
+  function openBudgetPackBuilder() {
+    const available = getBudgetBuilderProducts("all");
+    if (!available.length) {
+      showModal('<div class="modal-head"><div><div class="eyebrow">PACK PERSONNALISÉ</div><h2>Compose ton pack</h2></div><button class="close" onclick="closeModal()">✕</button></div><div class="empty">Aucun produit individuel n’est actuellement disponible pour composer un pack. Réessaie lorsque le stock sera mis à jour.</div>');
+      return;
+    }
+    budgetBuilderState = { budget: 5000, category: "all", items: [] };
+    const categories = [...new Set(available.map(p => String(p.cat || "Autre")))].sort((a,b) => a.localeCompare(b, "fr"));
+    const categoryOptions = '<option value="all">Tous les produits disponibles</option>' +
+      categories.map(c => '<option value="' + esc(c) + '">' + esc(c) + '</option>').join("");
+    showModal('<section class="budget-builder-modal" aria-labelledby="budgetBuilderTitle">' +
+      '<div class="modal-head"><div><div class="eyebrow">PACK PERSONNALISÉ</div><h2 id="budgetBuilderTitle">Compose ton pack selon ton budget</h2></div><button class="close" onclick="closeModal()" aria-label="Fermer">✕</button></div>' +
+      '<p class="budget-builder-intro">Choisis ton budget et, si tu le souhaites, une catégorie. La proposition utilise uniquement les articles publiés, disponibles et dont le prix est confirmé.</p>' +
+      '<form id="budgetBuilderForm" class="budget-builder-form">' +
+        '<label for="budgetBuilderBudget">Ton budget (FCFA)</label><input id="budgetBuilderBudget" class="input" type="number" inputmode="numeric" min="500" max="250000" step="500" value="5000" required>' +
+        '<label for="budgetBuilderCategory">Type de besoin</label><select id="budgetBuilderCategory" class="input">' + categoryOptions + '</select>' +
+        '<button id="budgetBuilderSuggestBtn" class="btn secondary full" type="button">Proposer une sélection</button>' +
+      '</form>' +
+      '<div id="budgetBuilderResults" class="budget-builder-results" aria-live="polite"></div>' +
+      '<div class="budget-builder-footer"><button id="budgetBuilderAddBtn" class="btn primary full" type="button" onclick="addBudgetPackToCart()" disabled>Ajouter mon pack au panier</button><p class="small-note">La proposition est modifiable. Les frais de livraison s’ajoutent au panier ; aucun paiement ne sera lancé automatiquement.</p></div>' +
+      '</section>');
+    $("budgetBuilderSuggestBtn").onclick = suggestBudgetPack;
+    $("budgetBuilderForm").onsubmit = event => { event.preventDefault(); suggestBudgetPack(); };
+    $("budgetBuilderCategory").onchange = suggestBudgetPack;
+    $("budgetBuilderBudget").onchange = suggestBudgetPack;
+    suggestBudgetPack();
+  }
+  function suggestBudgetPack() {
+    const budgetInput = $("budgetBuilderBudget"), categoryInput = $("budgetBuilderCategory"), results = $("budgetBuilderResults");
+    if (!budgetInput || !categoryInput || !results) return;
+    const budget = Math.floor(Number(budgetInput.value));
+    if (!Number.isFinite(budget) || budget < 500 || budget > 250000) {
+      budgetBuilderState.items = [];
+      results.innerHTML = '<div class="inline-message">Saisis un budget compris entre 500 et 250 000 FCFA.</div>';
+      const addButton = $("budgetBuilderAddBtn");
+      if (addButton) addButton.disabled = true;
+      return;
+    }
+    const category = String(categoryInput.value || "all");
+    const candidates = getBudgetBuilderProducts(category).map(p => ({ p, price: getEffectivePrice(p) }))
+      .filter(x => Number.isFinite(x.price) && x.price > 0 && x.price <= budget)
+      .sort((a,b) => a.price - b.price || String(a.p.name).localeCompare(String(b.p.name), "fr"));
+    budgetBuilderState = { budget, category, items: [] };
+    const buckets = new Map();
+    candidates.forEach(x => {
+      const key = String(x.p.cat || "Autre");
+      if (!buckets.has(key)) buckets.set(key, []);
+      buckets.get(key).push(x);
+    });
+    const chosen = new Set(), categoryCounts = new Map();
+    let total = 0;
+    const addCandidate = x => {
+      if (!x || chosen.has(String(x.p.id)) || total + x.price > budget) return;
+      const key = String(x.p.cat || "Autre");
+      chosen.add(String(x.p.id));
+      categoryCounts.set(key, (categoryCounts.get(key) || 0) + 1);
+      budgetBuilderState.items.push({ id: String(x.p.id), qty: 1 });
+      total += x.price;
+    };
+    [...buckets.keys()].sort((a,b) => a.localeCompare(b, "fr")).forEach(key => addCandidate(buckets.get(key)?.[0]));
+    const perCategoryCap = category === "all" ? 3 : 6;
+    candidates.forEach(x => {
+      const key = String(x.p.cat || "Autre");
+      if ((categoryCounts.get(key) || 0) < perCategoryCap) addCandidate(x);
+    });
+    renderBudgetBuilderResults();
+  }
+  function renderBudgetBuilderResults() {
+    const results = $("budgetBuilderResults"), addButton = $("budgetBuilderAddBtn");
+    if (!results) return;
+    const lines = budgetBuilderState.items.map(line => ({ ...line, product: getP(line.id) }))
+      .filter(line => line.product && canSellProduct(line.product));
+    const total = lines.reduce((sum, line) => sum + getEffectivePrice(line.product) * line.qty, 0);
+    const remaining = Math.max(0, budgetBuilderState.budget - total);
+    if (!lines.length) {
+      results.innerHTML = '<div class="empty">Aucun article ne correspond à ce budget et à ce choix. Augmente ton budget ou choisis une autre catégorie.</div>';
+      if (addButton) addButton.disabled = true;
+      return;
+    }
+    results.innerHTML = '<div class="budget-builder-summary"><div><span>Ta sélection</span><strong>' + lines.length + (lines.length > 1 ? ' articles' : ' article') + '</strong></div><div><span>Total des produits</span><strong>' + money(total) + '</strong></div><div><span>Budget restant</span><strong>' + money(remaining) + '</strong></div></div>' +
+      '<div class="budget-builder-list">' + lines.map(line => {
+        const p = line.product;
+        return '<article class="budget-builder-item"><div class="budget-builder-thumb">' + budgetBuilderImage(p) + '</div><div class="budget-builder-item-copy"><strong>' + esc(p.name) + '</strong><small>' + esc(p.cat || "Article") + ' · ' + money(getEffectivePrice(p)) + '</small></div><div class="qty budget-builder-qty"><button type="button" onclick="changeBudgetBuilderQty(\'' + esc(p.id) + '\',-1)" aria-label="Retirer une unité">−</button><b>' + line.qty + '</b><button type="button" onclick="changeBudgetBuilderQty(\'' + esc(p.id) + '\',1)" aria-label="Ajouter une unité">+</button></div></article>';
+      }).join("") + '</div>';
+    if (addButton) addButton.disabled = total <= 0 || total > budgetBuilderState.budget;
+  }
+  function changeBudgetBuilderQty(id, delta) {
+    const line = budgetBuilderState.items.find(item => item.id === String(id)), product = getP(String(id));
+    if (!product || !canSellProduct(product)) return toast("Cet article n’est plus disponible.", true);
+    if (!line && delta > 0) {
+      if (getEffectivePrice(product) > budgetBuilderState.budget) return toast("Cet article dépasse ton budget.", true);
+      budgetBuilderState.items.push({ id: String(id), qty: 1 });
+    } else if (line) {
+      const nextQty = line.qty + Number(delta || 0);
+      if (nextQty <= 0) budgetBuilderState.items = budgetBuilderState.items.filter(item => item.id !== String(id));
+      else if (nextQty > 99) return toast("La quantité maximale est de 99 unités.", true);
+      else {
+        const totalWithoutLine = budgetBuilderState.items.filter(item => item.id !== String(id))
+          .reduce((sum, item) => sum + getEffectivePrice(getP(item.id)) * item.qty, 0);
+        if (totalWithoutLine + getEffectivePrice(product) * nextQty > budgetBuilderState.budget) return toast("Cette quantité dépasserait ton budget.", true);
+        line.qty = nextQty;
+      }
+    }
+    renderBudgetBuilderResults();
+  }
+  function addBudgetPackToCart() {
+    const lines = budgetBuilderState.items.map(line => ({ ...line, product: getP(line.id) }));
+    if (!lines.length || lines.some(line => !line.product || !canSellProduct(line.product))) return toast("La sélection contient un article indisponible. Génère une nouvelle proposition.", true);
+    const total = lines.reduce((sum, line) => sum + getEffectivePrice(line.product) * line.qty, 0);
+    if (total <= 0 || total > budgetBuilderState.budget) return toast("La sélection dépasse le budget. Ajuste les quantités.", true);
+    lines.forEach(line => {
+      const existing = cart.find(item => item.id === line.id);
+      if (existing) existing.qty = Math.min(99, existing.qty + line.qty);
+      else cart.push({ id: line.id, qty: Math.min(99, line.qty) });
+    });
+    saveCart(); updateCartCount(); renderCartModal();
+    toast("Ton pack personnalisé a été ajouté au panier.");
+  }
+  async function reorderOrder(orderId) {
+    if (!currentUser) return renderAuthForm("login", "Connecte-toi pour recommander les articles de cette commande.");
+    const id = String(orderId || "").trim();
+    if (!id) return toast("Référence de commande manquante.", true);
+    const { data: order, error: orderError } = await client.from("orders")
+      .select("id,user_id").eq("id", id).eq("user_id", currentUser.id).maybeSingle();
+    if (orderError || !order) return toast("Cette commande est introuvable ou n’est pas accessible depuis ce compte.", true);
+    const { data: rows, error } = await client.from("order_items")
+      .select("product_id,product_name,quantity").eq("order_id", id);
+    if (error) return toast("Les articles de cette ancienne commande ne sont pas accessibles pour le moment.", true);
+    if (!rows?.length) return toast("Les détails des articles ne sont pas disponibles pour cette commande.", true);
+    let added = 0; const unavailable = [];
+    for (const row of rows) {
+      const productId = String(row.product_id || ""), product = getP(productId);
+      if (!product || !canSellProduct(product)) { unavailable.push(String(row.product_name || "Article indisponible")); continue; }
+      const qty = Math.max(1, Math.min(99, Math.trunc(Number(row.quantity) || 1)));
+      const existing = cart.find(item => item.id === productId);
+      if (existing) existing.qty = Math.min(99, existing.qty + qty);
+      else cart.push({ id: productId, qty });
+      added++;
+    }
+    if (!added) return toast("Aucun article de cette commande n’est actuellement disponible à la vente.", true);
+    saveCart(); updateCartCount(); renderCartModal();
+    toast(unavailable.length ? added + " article(s) ajouté(s). Certains articles ne sont plus disponibles." : "Commande " + id + " reconstituée dans ton panier.");
+  }
+
   function openAccountModal() {
     if (currentUser) { showAccountHome(); return; }
     renderAuthForm("login");
@@ -972,11 +1127,12 @@
     const initialized = await isAdminInitialized(); adminInitialized = initialized;
     const orderHtml = orders.length ? `<div class="table-wrap"><table class="table"><thead><tr><th>Commande</th><th>Date</th><th>Total</th><th>Paiement</th><th>Statut</th><th>Action</th></tr></thead><tbody>${orders.map(o => {
       const paymentPending = ["awaiting_payment","awaiting_delivery_payment"].includes(o.status);
-      const actionHtml = paymentPending
+      const paymentActionHtml = paymentPending
         ? '<button class="btn small primary" onclick="retryOrderPayment(\'' + esc(o.id) + '\')">Payer</button>'
         : ["paid", "partially_paid"].includes(o.payment_status)
           ? '<button class="btn small ghost" onclick="resendPaymentConfirmation(\'' + esc(o.id) + '\')">Renvoyer le reçu</button>'
-          : "—";
+          : "";
+      const actionHtml = '<div class="account-order-actions">' + paymentActionHtml + '<button class="btn small ghost" onclick="reorderOrder(\'' + esc(o.id) + '\')">Recommander</button></div>';
       return '<tr><td>' + esc(o.id) + '</td><td>' + esc(fmtDate(o.created_at)) + '</td><td>' + money(o.total) + '</td><td><span class="small-note">' + esc(paymentStatusLabel(o.payment_status)) + '</span><br><span class="small-note">Payé : ' + money(o.amount_paid || 0) + '</span></td><td><span class="status ' + esc(o.status) + '">' + esc(statusLabel(o.status)) + '</span></td><td>' + actionHtml + '</td></tr>';
     }).join("")}</tbody></table></div>` : '<div class="empty compact-empty">Tu n’as pas encore passé de commande en ligne.</div>';
     showModal(`<div class="modal-head"><div><div class="eyebrow">MON COMPTE</div><h2>${esc(p?.full_name || currentUser.email || "Client")}</h2><p class="small-note">${esc(currentUser.email || "")}</p></div><button class="close" onclick="closeModal()">✕</button></div><div class="account-buttons"><button class="btn secondary" onclick="enableBrowserNotifications()">🔔 Activer les alertes du navigateur</button><button class="btn ghost" onclick="loadAndShowNotifications()">Mes notifications (${userNotifications.filter(n=>!n.read_at).length})</button></div><div class="panel account-orders"><h3>Mes commandes</h3>${orderHtml}</div><div class="panel account-password"><h3>${currentUser?.last_sign_in_at ? "Sécurité du compte" : "Définir un mot de passe"}</h3><form id="changePasswordForm" class="checkout-grid"><input class="input full" name="password" type="password" minlength="8" required placeholder="Nouveau mot de passe (8 caractères minimum)"><button class="btn ghost full" type="submit">Enregistrer le mot de passe</button></form></div>${!initialized ? `<div class="panel bootstrap-panel"><h3>Configurer le premier administrateur</h3><p>Cette option n’apparaît que tant qu’aucun administrateur n’est configuré. Utilise le code initial transmis par le propriétaire.</p><form id="bootstrapAdminForm" class="checkout-grid"><input class="input full" name="bootstrap_token" autocomplete="off" required placeholder="Code initial du propriétaire"><button class="btn primary full" type="submit">Devenir le premier administrateur</button></form></div>` : ""}<button class="btn ghost full" onclick="signOut()">Se déconnecter</button>`);
@@ -1752,6 +1908,7 @@ if (!isAdmin()) { closeAdmin(); return toast("Accès administrateur requis.", tr
     const search = $("searchBox"); if (search) search.addEventListener("input",() => { currentProductPage = 1; renderProducts(); });
     const category = $("categoryFilter"); if(category) category.addEventListener("change",() => { currentProductPage = 1; renderProducts(); });
     if ($("openCartBtn")) $("openCartBtn").onclick = renderCartModal;
+    if ($("budgetPackBuilderBtn")) $("budgetPackBuilderBtn").onclick = openBudgetPackBuilder;
     document.querySelectorAll("[data-mobile-action=cart]").forEach(b => b.addEventListener("click", renderCartModal));
     document.querySelectorAll("[data-mobile-action=account]").forEach(b => b.addEventListener("click", openAccountModal));
     if ($("heroWhatsApp")) $("heroWhatsApp").onclick = () => document.getElementById("catalogue").scrollIntoView({behavior:"smooth"});
@@ -1781,6 +1938,6 @@ if (!isAdmin()) { closeAdmin(); return toast("Accès administrateur requis.", tr
   }
 
   // Functions called by inline storefront/admin controls.
-  Object.assign(window,{openProduct,addToCart,closeModal,changeQty,checkoutModal,retryOrderPayment,resendPaymentConfirmation,showAccountHome,signOut,renderAuthForm,resetPassword,enableBrowserNotifications,loadAndShowNotifications,markNotificationRead,showAdminView,editPack,cancelPackEdit,togglePack,setOrderStatus,showOrder,setQuoteStatus,goToProductPage,movePromo,goToPromo,selectReviewRating,editProspect,deleteProspect,setProspectStatus,editCatalogItem,archiveCatalogItem,removeAdmin});
+  Object.assign(window,{openProduct,addToCart,closeModal,changeQty,checkoutModal,retryOrderPayment,resendPaymentConfirmation,showAccountHome,reorderOrder,openBudgetPackBuilder,suggestBudgetPack,changeBudgetBuilderQty,addBudgetPackToCart,signOut,renderAuthForm,resetPassword,enableBrowserNotifications,loadAndShowNotifications,markNotificationRead,showAdminView,editPack,cancelPackEdit,togglePack,setOrderStatus,showOrder,setQuoteStatus,goToProductPage,movePromo,goToPromo,selectReviewRating,editProspect,deleteProspect,setProspectStatus,editCatalogItem,archiveCatalogItem,removeAdmin});
   start().catch(err => { console.error(err); toast("Initialisation impossible. Recharge la page ou contacte l’administrateur.",true); });
 })();
