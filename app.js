@@ -1320,6 +1320,8 @@
     const p = currentProfile || await getProfile();
     const businessResult = await client.from("business_accounts").select("*").eq("owner_user_id", currentUser.id).maybeSingle();
     currentBusinessAccount = businessResult.error ? null : (businessResult.data || null);
+    const { data: activeSalesCode } = await client.from("sales_referral_codes").select("code,label").eq("owner_user_id", currentUser.id).eq("active", true).maybeSingle();
+    const salesLinkHtml = activeSalesCode?.code ? '<div class="panel account-referral-launch"><div><strong>Ton code commercial : </strong><code>' + esc(activeSalesCode.code) + '</code><p class="small-note">Partage ton lien pour rattacher les commandes et devis que tu apportes à ton activité.</p></div><button class="btn secondary" onclick="copySalesLink(\'' + esc(activeSalesCode.code) + '\')">Copier mon lien</button></div>' : "";
     const dueResult = await client.rpc("sama_notify_due_replenishment_reminders");
     if (dueResult.error) console.warn("Due replenishment reminder check failed", dueResult.error);
     await loadNotifications();
@@ -1342,7 +1344,7 @@
       return '<tr><td><strong>' + esc(o.id) + '</strong></td><td>' + esc(fmtDate(o.created_at)) + '</td><td>' + money(o.total) + '</td><td><span class="small-note">' + esc(paymentStatusLabel(o.payment_status)) + '</span><br><span class="small-note">Payé : ' + money(o.amount_paid || 0) + '</span><br><span class="small-note">Solde : ' + money(balance) + '</span></td><td><span class="status ' + esc(o.status) + '">' + esc(statusLabel(o.status)) + '</span>' + orderTrackingHtml(o) + slotHtml + '</td><td>' + actionHtml + '</td></tr>';
     }).join("") + '</tbody></table></div>' : '<div class="empty compact-empty">Tu n’as pas encore passé de commande en ligne.</div>';
     const subscriptionsHtml = renderSubscriptionsHtml(cachedSubscriptions);
-    showModal('<div class="modal-head"><div><div class="eyebrow">MON COMPTE</div><h2>' + esc(p?.full_name || currentUser.email || "Client") + '</h2><p class="small-note">' + esc(currentUser.email || "") + '</p></div><button class="close" onclick="closeModal()">✕</button></div>' +
+    showModal('<div class="modal-head"><div><div class="eyebrow">MON COMPTE</div><h2>' + esc(p?.full_name || currentUser.email || "Client") + '</h2><p class="small-note">' + esc(currentUser.email || "") + '</p></div><button class="close" onclick="closeModal()">✕</button></div>' + salesLinkHtml +
       '<div class="panel account-business-launch"><div><h3>Vous êtes un professionnel ?</h3><p class="small-note">Enregistrez votre entreprise, demandez des devis détaillés et retrouvez ses commandes en quantité.</p></div><button class="btn secondary" onclick="openB2BWorkspace()">Espace professionnel</button></div>' +
       '<div class="account-buttons"><button class="btn secondary" onclick="enableBrowserNotifications()">🔔 Activer les alertes du navigateur</button><button class="btn ghost" onclick="loadAndShowNotifications()">Mes notifications (' + userNotifications.filter(n=>!n.read_at).length + ')</button></div>' +
       '<div class="panel account-orders"><div class="subscription-panel-heading"><h3>Mes commandes</h3><p class="small-note">Le suivi affiche l’avancement, le montant déjà payé, le solde et le créneau prévu.</p></div>' + orderHtml + '</div>' +
@@ -1355,7 +1357,9 @@
   }
   async function signOut() { await client.auth.signOut(); await syncAuth(null); closeModal(); toast("Tu es déconnecté."); }
   async function syncAuth(user) {
-    currentUser = user || null; currentProfile = currentUser ? await getProfile(currentUser) : null;
+    const nextUser = user || null;
+    if (!nextUser || nextUser.id !== currentUser?.id) currentBusinessAccount = null;
+    currentUser = nextUser; currentProfile = currentUser ? await getProfile(currentUser) : null;
     setupAccountPresence(currentUser);
     adminInitialized = await isAdminInitialized();
     updateAccountButtons();
@@ -1754,6 +1758,18 @@
     const table=rows.length?'<div class="table-wrap"><table class="table"><thead><tr><th>Commande</th><th>Date</th><th>CA</th><th>Coût produits</th><th>Frais paiement estimés</th><th>Livraison réelle</th><th>Marge contributive estimée</th><th>Coûts</th></tr></thead><tbody>'+rows.map(function(row){return '<tr><td>'+esc(row.order_id)+'<br><span class="small-note">'+esc(row.customer_name||"Client")+'</span></td><td>'+esc(fmtDate(row.created_at))+'</td><td>'+money(row.revenue)+'</td><td>'+money(row.product_cost)+'</td><td>'+money(row.estimated_payment_fee)+' ('+Number(row.payment_fee_percent||0).toLocaleString("fr-FR")+'%)</td><td>'+money(row.delivery_cost_actual)+'</td><td><strong>'+money(row.estimated_contribution_margin)+'</strong></td><td>'+(row.cost_data_complete?'<span class="status delivered">Complets</span>':'<span class="status awaiting_delivery_payment">Incomplets</span>')+'</td></tr>';}).join("")+'</tbody></table></div>':'<div class="empty">Aucune commande à analyser pour le moment.</div>';
     return '<div class="dashboard-welcome"><div><div class="eyebrow">ANALYSE FINANCIÈRE</div><h2>Rentabilité des commandes</h2><p>Les frais de paiement sont estimés avec le taux configuré. Les coûts produits proviennent des coûts d’achat ou de stock saisis. Renseigne les coûts réels de livraison dans le tableau des commandes.</p></div><button class="btn ghost small" onclick="showAdminView(\'profitability\')">Actualiser</button></div>'+
       '<div class="dashboard-kpis"><article class="dashboard-kpi revenue"><span class="dashboard-kpi-label">Chiffre d’affaires</span><strong>'+money(revenue)+'</strong><small>Hors annulées et paiements non confirmés</small></article><article class="dashboard-kpi orders"><span class="dashboard-kpi-label">Coût des produits</span><strong>'+money(productCost)+'</strong><small>Coûts enregistrés</small></article><article class="dashboard-kpi pending"><span class="dashboard-kpi-label">Frais de paiement</span><strong>'+money(fees)+'</strong><small>Estimation, pas relevé du prestataire</small></article><article class="dashboard-kpi average"><span class="dashboard-kpi-label">Coûts de livraison</span><strong>'+money(deliveryCosts)+'</strong><small>Coûts réels renseignés</small></article><article class="dashboard-kpi published"><span class="dashboard-kpi-label">Marge contributive estimée</span><strong>'+money(margin)+'</strong><small>'+incomplete+' commande(s) avec coûts incomplets</small></article></div><div class="panel"><div class="admin-panel-head"><h3>Détail par commande</h3><span class="small-note">Les coûts absents sont signalés comme incomplets.</span></div>'+table+'</div>';
+  }
+
+
+  async function copySalesLink(code) {
+    const safeCode = String(code || "").toUpperCase().replace(/[^A-Z0-9_-]/g, "");
+    if (!safeCode) return toast("Code commercial invalide.", true);
+    const link = window.location.origin + "/?ref=" + encodeURIComponent(safeCode);
+    try {
+      if (!navigator.clipboard?.writeText) throw new Error("Clipboard unavailable");
+      await navigator.clipboard.writeText(link);
+      toast("Lien commercial copié : " + link);
+    } catch { window.prompt("Copie ce lien commercial :", link); }
   }
 
   function openQuoteModal() {
@@ -2308,6 +2324,6 @@ if (!isAdmin()) { closeAdmin(); return toast("Accès administrateur requis.", tr
   }
 
   // Functions called by inline storefront/admin controls.
-  Object.assign(window,{openProduct,addToCart,closeModal,changeQty,checkoutModal,retryOrderPayment,resendPaymentConfirmation,showAccountHome,reorderOrder,openBudgetPackBuilder,suggestBudgetPack,changeBudgetBuilderQty,addBudgetPackToCart,signOut,renderAuthForm,resetPassword,enableBrowserNotifications,loadAndShowNotifications,markNotificationRead,showAdminView,editPack,cancelPackEdit,togglePack,setOrderStatus,showOrder,setQuoteStatus,goToProductPage,movePromo,goToPromo,selectReviewRating,editProspect,deleteProspect,setProspectStatus,editCatalogItem,archiveCatalogItem,removeAdmin,openSubscriptionEditor,addSubscriptionLine,removeSubscriptionLine,toggleSubscriptionStatus,prepareSubscriptionOrder,advanceSubscriptionReminder,deleteSubscription,openOrderWhatsApp,openB2BWorkspace,addB2BLine,removeB2BLine,submitB2BQuantityOrder,submitB2BQuote,setOrderDeliveryCost,toggleSalesCode,deleteSalesCode});
+  Object.assign(window,{openProduct,addToCart,closeModal,changeQty,checkoutModal,retryOrderPayment,resendPaymentConfirmation,showAccountHome,reorderOrder,openBudgetPackBuilder,suggestBudgetPack,changeBudgetBuilderQty,addBudgetPackToCart,signOut,renderAuthForm,resetPassword,enableBrowserNotifications,loadAndShowNotifications,markNotificationRead,showAdminView,editPack,cancelPackEdit,togglePack,setOrderStatus,showOrder,setQuoteStatus,goToProductPage,movePromo,goToPromo,selectReviewRating,editProspect,deleteProspect,setProspectStatus,editCatalogItem,archiveCatalogItem,removeAdmin,openSubscriptionEditor,addSubscriptionLine,removeSubscriptionLine,toggleSubscriptionStatus,prepareSubscriptionOrder,advanceSubscriptionReminder,deleteSubscription,openOrderWhatsApp,openB2BWorkspace,addB2BLine,removeB2BLine,submitB2BQuantityOrder,submitB2BQuote,setOrderDeliveryCost,toggleSalesCode,deleteSalesCode,copySalesLink});
   start().catch(err => { console.error(err); toast("Initialisation impossible. Recharge la page ou contacte l’administrateur.",true); });
 })();
