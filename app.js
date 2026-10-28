@@ -32,6 +32,8 @@
   let cachedCustomers = [];
   let cachedQuotes = [];
   let cachedSubscriptions = [];
+  let currentBusinessAccount = null;
+  let currentSalesReferralCode = "";
   let cachedExpenses = [];
   let cachedSuppliers = [];
   let appSettings = { company: "SAMA-PACK", whatsapp: "", deliveryFee: 1500, currency: "FCFA", homepageBackgroundUrl: "" };
@@ -1316,6 +1318,8 @@
   async function showAccountHome() {
     if (!currentUser) { renderAuthForm("login"); return; }
     const p = currentProfile || await getProfile();
+    const businessResult = await client.from("business_accounts").select("*").eq("owner_user_id", currentUser.id).maybeSingle();
+    currentBusinessAccount = businessResult.error ? null : (businessResult.data || null);
     const dueResult = await client.rpc("sama_notify_due_replenishment_reminders");
     if (dueResult.error) console.warn("Due replenishment reminder check failed", dueResult.error);
     await loadNotifications();
@@ -1339,6 +1343,7 @@
     }).join("") + '</tbody></table></div>' : '<div class="empty compact-empty">Tu n’as pas encore passé de commande en ligne.</div>';
     const subscriptionsHtml = renderSubscriptionsHtml(cachedSubscriptions);
     showModal('<div class="modal-head"><div><div class="eyebrow">MON COMPTE</div><h2>' + esc(p?.full_name || currentUser.email || "Client") + '</h2><p class="small-note">' + esc(currentUser.email || "") + '</p></div><button class="close" onclick="closeModal()">✕</button></div>' +
+      '<div class="panel account-business-launch"><div><h3>Vous êtes un professionnel ?</h3><p class="small-note">Enregistrez votre entreprise, demandez des devis détaillés et retrouvez ses commandes en quantité.</p></div><button class="btn secondary" onclick="openB2BWorkspace()">Espace professionnel</button></div>' +
       '<div class="account-buttons"><button class="btn secondary" onclick="enableBrowserNotifications()">🔔 Activer les alertes du navigateur</button><button class="btn ghost" onclick="loadAndShowNotifications()">Mes notifications (' + userNotifications.filter(n=>!n.read_at).length + ')</button></div>' +
       '<div class="panel account-orders"><div class="subscription-panel-heading"><h3>Mes commandes</h3><p class="small-note">Le suivi affiche l’avancement, le montant déjà payé, le solde et le créneau prévu.</p></div>' + orderHtml + '</div>' +
       '<div class="panel account-subscriptions"><div class="subscription-panel-heading"><div><h3>Mes réapprovisionnements</h3><p class="small-note">Programme tes rappels, modifie les produits ou suspends-les à tout moment. Aucune commande ou aucun paiement automatique.</p></div><button class="btn primary small" onclick="openSubscriptionEditor()">+ Nouveau rappel</button></div>' + subscriptionsHtml + '</div>' +
@@ -1476,6 +1481,8 @@
         customer: { name: String(f.get("name") || "").trim(), phone: String(f.get("phone") || "").trim(), address: String(f.get("address") || "").trim(), zone: String(f.get("zone") || "").trim() },
         slot: String(f.get("slot") || "").trim(),
         payment_choice: paymentChoice,
+        business_account_id: currentBusinessAccount?.id || null,
+        sales_referral_code: getSalesReferralCode(),
         items: cart.map(i => ({ product_id: i.id, quantity: i.qty }))
       };
       const { data, error } = await client.rpc("sama_place_order", { p_payload: payload });
@@ -1632,11 +1639,128 @@
     await loadNotifications();
   }
 
+
+  function b2bProductOptions(selectedId) {
+    return replenishmentProducts().map(function(p){return '<option value="'+esc(p.id)+'" '+(String(p.id)===String(selectedId||"")?"selected":"")+'>'+esc(p.name)+' — '+money(getEffectivePrice(p))+'</option>';}).join("")||'<option value="">Aucun article disponible</option>';
+  }
+  function b2bProductLineHtml(value) {
+    const p=value||{};
+    return '<div class="b2b-product-line"><label><span>Produit / pack</span><select class="input" name="b2b_product_id" required>'+b2bProductOptions(p.product_id||replenishmentProducts()[0]?.id||"")+'</select></label><label class="b2b-product-quantity"><span>Quantité</span><input class="input" name="b2b_quantity" type="number" min="1" max="99" value="'+Math.max(1,Math.min(99,Number(p.quantity)||1))+'" required></label><button type="button" class="btn small ghost" onclick="removeB2BLine(this)" aria-label="Retirer cette ligne">✕</button></div>';
+  }
+  function addB2BLine() { const host=$("b2bProductLines");if(!host)return;if(host.querySelectorAll(".b2b-product-line").length>=20)return toast("Maximum 20 références par demande.",true);host.insertAdjacentHTML("beforeend",b2bProductLineHtml({})); }
+  function removeB2BLine(button) {
+    const row=button?.closest(".b2b-product-line"),host=$("b2bProductLines");if(!row||!host)return;
+    if(host.querySelectorAll(".b2b-product-line").length<=1){const select=row.querySelector('[name="b2b_product_id"]'),qty=row.querySelector('[name="b2b_quantity"]');if(select)select.selectedIndex=0;if(qty)qty.value="1";return;}row.remove();
+  }
+  function readB2BLines() {
+    const host=$("b2bProductLines");if(!host)throw new Error("Sélection d’articles indisponible.");const lines=[];
+    for(const row of host.querySelectorAll(".b2b-product-line")){
+      const id=String(row.querySelector('[name="b2b_product_id"]')?.value||""),quantity=Number(row.querySelector('[name="b2b_quantity"]')?.value);
+      if(!id)continue;const product=getP(id);
+      if(!product||!canSellProduct(product))throw new Error("Un article choisi n’est plus disponible. Actualise la liste.");
+      if(!Number.isInteger(quantity)||quantity<1||quantity>99)throw new Error("Chaque quantité doit être comprise entre 1 et 99.");
+      const duplicate=lines.find(item=>item.product_id===product.id);
+      if(duplicate)duplicate.quantity=Math.min(99,duplicate.quantity+quantity);else lines.push({product_id:product.id,product_name:product.name,quantity:quantity,unit_price:getEffectivePrice(product)});
+    }
+    if(!lines.length)throw new Error("Sélectionne au moins un produit ou pack.");return lines;
+  }
+  async function saveB2BProfileFromForm() {
+    if(!currentUser)throw new Error("Connecte-toi pour enregistrer ton entreprise.");const form=$("b2bWorkspaceForm");if(!form)throw new Error("Formulaire professionnel indisponible.");
+    const fd=new FormData(form),payload={owner_user_id:currentUser.id,company_name:String(fd.get("company_name")||"").trim(),sector:String(fd.get("sector")||"Autre").trim(),contact_name:String(fd.get("contact_name")||"").trim(),phone:String(fd.get("phone")||"").trim(),email:String(fd.get("email")||"").trim(),address:String(fd.get("address")||"").trim(),delivery_zone:String(fd.get("delivery_zone")||"").trim(),updated_at:new Date().toISOString()};
+    if(payload.company_name.length<2||payload.contact_name.length<2||payload.phone.replace(/\D/g,"").length<8)throw new Error("Renseigne l’entreprise, le contact et un téléphone valide.");
+    const result=await client.from("business_accounts").upsert(payload,{onConflict:"owner_user_id"}).select("*").single();if(result.error)throw result.error;currentBusinessAccount=result.data;return result.data;
+  }
+  async function openB2BWorkspace() {
+    if(!currentUser){renderAuthForm("login","Connecte-toi ou crée un compte pour enregistrer ton entreprise, demander des devis et retrouver ses commandes.");return;}
+    const accountResult=await client.from("business_accounts").select("*").eq("owner_user_id",currentUser.id).maybeSingle();
+    if(accountResult.error)return toast("Espace professionnel indisponible : "+errorMessage(accountResult.error),true);
+    currentBusinessAccount=accountResult.data||null;const account=currentBusinessAccount||{};
+    const [quoteResult,orderResult]=await Promise.all([
+      client.from("quotes").select("id,created_at,company,need,message,status").eq("user_id",currentUser.id).order("created_at",{ascending:false}).limit(10),
+      account.id?client.from("orders").select("id,created_at,status,total,amount_paid").eq("user_id",currentUser.id).eq("business_account_id",account.id).order("created_at",{ascending:false}).limit(10):Promise.resolve({data:[],error:null})
+    ]);
+    const quotes=quoteResult.error?[]:(quoteResult.data||[]),orders=orderResult.error?[]:(orderResult.data||[]);
+    const quoteHtml=quotes.length?'<div class="table-wrap"><table class="table"><thead><tr><th>Devis</th><th>Date</th><th>Besoin</th><th>Statut</th></tr></thead><tbody>'+quotes.map(function(q){return '<tr><td>'+esc(q.id)+'</td><td>'+esc(fmtDate(q.created_at))+'</td><td>'+esc(q.need)+'<br><span class="small-note">'+esc(q.message||"")+'</span></td><td>'+esc(statusLabel(q.status))+'</td></tr>';}).join("")+'</tbody></table></div>':'<div class="empty compact-empty">Tes demandes de devis apparaîtront ici.</div>';
+    const orderHtml=orders.length?'<div class="table-wrap"><table class="table"><thead><tr><th>Commande</th><th>Date</th><th>Total</th><th>Payé</th><th>Statut</th><th></th></tr></thead><tbody>'+orders.map(function(o){return '<tr><td>'+esc(o.id)+'</td><td>'+esc(fmtDate(o.created_at))+'</td><td>'+money(o.total)+'</td><td>'+money(o.amount_paid||0)+'</td><td>'+esc(statusLabel(o.status))+'</td><td><button class="btn small ghost" onclick="reorderOrder(\''+esc(o.id)+'\')">Recommander</button></td></tr>';}).join("")+'</tbody></table></div>':'<div class="empty compact-empty">Les commandes passées depuis cet espace apparaîtront ici.</div>';
+    showModal('<div class="modal-head"><div><div class="eyebrow">CLIENTS PROFESSIONNELS</div><h2>Espace professionnel</h2><p class="small-note">Bureaux, restaurants, hôtels, commerces et équipes de nettoyage.</p></div><button class="close" onclick="closeModal()">✕</button></div>'+
+      '<form id="b2bWorkspaceForm" class="b2b-workspace-form"><div class="b2b-section-title"><h3>Profil de l’entreprise</h3><span class="small-note">'+(account.id?"Profil enregistré":"À enregistrer pour commencer")+'</span></div>'+
+      '<label><span>Nom de l’entreprise</span><input class="input" name="company_name" required minlength="2" maxlength="180" value="'+esc(account.company_name||"")+'" placeholder="Entreprise / structure"></label>'+
+      '<div class="b2b-two-columns"><label><span>Secteur</span><select class="input" name="sector">'+["Bureau","Restaurant","Hôtel","Commerce","Nettoyage professionnel","École / association","Autre"].map(function(x){return '<option '+((account.sector||"Autre")===x?"selected":"")+'>'+x+'</option>';}).join("")+'</select></label><label><span>Personne de contact</span><input class="input" name="contact_name" required minlength="2" maxlength="120" value="'+esc(account.contact_name||currentProfile?.full_name||"")+'"></label></div>'+
+      '<div class="b2b-two-columns"><label><span>Téléphone</span><input class="input" name="phone" required minlength="8" maxlength="30" value="'+esc(account.phone||currentProfile?.phone||"")+'" placeholder="Téléphone professionnel"></label><label><span>E-mail</span><input class="input" name="email" type="email" maxlength="254" value="'+esc(account.email||currentUser.email||"")+'"></label></div>'+
+      '<label><span>Adresse de livraison</span><input class="input" name="address" maxlength="300" value="'+esc(account.address||"")+'"></label><label><span>Zone / quartier</span><input class="input" name="delivery_zone" maxlength="120" value="'+esc(account.delivery_zone||"")+'"></label>'+
+      '<button class="btn secondary full" type="submit">Enregistrer le profil professionnel</button>'+
+      '<div class="b2b-section-title"><div><h3>Produits, packs et quantités</h3><p class="small-note">Les prix sont indicatifs et seront revérifiés avant la commande.</p></div><button class="btn small ghost" type="button" onclick="addB2BLine()">+ Article</button></div>'+
+      '<div id="b2bProductLines">'+[1,2,3].map(function(){return b2bProductLineHtml({});}).join("")+'</div>'+
+      '<label><span>Précisions pour un devis (facultatif)</span><textarea class="input" name="message" maxlength="1800" placeholder="Fréquence, conditionnement, livraison, besoins particuliers…"></textarea></label>'+
+      '<div class="b2b-action-row"><button class="btn primary" type="button" onclick="submitB2BQuantityOrder()">Ajouter au panier</button><button class="btn secondary" type="button" onclick="submitB2BQuote()">Demander un devis détaillé</button></div></form>'+
+      '<div class="panel b2b-history-panel"><div class="b2b-section-title"><h3>Commandes précédentes</h3><span class="small-note">10 dernières</span></div>'+orderHtml+'</div>'+
+      '<div class="panel b2b-history-panel"><div class="b2b-section-title"><h3>Demandes de devis</h3><span class="small-note">10 dernières</span></div>'+quoteHtml+'</div>'+
+      '<div class="panel b2b-history-panel"><h3>Réapprovisionnement récurrent</h3><p class="small-note">Programme des rappels pour tes références et quantités habituelles.</p><button class="btn ghost" onclick="openSubscriptionEditor()">Programmer un rappel</button></div>');
+    const form=$("b2bWorkspaceForm");if(form)form.onsubmit=async function(event){event.preventDefault();try{const result=await saveB2BProfileFromForm();await client.from("profiles").update({full_name:result.contact_name,phone:result.phone}).eq("id",currentUser.id);currentProfile=Object.assign({},currentProfile||{},{full_name:result.contact_name,phone:result.phone});toast("Profil professionnel enregistré.");await openB2BWorkspace();}catch(error){toast(errorMessage(error),true);}};
+  }
+  async function submitB2BQuantityOrder() {
+    try{const account=await saveB2BProfileFromForm(),lines=readB2BLines();for(const item of lines){const existing=cart.find(entry=>entry.id===item.product_id);if(existing)existing.qty=Math.min(99,existing.qty+item.quantity);else cart.push({id:item.product_id,qty:Math.min(99,item.quantity)});}currentBusinessAccount=account;saveCart();updateCartCount();closeModal();renderCartModal();toast("Articles professionnels ajoutés au panier. Vérifie les quantités avant de confirmer.");}catch(error){toast(errorMessage(error),true);}
+  }
+  async function submitB2BQuote() {
+    try{
+      const account=await saveB2BProfileFromForm(),lines=readB2BLines(),amount=lines.reduce(function(sum,item){return sum+item.quantity*item.unit_price;},0);
+      const details=lines.map(function(item){return item.quantity+" × "+item.product_name+" — prix indicatif unitaire "+money(item.unit_price);}).join("\n");
+      const extras=String($("b2bWorkspaceForm")?.querySelector('[name="message"]')?.value||"").trim();
+      const payload={company:account.company_name,phone:account.phone,email:account.email||currentUser.email||"",need:"Devis B2B détaillé — "+lines.length+" référence(s)",
+        message:"Secteur : "+account.sector+"\nContact : "+account.contact_name+"\nZone : "+(account.delivery_zone||"à préciser")+"\n\nArticles et quantités :\n"+details+"\n\nValeur indicative avant vérification : "+money(amount)+(extras?"\n\nPrécisions : "+extras:""),
+        business_account_id:account.id,sales_referral_code:getSalesReferralCode()};
+      const result=await client.rpc("sama_create_quote",{p_payload:payload});if(result.error)throw result.error;if(!result.data?.ok)throw new Error("La demande de devis n’a pas pu être enregistrée.");
+      toast("Demande de devis envoyée : "+String(result.data.id||""));await openB2BWorkspace();
+    }catch(error){toast(errorMessage(error),true);}
+  }
+  async function setOrderDeliveryCost(id, rawValue) {
+    if(!isAdmin())return toast("Accès administrateur requis.",true);const amount=Number(rawValue);if(!Number.isFinite(amount)||amount<0)return toast("Saisis un coût de livraison valide.",true);
+    const {error}=await client.from("orders").update({delivery_cost_actual:amount}).eq("id",id);if(error)return toast(errorMessage(error),true);
+    const row=cachedOrders.find(o=>o.id===id);if(row)row.delivery_cost_actual=amount;toast("Coût réel de livraison enregistré.");
+  }
+  async function toggleSalesCode(id, active) {
+    if(!isAdmin())return toast("Accès administrateur requis.",true);
+    const {error}=await client.from("sales_referral_codes").update({active:Boolean(active),updated_at:new Date().toISOString()}).eq("id",id);
+    if(error)return toast(errorMessage(error),true);toast(active?"Code commercial activé.":"Code commercial suspendu.");await showAdminView("sales_codes");
+  }
+  async function deleteSalesCode(id) {
+    if(!isAdmin())return toast("Accès administrateur requis.",true);if(!window.confirm("Supprimer ce code commercial ? Les ventes déjà attribuées restent historisées."))return;
+    const {error}=await client.from("sales_referral_codes").delete().eq("id",id);if(error)return toast(errorMessage(error),true);toast("Code commercial supprimé.");await showAdminView("sales_codes");
+  }
+  async function adminSalesCodes() {
+    const results=await Promise.all([
+      client.from("sales_referral_codes").select("*").order("created_at",{ascending:false}),
+      client.from("profiles").select("id,full_name,email,role").order("created_at",{ascending:true}),
+      client.from("orders").select("id,total,status,sales_referral_code,sales_referrer_user_id"),
+      client.from("quotes").select("id,status,sales_referral_code,sales_referrer_user_id")
+    ]);
+    results.forEach(function(r){if(r.error)throw r.error;});
+    const codes=results[0].data||[],people=results[1].data||[],orders=results[2].data||[],quotes=results[3].data||[],personById=new Map(people.map(function(p){return [p.id,p];}));
+    const profileOptions=people.map(function(p){return '<option value="'+esc(p.id)+'">'+esc(p.full_name||p.email||p.id)+' ('+esc(p.role||"client")+')</option>';}).join("");
+    const rows=codes.map(function(code){
+      const p=personById.get(code.owner_user_id)||{},attributed=orders.filter(function(o){return o.sales_referrer_user_id===code.owner_user_id||o.sales_referral_code===code.code;});
+      const revenue=attributed.filter(function(o){return !["cancelled","awaiting_payment","awaiting_delivery_payment"].includes(o.status);}).reduce(function(sum,o){return sum+Number(o.total||0);},0);
+      const quoteCount=quotes.filter(function(q){return q.sales_referrer_user_id===code.owner_user_id||q.sales_referral_code===code.code;}).length;
+      return '<tr><td><strong>'+esc(p.full_name||p.email||"Membre")+'</strong><br><code>'+esc(code.code)+'</code><br><span class="small-note">'+esc(code.label||"")+'</span></td><td>'+attributed.length+'</td><td>'+money(revenue)+'</td><td>'+quoteCount+'</td><td>'+(code.active?'<span class="status delivered">Actif</span>':'<span class="status cancelled">Suspendu</span>')+'</td><td><div class="account-order-actions"><button class="btn small ghost" onclick="toggleSalesCode(\''+esc(code.id)+'\','+(!code.active)+')">'+(code.active?"Suspendre":"Réactiver")+'</button><button class="btn small danger" onclick="deleteSalesCode(\''+esc(code.id)+'\')">Supprimer</button></div></td></tr>';
+    }).join("");
+    return '<div class="panel"><div class="eyebrow">ATTRIBUTION DES VENTES</div><h3>Créer un code commercial</h3><p class="small-note">Partage un lien comme <code>https://sama-pack.store/?ref=ALMINE</code>. Le code est vérifié côté serveur lors de la commande ou du devis.</p><form id="salesCodeForm" class="admin-form"><label>Membre de l’équipe<select class="input" name="owner_user_id" required>'+profileOptions+'</select></label><label>Code unique<input class="input" name="code" required minlength="3" maxlength="30" pattern="[A-Za-z0-9_-]{3,30}" placeholder="ALMINE"></label><label class="full">Libellé / campagne<input class="input" name="label" maxlength="120" placeholder="Prospection entreprises / membre"></label><button class="btn primary full" type="submit">Créer le code</button></form></div><div class="panel"><div class="admin-panel-head"><h3>Performance des codes ('+codes.length+')</h3><span class="small-note">Le CA exclut les commandes annulées ou en attente de paiement.</span></div>'+(rows?'<div class="table-wrap"><table class="table"><thead><tr><th>Membre / code</th><th>Commandes</th><th>CA attribué</th><th>Devis</th><th>État</th><th>Actions</th></tr></thead><tbody>'+rows+'</tbody></table></div>':'<div class="empty">Aucun code commercial. Crée un code par membre.</div>')+'</div>';
+  }
+  async function adminProfitability() {
+    const {data,error}=await client.from("order_profitability").select("*").order("created_at",{ascending:false}).limit(250);if(error)throw error;
+    const rows=data||[],included=rows.filter(function(row){return !["cancelled","awaiting_payment","awaiting_delivery_payment"].includes(row.status);});
+    const revenue=included.reduce(function(sum,row){return sum+Number(row.revenue||0);},0),productCost=included.reduce(function(sum,row){return sum+Number(row.product_cost||0);},0),
+      fees=included.reduce(function(sum,row){return sum+Number(row.estimated_payment_fee||0);},0),deliveryCosts=included.reduce(function(sum,row){return sum+Number(row.delivery_cost_actual||0);},0),
+      margin=included.reduce(function(sum,row){return sum+Number(row.estimated_contribution_margin||0);},0),incomplete=included.filter(function(row){return !row.cost_data_complete;}).length;
+    const table=rows.length?'<div class="table-wrap"><table class="table"><thead><tr><th>Commande</th><th>Date</th><th>CA</th><th>Coût produits</th><th>Frais paiement estimés</th><th>Livraison réelle</th><th>Marge contributive estimée</th><th>Coûts</th></tr></thead><tbody>'+rows.map(function(row){return '<tr><td>'+esc(row.order_id)+'<br><span class="small-note">'+esc(row.customer_name||"Client")+'</span></td><td>'+esc(fmtDate(row.created_at))+'</td><td>'+money(row.revenue)+'</td><td>'+money(row.product_cost)+'</td><td>'+money(row.estimated_payment_fee)+' ('+Number(row.payment_fee_percent||0).toLocaleString("fr-FR")+'%)</td><td>'+money(row.delivery_cost_actual)+'</td><td><strong>'+money(row.estimated_contribution_margin)+'</strong></td><td>'+(row.cost_data_complete?'<span class="status delivered">Complets</span>':'<span class="status awaiting_delivery_payment">Incomplets</span>')+'</td></tr>';}).join("")+'</tbody></table></div>':'<div class="empty">Aucune commande à analyser pour le moment.</div>';
+    return '<div class="dashboard-welcome"><div><div class="eyebrow">ANALYSE FINANCIÈRE</div><h2>Rentabilité des commandes</h2><p>Les frais de paiement sont estimés avec le taux configuré. Les coûts produits proviennent des coûts d’achat ou de stock saisis. Renseigne les coûts réels de livraison dans le tableau des commandes.</p></div><button class="btn ghost small" onclick="showAdminView(\'profitability\')">Actualiser</button></div>'+
+      '<div class="dashboard-kpis"><article class="dashboard-kpi revenue"><span class="dashboard-kpi-label">Chiffre d’affaires</span><strong>'+money(revenue)+'</strong><small>Hors annulées et paiements non confirmés</small></article><article class="dashboard-kpi orders"><span class="dashboard-kpi-label">Coût des produits</span><strong>'+money(productCost)+'</strong><small>Coûts enregistrés</small></article><article class="dashboard-kpi pending"><span class="dashboard-kpi-label">Frais de paiement</span><strong>'+money(fees)+'</strong><small>Estimation, pas relevé du prestataire</small></article><article class="dashboard-kpi average"><span class="dashboard-kpi-label">Coûts de livraison</span><strong>'+money(deliveryCosts)+'</strong><small>Coûts réels renseignés</small></article><article class="dashboard-kpi published"><span class="dashboard-kpi-label">Marge contributive estimée</span><strong>'+money(margin)+'</strong><small>'+incomplete+' commande(s) avec coûts incomplets</small></article></div><div class="panel"><div class="admin-panel-head"><h3>Détail par commande</h3><span class="small-note">Les coûts absents sont signalés comme incomplets.</span></div>'+table+'</div>';
+  }
+
   function openQuoteModal() {
     showModal(`<div class="modal-head"><div><div class="eyebrow">B2B</div><h2>Demander un devis</h2></div><button class="close" onclick="closeModal()">✕</button></div><form id="quoteForm" class="checkout-grid"><input class="input" name="company" required maxlength="150" placeholder="Entreprise / structure"><input class="input" name="phone" required maxlength="30" placeholder="Téléphone"><input class="input full" name="need" required maxlength="250" placeholder="Besoin (ex. 20 packs professionnels par mois)"><input class="input full" name="email" type="email" placeholder="E-mail (facultatif)"><textarea class="input full" name="message" maxlength="2000" placeholder="Précisions"></textarea><button class="btn primary full" type="submit">Envoyer la demande de devis</button></form>`);
     const form = $("quoteForm"); form.onsubmit = async e => {
       e.preventDefault(); setBusy(form, true, "Envoi…"); const f = new FormData(form);
-      const payload = { company: String(f.get("company") || "").trim(), phone: String(f.get("phone") || "").trim(), need: String(f.get("need") || "").trim(), email: String(f.get("email") || "").trim(), message: String(f.get("message") || "").trim() };
+      const payload = { company: String(f.get("company") || "").trim(), phone: String(f.get("phone") || "").trim(), need: String(f.get("need") || "").trim(), email: String(f.get("email") || "").trim(), message: String(f.get("message") || "").trim(), sales_referral_code: getSalesReferralCode() };
       const { data, error } = await client.rpc("sama_create_quote", { p_payload: payload }); setBusy(form, false);
       if (error) return toast(errorMessage(error), true);
       closeModal(); toast(`Demande de devis envoyée (${data?.id || "enregistrée"}).`);
@@ -1667,7 +1791,7 @@
 if (!isAdmin()) { closeAdmin(); return toast("Accès administrateur requis.", true); }
     currentAdminView = view; editingProductId = view === "packs" ? editingProductId : null;
     document.querySelectorAll(".side-btn").forEach(b => b.classList.toggle("active", b.dataset.view === view));
-    const titles = {dashboard:"Tableau de bord",orders:"Commandes",customers:"Clients",stock:"Stock",products:"Gestion des packs",admins:"Administrateurs",activity:"Journal des actions",suppliers:"Fournisseurs",expenses:"Dépenses",quotes:"Devis",settings:"Paramètres"};
+    const titles = {dashboard:"Tableau de bord",orders:"Commandes",customers:"Clients",stock:"Stock",products:"Gestion des packs",admins:"Administrateurs",activity:"Journal des actions",suppliers:"Fournisseurs",expenses:"Dépenses",quotes:"Devis",settings:"Paramètres",profitability:"Rentabilité",sales_codes:"Codes commerciaux"};
     $("adminTitle").textContent = titles[view] || "Gestion";
     $("adminContent").innerHTML = '<div class="panel loading-panel">Chargement des données…</div>';
     try {
@@ -1682,6 +1806,8 @@ if (!isAdmin()) { closeAdmin(); return toast("Accès administrateur requis.", tr
       else if (view === "suppliers") html = await adminSuppliers();
       else if (view === "expenses") html = await adminExpenses();
       else if (view === "quotes") html = await adminQuotes();
+      else if (view === "profitability") html = await adminProfitability();
+      else if (view === "sales_codes") html = await adminSalesCodes();
       else if (view === "settings") html = await adminSettings();
       $("adminContent").innerHTML = html;
       bindAdmin(view);
@@ -1827,10 +1953,10 @@ if (!isAdmin()) { closeAdmin(); return toast("Accès administrateur requis.", tr
   }
   async function adminOrders() {
     const orders = await loadOrdersWithItems();
-    return `<div class="panel"><div class="admin-panel-head"><h3>Commandes (${orders.length})</h3><button class="btn ghost small" onclick="showAdminView('orders')">Actualiser</button></div><p class="small-note">Les commandes en attente de paiement ne doivent pas être préparées. Les frais de livraison doivent être encaissés et confirmés avant le départ du livreur.</p>${orders.length ? `<div class="table-wrap"><table class="table"><thead><tr><th>Référence</th><th>Date</th><th>Client</th><th>Total</th><th>Paiement reçu</th><th>Statut</th><th>Détails</th></tr></thead><tbody>${orders.map(o=>{
+    return `<div class="panel"><div class="admin-panel-head"><h3>Commandes (${orders.length})</h3><button class="btn ghost small" onclick="showAdminView('orders')">Actualiser</button></div><p class="small-note">Les commandes en attente de paiement ne doivent pas être préparées. Les frais de livraison doivent être encaissés et confirmés avant le départ du livreur.</p>${orders.length ? `<div class="table-wrap"><table class="table"><thead><tr><th>Référence</th><th>Date</th><th>Client</th><th>Total</th><th>Paiement reçu</th><th>Statut</th><th>Coût livraison réel (FCFA)</th><th>Détails</th></tr></thead><tbody>${orders.map(o=>{
       const pendingPayment = ["awaiting_payment","awaiting_delivery_payment"].includes(o.status);
       const options = pendingPayment ? [o.status,"cancelled"] : ["new","confirmed","processing","prepared","out_for_delivery","delivered","cancelled"];
-      return `<tr><td>${esc(o.id)}</td><td>${esc(fmtDate(o.created_at))}</td><td>${esc(o.customer_name)}<br><span class="small-note">${esc(o.customer_phone)}</span></td><td>${money(o.total)}</td><td>${money(o.amount_paid || 0)}<br><span class="small-note">${esc(paymentStatusLabel(o.payment_status))}</span></td><td><select class="input" onchange="setOrderStatus('${esc(o.id)}',this.value)">${options.map(s=>`<option ${o.status===s?"selected":""} value="${s}">${esc(statusLabel(s))}</option>`).join("")}</select></td><td><div class="account-order-actions"><button class="btn small ghost" onclick="showOrder('${esc(o.id)}')">Voir</button><button class="btn small secondary" onclick="openOrderWhatsApp('${esc(o.id)}')">WhatsApp</button></div></td></tr>`;
+      return `<tr><td>${esc(o.id)}</td><td>${esc(fmtDate(o.created_at))}</td><td>${esc(o.customer_name)}<br><span class="small-note">${esc(o.customer_phone)}</span></td><td>${money(o.total)}</td><td>${money(o.amount_paid || 0)}<br><span class="small-note">${esc(paymentStatusLabel(o.payment_status))}</span></td><td><select class="input" onchange="setOrderStatus('${esc(o.id)}',this.value)">${options.map(s=>`<option ${o.status===s?"selected":""} value="${s}">${esc(statusLabel(s))}</option>`).join("")}</select></td><td><input class="input profit-delivery-input" type="number" min="0" step="1" aria-label="Coût réel livraison" value="${Number(o.delivery_cost_actual || 0)}" onchange="setOrderDeliveryCost('${esc(o.id)}',this.value)"></td><td><div class="account-order-actions"><button class="btn small ghost" onclick="showOrder('${esc(o.id)}')">Voir</button><button class="btn small secondary" onclick="openOrderWhatsApp('${esc(o.id)}')">WhatsApp</button></div></td></tr>`;
     }).join("")}</tbody></table></div>` : '<div class="empty">Aucune commande pour le moment.</div>'}</div>`;
   }
   function showOrder(id) {
@@ -2112,7 +2238,24 @@ if (!isAdmin()) { closeAdmin(); return toast("Accès administrateur requis.", tr
     toast("Statut du devis modifié."); await showAdminView("quotes");
   }
 
+
+  function captureSalesReferral() {
+    try {
+      const params = new URLSearchParams(window.location.search || ""), raw = params.get("ref") || params.get("code") || "";
+      const normalized = raw.toUpperCase().replace(/[^A-Z0-9_-]/g, "").slice(0, 30);
+      if (normalized.length >= 3) { localStorage.setItem("sama_pack_sales_referral_code_v1", normalized); currentSalesReferralCode = normalized; }
+      else currentSalesReferralCode = localStorage.getItem("sama_pack_sales_referral_code_v1") || "";
+    } catch { currentSalesReferralCode = ""; }
+    return currentSalesReferralCode;
+  }
+  function getSalesReferralCode() {
+    if (currentSalesReferralCode) return currentSalesReferralCode;
+    try { currentSalesReferralCode = localStorage.getItem("sama_pack_sales_referral_code_v1") || ""; } catch { currentSalesReferralCode = ""; }
+    return currentSalesReferralCode;
+  }
+
   function initShop() {
+    captureSalesReferral();
     if ($("year")) $("year").textContent = String(new Date().getFullYear());
     const search = $("searchBox"); if (search) search.addEventListener("input",() => { currentProductPage = 1; renderProducts(); });
     const category = $("categoryFilter"); if(category) category.addEventListener("change",() => { currentProductPage = 1; renderProducts(); });
@@ -2123,6 +2266,7 @@ if (!isAdmin()) { closeAdmin(); return toast("Accès administrateur requis.", tr
     if ($("heroWhatsApp")) $("heroWhatsApp").onclick = () => document.getElementById("catalogue").scrollIntoView({behavior:"smooth"});
     if ($("contactWhatsApp")) $("contactWhatsApp").onclick = () => openWA("Bonjour Sama-Pack, je souhaite avoir plus d’informations sur vos packs.");
     if ($("quoteBtn")) $("quoteBtn").onclick = openQuoteModal;
+    if ($("businessSpaceBtn")) $("businessSpaceBtn").onclick = openB2BWorkspace;
     if ($("adminBtn")) $("adminBtn").onclick = openAdmin;
     if ($("footerAdmin")) $("footerAdmin").onclick = e => { e.preventDefault(); openAdmin(); };
     if ($("viewShopBtn")) $("viewShopBtn").onclick = closeAdmin;
@@ -2147,6 +2291,6 @@ if (!isAdmin()) { closeAdmin(); return toast("Accès administrateur requis.", tr
   }
 
   // Functions called by inline storefront/admin controls.
-  Object.assign(window,{openProduct,addToCart,closeModal,changeQty,checkoutModal,retryOrderPayment,resendPaymentConfirmation,showAccountHome,reorderOrder,openBudgetPackBuilder,suggestBudgetPack,changeBudgetBuilderQty,addBudgetPackToCart,signOut,renderAuthForm,resetPassword,enableBrowserNotifications,loadAndShowNotifications,markNotificationRead,showAdminView,editPack,cancelPackEdit,togglePack,setOrderStatus,showOrder,setQuoteStatus,goToProductPage,movePromo,goToPromo,selectReviewRating,editProspect,deleteProspect,setProspectStatus,editCatalogItem,archiveCatalogItem,removeAdmin,openSubscriptionEditor,addSubscriptionLine,removeSubscriptionLine,toggleSubscriptionStatus,prepareSubscriptionOrder,advanceSubscriptionReminder,deleteSubscription,openOrderWhatsApp});
+  Object.assign(window,{openProduct,addToCart,closeModal,changeQty,checkoutModal,retryOrderPayment,resendPaymentConfirmation,showAccountHome,reorderOrder,openBudgetPackBuilder,suggestBudgetPack,changeBudgetBuilderQty,addBudgetPackToCart,signOut,renderAuthForm,resetPassword,enableBrowserNotifications,loadAndShowNotifications,markNotificationRead,showAdminView,editPack,cancelPackEdit,togglePack,setOrderStatus,showOrder,setQuoteStatus,goToProductPage,movePromo,goToPromo,selectReviewRating,editProspect,deleteProspect,setProspectStatus,editCatalogItem,archiveCatalogItem,removeAdmin,openSubscriptionEditor,addSubscriptionLine,removeSubscriptionLine,toggleSubscriptionStatus,prepareSubscriptionOrder,advanceSubscriptionReminder,deleteSubscription,openOrderWhatsApp,openB2BWorkspace,addB2BLine,removeB2BLine,submitB2BQuantityOrder,submitB2BQuote,setOrderDeliveryCost,toggleSalesCode,deleteSalesCode});
   start().catch(err => { console.error(err); toast("Initialisation impossible. Recharge la page ou contacte l’administrateur.",true); });
 })();
