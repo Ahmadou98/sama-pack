@@ -1417,11 +1417,29 @@
 
   function customerProfileFormHtml(profile) {
     const p = profile || {};
+    const fullName = String(p.full_name || currentUser?.user_metadata?.full_name || "Client SAMA-PACK").trim();
+    const initials = fullName.split(/\\s+/).filter(Boolean).slice(0, 2).map(part => part.charAt(0)).join("").toUpperCase() || "SP";
+    const email = currentUser?.email || p.email || "";
+    const zone = profileDeliveryZone(p);
+    const address = [p.delivery_address, p.delivery_landmark ? "Repère : " + p.delivery_landmark : "", p.delivery_instructions ? "Instructions : " + p.delivery_instructions : ""].filter(Boolean).join(" · ");
+    const isComplete = Boolean(p.full_name && p.phone && p.delivery_region && p.delivery_city && p.delivery_commune && p.delivery_neighborhood && p.delivery_address);
+    const summaryItem = (label, value, full = false) => '<div class="profile-summary-item' + (full ? ' is-full' : '') + '"><span>' + label + '</span><strong>' + esc(value || "À renseigner") + '</strong></div>';
     const field = (label, name, value, placeholder, required = false, full = false) =>
       '<label class="' + (full ? 'full' : '') + '">' + label + '<input class="input" name="' + name + '" value="' + esc(value || '') + '" maxlength="300" placeholder="' + placeholder + '"' + (required ? ' required' : '') + '></label>';
-    return '<div class="panel account-profile-panel"><div class="section-head"><div><div class="eyebrow">COORDONNÉES ENREGISTRÉES</div><h3>Mon profil et mon adresse de livraison</h3></div></div><p class="small-note">Ces informations seront préremplies à chaque commande. Ton adresse e-mail ne peut pas être modifiée ici.</p>' +
-      '<form id="profileForm" class="checkout-grid">' +
-      '<label class="full">Adresse e-mail (non modifiable)<input class="input" type="email" value="' + esc(currentUser?.email || p.email || '') + '" disabled readonly></label>' +
+    return '<section class="panel account-profile-panel">' +
+      '<div class="profile-card-header"><div class="profile-avatar" aria-label="Initiales du profil">' + esc(initials) + '</div><div class="profile-card-heading"><div class="eyebrow">ESPACE CLIENT</div><h3>' + esc(fullName) + '</h3><p>' + esc(email) + '</p><span class="profile-completion ' + (isComplete ? 'is-complete' : 'is-incomplete') + '">' + (isComplete ? 'Profil renseigné' : 'Profil à compléter') + '</span></div></div>' +
+      '<div class="profile-summary-heading"><div><h4>Mes informations</h4><p class="small-note">Tes coordonnées sont conservées pour accélérer tes prochaines commandes.</p></div><button class="btn primary small" id="editProfileBtn" type="button">Modifier le profil</button></div>' +
+      '<div class="profile-summary-grid" id="profileSummary">' +
+      summaryItem('Nom complet', fullName) +
+      summaryItem('Adresse e-mail', email) +
+      summaryItem('WhatsApp principal', p.phone) +
+      summaryItem('Téléphone supplémentaire', p.phone_secondary || 'Non renseigné') +
+      summaryItem('Zone de livraison', zone, true) +
+      summaryItem('Adresse de livraison', address, true) +
+      '</div>' +
+      '<form id="profileForm" class="checkout-grid profile-edit-form hidden">' +
+      '<div class="profile-edit-heading full"><div><h4>Modifier mes coordonnées</h4><p class="small-note">L’adresse e-mail est protégée et ne peut pas être modifiée ici.</p></div></div>' +
+      '<label class="full">Adresse e-mail (non modifiable)<input class="input" type="email" value="' + esc(email) + '" disabled readonly></label>' +
       field('Nom complet', 'full_name', p.full_name, 'Nom et prénom', true, true) +
       '<label>WhatsApp obligatoire<input class="input" id="profilePhone" name="phone" type="tel" inputmode="tel" value="' + esc(p.phone || '') + '" placeholder="+221 77 123 45 67" required maxlength="25"></label>' +
       '<div class="profile-whatsapp-test"><button class="btn ghost small" id="testProfileWhatsappBtn" type="button">Tester dans WhatsApp</button><p class="small-note">Ce test ouvre WhatsApp, sans vérification automatique par Meta.</p></div>' +
@@ -1433,7 +1451,7 @@
       field('Adresse précise', 'delivery_address', p.delivery_address, 'Rue, numéro, bâtiment…', true, true) +
       '<label class="full">Repère pour le livreur (facultatif)<input class="input" name="delivery_landmark" value="' + esc(p.delivery_landmark || '') + '" maxlength="200" placeholder="Ex. près de la pharmacie…"></label>' +
       '<label class="full">Instructions de livraison (facultatif)<textarea class="input" name="delivery_instructions" maxlength="500" rows="2" placeholder="Précisions utiles au livreur">' + esc(p.delivery_instructions || '') + '</textarea></label>' +
-      '<div class="full"><button class="btn primary" type="submit">Enregistrer mes coordonnées</button></div></form></div>';
+      '<div class="profile-edit-actions full"><button class="btn primary" type="submit">Enregistrer les modifications</button><button class="btn ghost" id="cancelProfileEditBtn" type="button">Annuler</button></div></form></section>';
   }
 
   async function saveCustomerProfile(form) {
@@ -1511,7 +1529,21 @@
       '<div class="panel account-password"><h3>' + (currentUser?.last_sign_in_at ? "Sécurité du compte" : "Définir un mot de passe") + '</h3><form id="changePasswordForm" class="checkout-grid"><input class="input full" name="password" type="password" minlength="8" required placeholder="Nouveau mot de passe (8 caractères minimum)"><button class="btn ghost full" type="submit">Enregistrer le mot de passe</button></form></div>' +
       (!initialized ? '<div class="panel bootstrap-panel"><h3>Configurer le premier administrateur</h3><p>Cette option n’apparaît que tant qu’aucun administrateur n’est configuré. Utilise le code initial transmis par le propriétaire.</p><form id="bootstrapAdminForm" class="checkout-grid"><input class="input full" name="bootstrap_token" autocomplete="off" required placeholder="Code initial du propriétaire"><button class="btn primary full" type="submit">Devenir le premier administrateur</button></form></div>' : '') +
       '<button class="btn ghost full" onclick="signOut()">Se déconnecter</button>');
+    const profileEditBtn = $("editProfileBtn");
+    const profileSummary = $("profileSummary");
     const profileForm = $("profileForm");
+    const cancelProfileEditBtn = $("cancelProfileEditBtn");
+    const toggleProfileEdit = (editing) => {
+      if (profileSummary) profileSummary.classList.toggle("hidden", editing);
+      if (profileEditBtn) profileEditBtn.classList.toggle("hidden", editing);
+      if (profileForm) profileForm.classList.toggle("hidden", !editing);
+      if (editing) $("profilePhone")?.focus();
+    };
+    if (profileEditBtn) profileEditBtn.onclick = () => toggleProfileEdit(true);
+    if (cancelProfileEditBtn) cancelProfileEditBtn.onclick = () => {
+      if (profileForm) profileForm.reset();
+      toggleProfileEdit(false);
+    };
     const profileWhatsappTest = $("testProfileWhatsappBtn");
     if (profileWhatsappTest) profileWhatsappTest.onclick = () => testWhatsAppNumber("profilePhone");
     if (profileForm) profileForm.onsubmit = async e => { e.preventDefault(); await saveCustomerProfile(profileForm); };
