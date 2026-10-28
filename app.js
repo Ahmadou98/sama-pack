@@ -31,6 +31,7 @@
   let cachedOrderItems = [];
   let cachedCustomers = [];
   let cachedQuotes = [];
+  let cachedSubscriptions = [];
   let cachedExpenses = [];
   let cachedSuppliers = [];
   let appSettings = { company: "SAMA-PACK", whatsapp: "", deliveryFee: 1500, currency: "FCFA", homepageBackgroundUrl: "" };
@@ -1119,23 +1120,231 @@
     const { error } = await client.auth.resetPasswordForEmail(email, { redirectTo: "https://sama-pack.store/" });
     if (error) toast(errorMessage(error), true); else toast("Lien de réinitialisation envoyé si cette adresse existe.");
   }
+
+  const ORDER_TRACKING_STEPS = [
+    { status: "new", label: "Reçue" },
+    { status: "confirmed", label: "Confirmée" },
+    { status: "processing", label: "En préparation" },
+    { status: "prepared", label: "Préparée" },
+    { status: "out_for_delivery", label: "En livraison" },
+    { status: "delivered", label: "Livrée" }
+  ];
+  function orderTrackingHtml(order) {
+    const status = String(order?.status || "new");
+    if (["awaiting_payment", "awaiting_delivery_payment"].includes(status)) return '<div class="order-tracking-pending">Suivi disponible après confirmation du paiement.</div>';
+    if (status === "cancelled") return '<div class="order-tracking-cancelled">Commande annulée</div>';
+    const current = Math.max(0, ORDER_TRACKING_STEPS.findIndex(step => step.status === status));
+    return '<ol class="order-track" aria-label="Progression de la commande">' + ORDER_TRACKING_STEPS.map((step, i) =>
+      '<li class="' + (i < current ? "is-done" : i === current ? "is-current" : "") + '"><span class="order-track-dot">' + (i < current ? "✓" : String(i + 1)) + '</span><span class="order-track-label">' + esc(step.label) + '</span></li>'
+    ).join("") + '</ol>';
+  }
+  function frequencyLabel(value) {
+    return ({ weekly: "Chaque semaine", monthly: "Chaque mois", bimonthly: "Tous les deux mois", quarterly: "Tous les trois mois" })[value] || "Chaque mois";
+  }
+  function addFrequency(date, frequency) {
+    const d = new Date(date);
+    if (!Number.isFinite(d.getTime())) return new Date(Date.now() + 30 * 86400000);
+    if (frequency === "weekly") { d.setDate(d.getDate() + 7); return d; }
+    const months = frequency === "bimonthly" ? 2 : frequency === "quarterly" ? 3 : 1;
+    const day = d.getDate();
+    const target = new Date(d.getFullYear(), d.getMonth() + months, 1, d.getHours(), d.getMinutes(), 0, 0);
+    target.setDate(Math.min(day, new Date(target.getFullYear(), target.getMonth() + 1, 0).getDate()));
+    return target;
+  }
+  function localDateTimeInput(value) {
+    const d = value ? new Date(value) : new Date(Date.now() + 30 * 86400000);
+    if (!Number.isFinite(d.getTime())) return "";
+    return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+  }
+  function replenishmentProducts() {
+    return (products || []).filter(canSellProduct).slice().sort((a, b) => String(a.name).localeCompare(String(b.name), "fr"));
+  }
+  function subscriptionLineHtml(line) {
+    const value = line || {};
+    const options = replenishmentProducts().map(p => '<option value="' + esc(p.id) + '" ' + (String(p.id) === String(value.product_id || "") ? "selected" : "") + '>' + esc(p.name) + ' — ' + money(getEffectivePrice(p)) + '</option>').join("");
+    return '<div class="subscription-line"><label class="subscription-product-field"><span>Produit ou pack</span><select class="input" name="product_id" required>' + (options || '<option value="">Aucun article disponible</option>') + '</select></label><label class="subscription-quantity-field"><span>Qté</span><input class="input" name="quantity" type="number" min="1" max="99" step="1" value="' + Math.max(1, Math.min(99, Number(value.quantity) || 1)) + '" required></label><button type="button" class="btn small ghost subscription-remove-line" onclick="removeSubscriptionLine(this)" aria-label="Retirer cet article" title="Retirer cet article">✕</button></div>';
+  }
+  async function openSubscriptionEditor(subscriptionId) {
+    if (!currentUser) return renderAuthForm("login", "Connecte-toi pour programmer un réapprovisionnement.");
+    let existing = null;
+    if (subscriptionId) {
+      const result = await client.from("replenishment_subscriptions").select("*").eq("id", subscriptionId).eq("user_id", currentUser.id).maybeSingle();
+      if (result.error || !result.data) return toast("Ce rappel est introuvable ou inaccessible.", true);
+      existing = result.data;
+    }
+    const seedItems = Array.isArray(existing?.items) && existing.items.length ? existing.items : [{ product_id: replenishmentProducts()[0]?.id || "", quantity: 1 }];
+    const lines = seedItems.slice(0, 12).map(subscriptionLineHtml).join("");
+    const panel = '<div class="modal-head"><div><div class="eyebrow">RÉAPPROVISIONNEMENT</div><h2>' + (existing ? "Modifier le rappel" : "Programmer un rappel") + '</h2><p class="small-note">Aucune commande ni aucun paiement ne sera lancé automatiquement.</p></div><button class="close" onclick="closeModal()">✕</button></div>' +
+      '<form id="subscriptionForm" class="subscription-form"><input type="hidden" name="id" value="' + esc(existing?.id || "") + '"><input type="hidden" name="status" value="' + esc(existing?.status || "active") + '">' +
+      '<label class="subscription-field"><span>Nom du rappel</span><input class="input" name="label" maxlength="120" minlength="2" required value="' + esc(existing?.label || "Réapprovisionnement mensuel") + '" placeholder="Ex. Stock ménage de la maison"></label>' +
+      '<div class="subscription-lines-head"><strong>Produits et quantités</strong><span class="small-note">1 à 12 articles</span></div><div id="subscriptionLines">' + lines + '</div>' +
+      '<button class="btn ghost small" type="button" onclick="addSubscriptionLine()">+ Ajouter un article</button>' +
+      '<div class="subscription-schedule-grid"><label class="subscription-field"><span>Fréquence</span><select class="input" name="frequency"><option value="weekly" ' + (existing?.frequency === "weekly" ? "selected" : "") + '>Chaque semaine</option><option value="monthly" ' + (!existing || existing.frequency === "monthly" ? "selected" : "") + '>Chaque mois</option><option value="bimonthly" ' + (existing?.frequency === "bimonthly" ? "selected" : "") + '>Tous les deux mois</option><option value="quarterly" ' + (existing?.frequency === "quarterly" ? "selected" : "") + '>Tous les trois mois</option></select></label>' +
+      '<label class="subscription-field"><span>Prochain rappel</span><input class="input" name="next_reminder_at" type="datetime-local" required value="' + esc(localDateTimeInput(existing?.next_reminder_at)) + '"></label></div>' +
+      '<label class="subscription-field"><span>Téléphone WhatsApp</span><input class="input" name="phone" inputmode="tel" maxlength="25" value="' + esc(existing?.phone || currentProfile?.phone || currentUser.user_metadata?.phone || "") + '" placeholder="Ex. 77 123 45 67"></label>' +
+      '<p class="small-note">À l’échéance, le rappel apparaît dans ton compte. Tu pourras ouvrir un message WhatsApp prérempli et le valider toi-même.</p><button class="btn primary full" type="submit">' + (existing ? "Enregistrer les modifications" : "Créer le rappel") + '</button></form>';
+    showModal(panel);
+    const form = $("subscriptionForm");
+    if (!form) return;
+    form.onsubmit = async event => {
+      event.preventDefault();
+      if (!currentUser) return toast("Reconnecte-toi pour enregistrer ce rappel.", true);
+      const values = new FormData(form);
+      const lineNodes = Array.from(form.querySelectorAll(".subscription-line"));
+      if (!lineNodes.length || lineNodes.length > 12) return toast("Choisis entre 1 et 12 articles.", true);
+      const chosen = [];
+      for (const node of lineNodes) {
+        const productId = String(node.querySelector('[name="product_id"]')?.value || "");
+        const qty = Number(node.querySelector('[name="quantity"]')?.value);
+        const product = getP(productId);
+        if (!product || !canSellProduct(product)) return toast("Un article sélectionné n’est plus disponible. Modifie la liste.", true);
+        if (!Number.isInteger(qty) || qty < 1 || qty > 99) return toast("Chaque quantité doit être comprise entre 1 et 99.", true);
+        if (chosen.some(item => item.product_id === product.id)) return toast("Un même article ne peut apparaître qu’une fois. Ajuste sa quantité.", true);
+        chosen.push({ product_id: product.id, product_name: product.name, quantity: qty, unit_price: getEffectivePrice(product) });
+      }
+      const parsedDate = new Date(String(values.get("next_reminder_at") || ""));
+      if (!Number.isFinite(parsedDate.getTime())) return toast("Choisis une date valide pour le rappel.", true);
+      const label = String(values.get("label") || "").trim();
+      if (label.length < 2) return toast("Donne un nom à ce rappel.", true);
+      const payload = { label, items: chosen, frequency: String(values.get("frequency") || "monthly"), next_reminder_at: parsedDate.toISOString(), phone: String(values.get("phone") || "").trim(), status: String(values.get("status") || "active"), updated_at: new Date().toISOString() };
+      form.querySelectorAll("button,input,select").forEach(el => { if (el.type !== "hidden") el.disabled = true; });
+      const id = String(values.get("id") || "");
+      const result = id
+        ? await client.from("replenishment_subscriptions").update(payload).eq("id", id).eq("user_id", currentUser.id)
+        : await client.from("replenishment_subscriptions").insert({ ...payload, user_id: currentUser.id });
+      if (result.error) {
+        form.querySelectorAll("button,input,select").forEach(el => { el.disabled = false; });
+        return toast(errorMessage(result.error), true);
+      }
+      closeModal(); toast(id ? "Rappel mis à jour." : "Rappel de réapprovisionnement créé.");
+      await showAccountHome();
+    };
+  }
+  function addSubscriptionLine() {
+    const host = $("subscriptionLines");
+    if (!host) return;
+    if (host.querySelectorAll(".subscription-line").length >= 12) return toast("Un rappel peut contenir au maximum 12 articles.", true);
+    host.insertAdjacentHTML("beforeend", subscriptionLineHtml({ product_id: replenishmentProducts()[0]?.id || "", quantity: 1 }));
+  }
+  function removeSubscriptionLine(button) {
+    const row = button?.closest(".subscription-line"), host = $("subscriptionLines");
+    if (!row || !host) return;
+    if (host.querySelectorAll(".subscription-line").length <= 1) {
+      const select = row.querySelector('[name="product_id"]'); if (select) select.selectedIndex = 0;
+      const qty = row.querySelector('[name="quantity"]'); if (qty) qty.value = "1";
+      return;
+    }
+    row.remove();
+  }
+  function renderSubscriptionsHtml(rows) {
+    if (!rows.length) return '<div class="empty">Aucun rappel programmé. Choisis tes produits, quantités et fréquence.</div>';
+    return '<div class="subscription-list">' + rows.map(sub => {
+      const items = Array.isArray(sub.items) ? sub.items : [];
+      const estimated = items.reduce((sum, item) => sum + (Number(item.unit_price) || 0) * (Number(item.quantity) || 0), 0);
+      const due = sub.status === "active" && new Date(sub.next_reminder_at).getTime() <= Date.now();
+      const itemList = items.map(item => '<li>' + Number(item.quantity || 0) + ' × ' + esc(item.product_name || getP(item.product_id)?.name || "Article") + '</li>').join("");
+      const status = sub.status === "paused" ? '<span class="status cancelled">Suspendu</span>' : (due ? '<span class="status awaiting_delivery_payment">À renouveler</span>' : '<span class="status delivered">Actif</span>');
+      const nextDate = new Date(sub.next_reminder_at);
+      const dateText = Number.isFinite(nextDate.getTime()) ? nextDate.toLocaleString("fr-FR", { dateStyle: "medium", timeStyle: "short" }) : "Date à vérifier";
+      const action = '<div class="subscription-actions"><button class="btn small ghost" onclick="openSubscriptionEditor(\'' + esc(sub.id) + '\')">Modifier</button>' +
+        '<button class="btn small secondary" onclick="prepareSubscriptionOrder(\'' + esc(sub.id) + '\')">Renouveler via WhatsApp</button>' +
+        '<button class="btn small ghost" onclick="toggleSubscriptionStatus(\'' + esc(sub.id) + '\',\'' + (sub.status === "active" ? "paused" : "active") + '\')">' + (sub.status === "active" ? "Suspendre" : "Réactiver") + '</button>' +
+        (due ? '<button class="btn small ghost" onclick="advanceSubscriptionReminder(\'' + esc(sub.id) + '\')">Rappel traité · Planifier le suivant</button>' : '') +
+        '<button class="btn small danger" onclick="deleteSubscription(\'' + esc(sub.id) + '\')">Supprimer</button></div>';
+      return '<article class="subscription-card"><div class="subscription-card-head"><div><h4>' + esc(sub.label) + '</h4><p class="small-note">' + esc(frequencyLabel(sub.frequency)) + ' · Prochain rappel : ' + esc(dateText) + '</p></div>' + status + '</div><ul class="subscription-items">' + itemList + '</ul><div class="subscription-estimate">Montant indicatif au dernier prix connu : <strong>' + money(estimated) + '</strong><span>Prix et disponibilité à confirmer lors du renouvellement.</span></div>' + action + '</article>';
+    }).join("") + '</div>';
+  }
+  function prepareSubscriptionOrder(id) {
+    if (!currentUser) return renderAuthForm("login", "Connecte-toi pour préparer le renouvellement.");
+    const sub = cachedSubscriptions.find(item => item.id === id && item.user_id === currentUser.id);
+    if (!sub) return toast("Ce rappel est introuvable ou inaccessible.", true);
+    const lines = (Array.isArray(sub.items) ? sub.items : []).map(item => "- " + Number(item.quantity || 0) + " x " + (item.product_name || getP(item.product_id)?.name || "Article")).join("\n");
+    const message = 'Bonjour SAMA-PACK, je souhaite renouveler mon réapprovisionnement "' + sub.label + '".\n' + lines + '\nMerci de confirmer les disponibilités, les prix actuels et les frais de livraison avant de valider la commande.';
+    openWA(message);
+  }
+  async function toggleSubscriptionStatus(id, nextStatus) {
+    if (!currentUser || !["active", "paused"].includes(nextStatus)) return toast("Action non autorisée.", true);
+    const sub = cachedSubscriptions.find(item => item.id === id && item.user_id === currentUser.id);
+    if (!sub) return toast("Ce rappel est introuvable.", true);
+    let nextDate = sub.next_reminder_at;
+    if (nextStatus === "active" && new Date(nextDate).getTime() <= Date.now()) nextDate = addFrequency(new Date(), sub.frequency).toISOString();
+    const { error } = await client.from("replenishment_subscriptions").update({ status: nextStatus, next_reminder_at: nextDate, updated_at: new Date().toISOString() }).eq("id", id).eq("user_id", currentUser.id);
+    if (error) return toast(errorMessage(error), true);
+    toast(nextStatus === "active" ? "Rappel réactivé." : "Rappel suspendu.");
+    await showAccountHome();
+  }
+  async function advanceSubscriptionReminder(id) {
+    if (!currentUser) return toast("Connecte-toi pour modifier ce rappel.", true);
+    const sub = cachedSubscriptions.find(item => item.id === id && item.user_id === currentUser.id);
+    if (!sub) return toast("Ce rappel est introuvable.", true);
+    if (sub.status !== "active") return toast("Réactive le rappel avant de programmer la prochaine échéance.", true);
+    const oldDate = new Date(sub.next_reminder_at);
+    let nextDate = oldDate, loops = 0;
+    while (nextDate.getTime() <= Date.now() && loops < 48) { nextDate = addFrequency(nextDate, sub.frequency); loops += 1; }
+    if (nextDate.getTime() <= Date.now()) nextDate = addFrequency(new Date(), sub.frequency);
+    const { error } = await client.from("replenishment_subscriptions").update({ next_reminder_at: nextDate.toISOString(), last_reminder_triggered_for: oldDate.toISOString(), updated_at: new Date().toISOString() }).eq("id", id).eq("user_id", currentUser.id);
+    if (error) return toast(errorMessage(error), true);
+    toast("Rappel traité. La prochaine échéance est programmée.");
+    await showAccountHome();
+  }
+  async function deleteSubscription(id) {
+    if (!currentUser) return toast("Connecte-toi pour modifier tes rappels.", true);
+    if (!window.confirm("Supprimer définitivement ce rappel de réapprovisionnement ?")) return;
+    const { error } = await client.from("replenishment_subscriptions").delete().eq("id", id).eq("user_id", currentUser.id);
+    if (error) return toast(errorMessage(error), true);
+    toast("Rappel supprimé."); await showAccountHome();
+  }
+  function normalizeCustomerWhatsapp(phone) {
+    let number = String(phone || "").replace(/\D/g, "");
+    if (number.startsWith("00")) number = number.slice(2);
+    if (number.length === 9) number = "221" + number;
+    if (number.startsWith("0") && number.length === 10) number = "221" + number.slice(1);
+    return number;
+  }
+  function openOrderWhatsApp(orderId) {
+    if (!isAdmin()) return toast("Accès administrateur requis.", true);
+    const order = cachedOrders.find(item => item.id === orderId);
+    if (!order) return toast("Commande introuvable.", true);
+    const phone = normalizeCustomerWhatsapp(order.customer_phone || cachedCustomers.find(c => c.id === order.customer_id)?.phone);
+    if (!phone || phone.length < 9) return toast("Le numéro WhatsApp de ce client doit être vérifié.", true);
+    const balance = Math.max(0, Number(order.total || 0) - Number(order.amount_paid || 0));
+    const slot = String(order.slot || "").trim();
+    const message = "Bonjour " + (order.customer_name || "") + ", point sur la commande " + order.id + " : " + statusLabel(order.status) + ". Total : " + money(order.total) + ". Déjà payé : " + money(order.amount_paid || 0) + ". Solde restant : " + money(balance) + (slot ? ". Créneau prévu : " + slot : "") + ".\nSAMA-PACK";
+    window.open("https://wa.me/" + phone + "?text=" + encodeURIComponent(message), "_blank", "noopener,noreferrer");
+  }
+
   async function showAccountHome() {
     if (!currentUser) { renderAuthForm("login"); return; }
     const p = currentProfile || await getProfile();
-    const { data: rows, error } = await client.from("orders").select("id,created_at,status,total,subtotal,delivery,customer_name,customer_phone,delivery_address,delivery_zone,payment_choice,payment_status,amount_paid").eq("user_id", currentUser.id).order("created_at", { ascending: false }).limit(15);
+    const dueResult = await client.rpc("sama_notify_due_replenishment_reminders");
+    if (dueResult.error) console.warn("Due replenishment reminder check failed", dueResult.error);
+    await loadNotifications();
+    const { data: rows, error } = await client.from("orders").select("id,created_at,status,total,subtotal,delivery,customer_name,customer_phone,delivery_address,delivery_zone,slot,payment_choice,payment_status,amount_paid").eq("user_id", currentUser.id).order("created_at", { ascending: false }).limit(15);
     const orders = error ? [] : (rows || []);
+    const subscriptionResult = await client.from("replenishment_subscriptions").select("*").eq("user_id", currentUser.id).order("next_reminder_at", { ascending: true });
+    cachedSubscriptions = subscriptionResult.error ? [] : (subscriptionResult.data || []);
+    if (subscriptionResult.error) console.warn("Replenishment subscriptions unavailable", subscriptionResult.error);
     const initialized = await isAdminInitialized(); adminInitialized = initialized;
-    const orderHtml = orders.length ? `<div class="table-wrap"><table class="table"><thead><tr><th>Commande</th><th>Date</th><th>Total</th><th>Paiement</th><th>Statut</th><th>Action</th></tr></thead><tbody>${orders.map(o => {
+    const orderHtml = orders.length ? '<div class="table-wrap"><table class="table"><thead><tr><th>Commande</th><th>Date</th><th>Total</th><th>Paiement et solde</th><th>Suivi</th><th>Action</th></tr></thead><tbody>' + orders.map(o => {
       const paymentPending = ["awaiting_payment","awaiting_delivery_payment"].includes(o.status);
       const paymentActionHtml = paymentPending
         ? '<button class="btn small primary" onclick="retryOrderPayment(\'' + esc(o.id) + '\')">Payer</button>'
         : ["paid", "partially_paid"].includes(o.payment_status)
           ? '<button class="btn small ghost" onclick="resendPaymentConfirmation(\'' + esc(o.id) + '\')">Renvoyer le reçu</button>'
           : "";
+      const balance = Math.max(0, Number(o.total || 0) - Number(o.amount_paid || 0));
+      const slotHtml = o.slot ? '<div class="small-note order-slot"><strong>Créneau :</strong> ' + esc(o.slot) + '</div>' : '';
       const actionHtml = '<div class="account-order-actions">' + paymentActionHtml + '<button class="btn small ghost" onclick="reorderOrder(\'' + esc(o.id) + '\')">Recommander</button></div>';
-      return '<tr><td>' + esc(o.id) + '</td><td>' + esc(fmtDate(o.created_at)) + '</td><td>' + money(o.total) + '</td><td><span class="small-note">' + esc(paymentStatusLabel(o.payment_status)) + '</span><br><span class="small-note">Payé : ' + money(o.amount_paid || 0) + '</span></td><td><span class="status ' + esc(o.status) + '">' + esc(statusLabel(o.status)) + '</span></td><td>' + actionHtml + '</td></tr>';
-    }).join("")}</tbody></table></div>` : '<div class="empty compact-empty">Tu n’as pas encore passé de commande en ligne.</div>';
-    showModal(`<div class="modal-head"><div><div class="eyebrow">MON COMPTE</div><h2>${esc(p?.full_name || currentUser.email || "Client")}</h2><p class="small-note">${esc(currentUser.email || "")}</p></div><button class="close" onclick="closeModal()">✕</button></div><div class="account-buttons"><button class="btn secondary" onclick="enableBrowserNotifications()">🔔 Activer les alertes du navigateur</button><button class="btn ghost" onclick="loadAndShowNotifications()">Mes notifications (${userNotifications.filter(n=>!n.read_at).length})</button></div><div class="panel account-orders"><h3>Mes commandes</h3>${orderHtml}</div><div class="panel account-password"><h3>${currentUser?.last_sign_in_at ? "Sécurité du compte" : "Définir un mot de passe"}</h3><form id="changePasswordForm" class="checkout-grid"><input class="input full" name="password" type="password" minlength="8" required placeholder="Nouveau mot de passe (8 caractères minimum)"><button class="btn ghost full" type="submit">Enregistrer le mot de passe</button></form></div>${!initialized ? `<div class="panel bootstrap-panel"><h3>Configurer le premier administrateur</h3><p>Cette option n’apparaît que tant qu’aucun administrateur n’est configuré. Utilise le code initial transmis par le propriétaire.</p><form id="bootstrapAdminForm" class="checkout-grid"><input class="input full" name="bootstrap_token" autocomplete="off" required placeholder="Code initial du propriétaire"><button class="btn primary full" type="submit">Devenir le premier administrateur</button></form></div>` : ""}<button class="btn ghost full" onclick="signOut()">Se déconnecter</button>`);
+      return '<tr><td><strong>' + esc(o.id) + '</strong></td><td>' + esc(fmtDate(o.created_at)) + '</td><td>' + money(o.total) + '</td><td><span class="small-note">' + esc(paymentStatusLabel(o.payment_status)) + '</span><br><span class="small-note">Payé : ' + money(o.amount_paid || 0) + '</span><br><span class="small-note">Solde : ' + money(balance) + '</span></td><td><span class="status ' + esc(o.status) + '">' + esc(statusLabel(o.status)) + '</span>' + orderTrackingHtml(o) + slotHtml + '</td><td>' + actionHtml + '</td></tr>';
+    }).join("") + '</tbody></table></div>' : '<div class="empty compact-empty">Tu n’as pas encore passé de commande en ligne.</div>';
+    const subscriptionsHtml = renderSubscriptionsHtml(cachedSubscriptions);
+    showModal('<div class="modal-head"><div><div class="eyebrow">MON COMPTE</div><h2>' + esc(p?.full_name || currentUser.email || "Client") + '</h2><p class="small-note">' + esc(currentUser.email || "") + '</p></div><button class="close" onclick="closeModal()">✕</button></div>' +
+      '<div class="account-buttons"><button class="btn secondary" onclick="enableBrowserNotifications()">🔔 Activer les alertes du navigateur</button><button class="btn ghost" onclick="loadAndShowNotifications()">Mes notifications (' + userNotifications.filter(n=>!n.read_at).length + ')</button></div>' +
+      '<div class="panel account-orders"><div class="subscription-panel-heading"><h3>Mes commandes</h3><p class="small-note">Le suivi affiche l’avancement, le montant déjà payé, le solde et le créneau prévu.</p></div>' + orderHtml + '</div>' +
+      '<div class="panel account-subscriptions"><div class="subscription-panel-heading"><div><h3>Mes réapprovisionnements</h3><p class="small-note">Programme tes rappels, modifie les produits ou suspends-les à tout moment. Aucune commande ou aucun paiement automatique.</p></div><button class="btn primary small" onclick="openSubscriptionEditor()">+ Nouveau rappel</button></div>' + subscriptionsHtml + '</div>' +
+      '<div class="panel account-password"><h3>' + (currentUser?.last_sign_in_at ? "Sécurité du compte" : "Définir un mot de passe") + '</h3><form id="changePasswordForm" class="checkout-grid"><input class="input full" name="password" type="password" minlength="8" required placeholder="Nouveau mot de passe (8 caractères minimum)"><button class="btn ghost full" type="submit">Enregistrer le mot de passe</button></form></div>' +
+      (!initialized ? '<div class="panel bootstrap-panel"><h3>Configurer le premier administrateur</h3><p>Cette option n’apparaît que tant qu’aucun administrateur n’est configuré. Utilise le code initial transmis par le propriétaire.</p><form id="bootstrapAdminForm" class="checkout-grid"><input class="input full" name="bootstrap_token" autocomplete="off" required placeholder="Code initial du propriétaire"><button class="btn primary full" type="submit">Devenir le premier administrateur</button></form></div>' : '') +
+      '<button class="btn ghost full" onclick="signOut()">Se déconnecter</button>');
     const pw = $("changePasswordForm"); pw.onsubmit = async e => { e.preventDefault(); const form = e.currentTarget; const password = String(new FormData(form).get("password") || ""); if (password.length < 8) return toast("Choisis au moins 8 caractères.", true); setBusy(form, true, "Enregistrement…"); const { error } = await client.auth.updateUser({ password }); if (error) toast(errorMessage(error), true); else { toast("Mot de passe mis à jour."); form.reset(); } setBusy(form, false); };
     const bootstrap = $("bootstrapAdminForm"); if (bootstrap) bootstrap.onsubmit = async e => { e.preventDefault(); const form = e.currentTarget; setBusy(form, true, "Configuration…"); const token = String(new FormData(form).get("bootstrap_token") || "").trim(); const { data, error } = await client.rpc("sama_bootstrap_first_admin", { p_token: token }); setBusy(form, false); if (error) return toast(errorMessage(error), true); await syncAuth(currentUser); closeModal(); toast(data?.message || "Compte administrateur configuré."); };
   }
@@ -1440,7 +1649,7 @@
     $("adminPanel").classList.remove("hidden"); await showAdminView("dashboard");
   }
   function closeAdmin() { $("adminPanel").classList.add("hidden"); }
-  function statusLabel(status) { return ({new:"Nouvelle",processing:"En préparation",delivered:"Livrée",cancelled:"Annulée",awaiting_payment:"Paiement intégral en attente",awaiting_delivery_payment:"Frais de livraison à payer",won:"Gagné",lost:"Perdu"})[status] || status || "—"; }
+  function statusLabel(status) { return ({new:"Reçue",confirmed:"Confirmée",processing:"En préparation",prepared:"Préparée",out_for_delivery:"En cours de livraison",delivered:"Livrée",cancelled:"Annulée",awaiting_payment:"Paiement intégral en attente",awaiting_delivery_payment:"Frais de livraison à payer",won:"Gagné",lost:"Perdu"})[status] || status || "—"; }
   function paymentStatusLabel(status) { return ({unpaid:"Non payé",pending:"Paiement en attente",partially_paid:"Partiellement payé",paid:"Payé",failed:"Échec du paiement",refund_review:"Paiement à vérifier / rembourser"})[status] || status || "Non renseigné"; }
   function actionLabel(action) { return ({pack_created:"Pack créé",pack_updated:"Pack modifié",pack_deleted:"Pack supprimé",order_status_changed:"Statut de commande modifié",order_placed:"Commande passée",admin_bootstrap:"Premier administrateur configuré",admin_invited:"Administrateur invité",admin_removed:"Droits administrateur retirés",settings_updated:"Paramètres modifiés",stock_created:"Stock créé",stock_updated:"Stock modifié",supplier_created:"Fournisseur ajouté",supplier_updated:"Fournisseur modifié",supplier_deleted:"Fournisseur supprimé",expense_created:"Dépense ajoutée",expense_updated:"Dépense modifiée",expense_deleted:"Dépense supprimée",quote_created:"Demande de devis reçue",quote_updated:"Devis modifié",quote_deleted:"Devis supprimé"})[action] || action || "Action"; }
   async function showAdminView(view) {
@@ -1620,8 +1829,8 @@ if (!isAdmin()) { closeAdmin(); return toast("Accès administrateur requis.", tr
     const orders = await loadOrdersWithItems();
     return `<div class="panel"><div class="admin-panel-head"><h3>Commandes (${orders.length})</h3><button class="btn ghost small" onclick="showAdminView('orders')">Actualiser</button></div><p class="small-note">Les commandes en attente de paiement ne doivent pas être préparées. Les frais de livraison doivent être encaissés et confirmés avant le départ du livreur.</p>${orders.length ? `<div class="table-wrap"><table class="table"><thead><tr><th>Référence</th><th>Date</th><th>Client</th><th>Total</th><th>Paiement reçu</th><th>Statut</th><th>Détails</th></tr></thead><tbody>${orders.map(o=>{
       const pendingPayment = ["awaiting_payment","awaiting_delivery_payment"].includes(o.status);
-      const options = pendingPayment ? [o.status,"cancelled"] : ["new","processing","delivered","cancelled"];
-      return `<tr><td>${esc(o.id)}</td><td>${esc(fmtDate(o.created_at))}</td><td>${esc(o.customer_name)}<br><span class="small-note">${esc(o.customer_phone)}</span></td><td>${money(o.total)}</td><td>${money(o.amount_paid || 0)}<br><span class="small-note">${esc(paymentStatusLabel(o.payment_status))}</span></td><td><select class="input" onchange="setOrderStatus('${esc(o.id)}',this.value)">${options.map(s=>`<option ${o.status===s?"selected":""} value="${s}">${esc(statusLabel(s))}</option>`).join("")}</select></td><td><button class="btn small ghost" onclick="showOrder('${esc(o.id)}')">Voir</button></td></tr>`;
+      const options = pendingPayment ? [o.status,"cancelled"] : ["new","confirmed","processing","prepared","out_for_delivery","delivered","cancelled"];
+      return `<tr><td>${esc(o.id)}</td><td>${esc(fmtDate(o.created_at))}</td><td>${esc(o.customer_name)}<br><span class="small-note">${esc(o.customer_phone)}</span></td><td>${money(o.total)}</td><td>${money(o.amount_paid || 0)}<br><span class="small-note">${esc(paymentStatusLabel(o.payment_status))}</span></td><td><select class="input" onchange="setOrderStatus('${esc(o.id)}',this.value)">${options.map(s=>`<option ${o.status===s?"selected":""} value="${s}">${esc(statusLabel(s))}</option>`).join("")}</select></td><td><div class="account-order-actions"><button class="btn small ghost" onclick="showOrder('${esc(o.id)}')">Voir</button><button class="btn small secondary" onclick="openOrderWhatsApp('${esc(o.id)}')">WhatsApp</button></div></td></tr>`;
     }).join("")}</tbody></table></div>` : '<div class="empty">Aucune commande pour le moment.</div>'}</div>`;
   }
   function showOrder(id) {
@@ -1633,7 +1842,7 @@ if (!isAdmin()) { closeAdmin(); return toast("Accès administrateur requis.", tr
   }
   async function setOrderStatus(id, status) {
     if (!isAdmin()) return toast("Accès refusé.", true);
-    const allowed = ["new","processing","delivered","cancelled","awaiting_payment","awaiting_delivery_payment"];
+    const allowed = ["new","confirmed","processing","prepared","out_for_delivery","delivered","cancelled","awaiting_payment","awaiting_delivery_payment"];
     if (!allowed.includes(status)) return toast("Statut invalide.", true);
     const order = cachedOrders.find(row => row.id === id);
     if (order && ["awaiting_payment","awaiting_delivery_payment"].includes(order.status) && status !== "cancelled" && status !== order.status) {
@@ -1642,7 +1851,7 @@ if (!isAdmin()) { closeAdmin(); return toast("Accès administrateur requis.", tr
     }
     const { error } = await client.from("orders").update({ status }).eq("id", id);
     if (error) { toast(errorMessage(error), true); return showAdminView("orders"); }
-    toast(status === "cancelled" ? "Commande annulée." : "Statut modifié. Le client sera notifié.");
+    toast(status === "cancelled" ? "Commande annulée. La notification est ajoutée au compte du client." : "Statut modifié. Le client reçoit une notification dans son compte ; utilise le bouton WhatsApp pour lui préparer aussi un message.");
     await showAdminView("orders");
   }
   async function adminCustomers() {
@@ -1938,6 +2147,6 @@ if (!isAdmin()) { closeAdmin(); return toast("Accès administrateur requis.", tr
   }
 
   // Functions called by inline storefront/admin controls.
-  Object.assign(window,{openProduct,addToCart,closeModal,changeQty,checkoutModal,retryOrderPayment,resendPaymentConfirmation,showAccountHome,reorderOrder,openBudgetPackBuilder,suggestBudgetPack,changeBudgetBuilderQty,addBudgetPackToCart,signOut,renderAuthForm,resetPassword,enableBrowserNotifications,loadAndShowNotifications,markNotificationRead,showAdminView,editPack,cancelPackEdit,togglePack,setOrderStatus,showOrder,setQuoteStatus,goToProductPage,movePromo,goToPromo,selectReviewRating,editProspect,deleteProspect,setProspectStatus,editCatalogItem,archiveCatalogItem,removeAdmin});
+  Object.assign(window,{openProduct,addToCart,closeModal,changeQty,checkoutModal,retryOrderPayment,resendPaymentConfirmation,showAccountHome,reorderOrder,openBudgetPackBuilder,suggestBudgetPack,changeBudgetBuilderQty,addBudgetPackToCart,signOut,renderAuthForm,resetPassword,enableBrowserNotifications,loadAndShowNotifications,markNotificationRead,showAdminView,editPack,cancelPackEdit,togglePack,setOrderStatus,showOrder,setQuoteStatus,goToProductPage,movePromo,goToPromo,selectReviewRating,editProspect,deleteProspect,setProspectStatus,editCatalogItem,archiveCatalogItem,removeAdmin,openSubscriptionEditor,addSubscriptionLine,removeSubscriptionLine,toggleSubscriptionStatus,prepareSubscriptionOrder,advanceSubscriptionReminder,deleteSubscription,openOrderWhatsApp});
   start().catch(err => { console.error(err); toast("Initialisation impossible. Recharge la page ou contacte l’administrateur.",true); });
 })();
