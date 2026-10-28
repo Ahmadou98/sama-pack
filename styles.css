@@ -1888,7 +1888,7 @@ tr[hidden]{display:none!important}
 .budget-builder-launch-copy h3 { margin: 0 0 6px; color: #14532d; font-size: 1.16rem; }
 .budget-builder-launch-copy p { margin: 0; color: #52645a; font-size: .94rem; }
 .budget-builder-launch > .btn { flex: 0 0 auto; }
-.modal-card:has(.budget-builder-modal) { width: min(760px, calc(100vw - 28px)); max-width: 760px; }
+.modal-card:has(.budget-builder-modal) { width: min(760px, 100%); max-width: 760px; }
 .budget-builder-modal { width: 100%; }
 .budget-builder-intro { margin: 0 0 18px; color: #5b6b61; line-height: 1.55; }
 .budget-builder-form {
