@@ -1640,7 +1640,7 @@
   async function loadAndShowNotifications() {
     if (!currentUser) { renderAuthForm("login", "Connecte-toi pour consulter tes notifications et suivre tes commandes."); return; }
     await loadNotifications();
-    const html = userNotifications.length ? userNotifications.map(n => `<div class="notification-item ${n.read_at ? "read" : "unread"}"><div class="notification-title">${esc(n.title)}</div><div class="notification-message">${esc(n.message)}</div><div class="notification-meta">${esc(fmtDate(n.created_at))} ${n.read_at ? "· Lue" : `<button class="link-btn dark-link" onclick="markNotificationRead('${esc(n.id)}')">Marquer como lue</button>`}</div></div>`).join("") : '<div class="empty">Aucune notification pour le moment.</div>';
+    const html = userNotifications.length ? userNotifications.map(n => `<div class="notification-item ${n.read_at ? "read" : "unread"}"><div class="notification-title">${esc(n.title)}</div><div class="notification-message">${esc(n.message)}</div><div class="notification-meta">${esc(fmtDate(n.created_at))} ${n.read_at ? "· Lue" : `<button class="link-btn dark-link" onclick="markNotificationRead('${esc(n.id)}')">Marquer comme lue</button>`}</div></div>`).join("") : '<div class="empty">Aucune notification pour le moment.</div>';
     const accountList = $("accountNotificationList");
     if (accountList) {
       accountList.innerHTML = html;
