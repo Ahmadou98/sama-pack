@@ -1145,9 +1145,9 @@
     }
     if (!orderId) return toast("Aucune commande en attente de paiement n’a été trouvée.", true);
     toast("Préparation du paiement sécurisé…");
-    const { data, error } = await client.functions.invoke("sama-paytech-checkout", { body: { action: "create_checkout", order_id: orderId } });
+    const { data, error } = await client.functions.invoke("sama-payment-checkout", { body: { action: "create_checkout", order_id: orderId } });
     if (error || data?.error) {
-      const message = data?.error || await paymentFunctionError(error, "Le paiement n’a pas pu être lancé. Vérifie que les clés PayTech sont configurées dans les secrets Supabase.");
+      const message = data?.error || await paymentFunctionError(error, "Le paiement n’a pas pu être lancé. Vérifie que les clés PayDunya sont configurées dans les secrets Supabase.");
       showModal(`<div class="modal-head"><div><div class="eyebrow">PAIEMENT EN ATTENTE</div><h2>Commande ${esc(orderId)}</h2></div><button class="close" onclick="closeModal()">✕</button></div>
         <p>La commande n’est pas encore confirmée et ne sera pas préparée tant que le paiement requis n’est pas vérifié.</p>
         <div class="inline-message">${esc(message)}</div>
@@ -1169,7 +1169,7 @@
     if (!currentUser) { openAccountModal(); return toast("Connecte-toi pour recevoir ton reçu.", true); }
     if (!orderId) return toast("Référence de commande manquante.", true);
     toast("Vérification du paiement et envoi du reçu…");
-    const { data, error } = await client.functions.invoke("sama-paytech-checkout", {
+    const { data, error } = await client.functions.invoke("sama-payment-checkout", {
       body: { action: "send_payment_confirmation", order_id: String(orderId) },
     });
     if (error || data?.error) {
@@ -1190,14 +1190,16 @@
   async function handlePaymentReturn() {
     let params;
     try { params = new URLSearchParams(window.location.search); } catch { return; }
-    const paytechOrderId = params.get("paytech_order_id");
-    const canceledOrderId = params.get("paytech_cancelled_order_id");
-    const legacyToken = params.get("token");
-    if (!paytechOrderId && !canceledOrderId && !legacyToken) return;
+    const paydunyaOrderId = params.get("paydunya_order_id") || params.get("paytech_order_id");
+    const canceledOrderId = params.get("paydunya_cancelled_order_id") || params.get("paytech_cancelled_order_id");
+    const invoiceToken = params.get("token");
+    if (!paydunyaOrderId && !canceledOrderId && !invoiceToken) return;
 
     const cleanupPaymentQuery = () => {
       try {
         params.delete("token");
+        params.delete("paydunya_order_id");
+        params.delete("paydunya_cancelled_order_id");
         params.delete("paytech_order_id");
         params.delete("paytech_cancelled_order_id");
         const query = params.toString();
@@ -1220,15 +1222,15 @@
 
     let storedOrderId = "";
     try { storedOrderId = localStorage.getItem("sama_pack_pending_payment_v1") || ""; } catch { storedOrderId = ""; }
-    const orderIdForCheck = paytechOrderId || storedOrderId;
-    if (!orderIdForCheck && !legacyToken) {
+    const orderIdForCheck = paydunyaOrderId || storedOrderId;
+    if (!orderIdForCheck && !invoiceToken) {
       cleanupPaymentQuery();
       toast("Référence de commande absente. Ouvre Mes commandes pour vérifier le paiement.", true);
       return;
     }
 
-    const { data, error } = await client.functions.invoke("sama-paytech-checkout", {
-      body: { action: "verify_return", order_id: orderIdForCheck || undefined, invoice_token: legacyToken || undefined },
+    const { data, error } = await client.functions.invoke("sama-payment-checkout", {
+      body: { action: "verify_return", order_id: orderIdForCheck || undefined, invoice_token: invoiceToken || undefined },
     });
     cleanupPaymentQuery();
     const orderId = data?.order_id || data?.order?.id || orderIdForCheck || storedOrderId;
@@ -1248,7 +1250,7 @@
       const order = data.order;
       showModal(`<div class="modal-head"><div><div class="eyebrow">PAIEMENT CONFIRMÉ</div><h2>Merci pour ta commande !</h2></div><button class="close" onclick="closeModal()">✕</button></div>
         <div class="confirmation-mark">✓</div>
-        <p>PayTech a confirmé le paiement. La commande ${esc(order.id)} est maintenant enregistrée pour traitement.</p>
+        <p>PayDunya a confirmé le paiement. La commande ${esc(order.id)} est maintenant enregistrée pour traitement.</p>
         <div class="summary">
           <div class="summary-row"><span>Montant de la commande</span><strong>${money(order.total)}</strong></div>
           <div class="summary-row"><span>Montant encaissé</span><strong>${money(order.amount_paid)}</strong></div>
@@ -1258,7 +1260,7 @@
       return;
     }
     showModal(`<div class="modal-head"><div><div class="eyebrow">PAIEMENT NON CONFIRMÉ</div><h2>La commande attend encore le paiement</h2></div><button class="close" onclick="closeModal()">✕</button></div>
-      <p>PayTech n’a pas encore confirmé le paiement. Aucun livreur ne sera envoyé à ce stade.</p>
+      <p>PayDunya n’a pas encore confirmé le paiement. Aucun livreur ne sera envoyé à ce stade.</p>
       <div class="inline-message">Statut du paiement : ${esc(data?.gateway_status || "en attente")}</div>
       ${orderId ? `<button class="btn primary full" onclick="retryOrderPayment('${esc(orderId)}')">Réessayer le paiement</button>` : ""}
       <button class="btn ghost full" onclick="showAccountHome()">Voir mes commandes</button>`);
