@@ -1002,7 +1002,7 @@
       budgetBuilderState.items.push({ id: String(x.p.id), qty: 1 });
       total += x.price;
     };
-    [...buckets.keys()].sort((a,b) => a.localeCompare(b, "fr")).forEach(key => addCandidate(buckets.get(key)?.[0]));
+    [...buckets.keys()].sort((a,b) => (Number(buckets.get(a)?.[0]?.price) || Infinity) - (Number(buckets.get(b)?.[0]?.price) || Infinity) || a.localeCompare(b, "fr")).forEach(key => addCandidate(buckets.get(key)?.[0]));
     const perCategoryCap = category === "all" ? 3 : 6;
     candidates.forEach(x => {
       const key = String(x.p.cat || "Autre");
