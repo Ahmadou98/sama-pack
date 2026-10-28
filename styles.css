@@ -2237,3 +2237,8 @@ tr[hidden]{display:none!important}
   .account-modal-header { padding-right:0; }
 }
 @media(prefers-reduced-motion:reduce) { .account-tab-panel { animation:none; } }
+
+.account-modal-card { width:min(920px,100%); }
+@media(max-width:600px) {
+  .account-modal-card { padding:15px; border-radius:18px; max-height:94vh; }
+}
