@@ -2101,7 +2101,7 @@ if (!isAdmin()) { closeAdmin(); return toast("Accès administrateur requis.", tr
   }
   async function adminSettings() {
     const [{ data, error }, { data: notificationSettings, error: notificationError }] = await Promise.all([
-      client.from("settings").select("id,company,whatsapp,delivery_fee,currency,homepage_background_url").eq("id",true).maybeSingle(),
+      client.from("settings").select("id,company,whatsapp,delivery_fee,currency,homepage_background_url,payment_fee_percent").eq("id",true).maybeSingle(),
       client.from("notification_settings").select("id,order_notification_email").eq("id",true).maybeSingle()
     ]);
     if (error) throw error;
@@ -2113,6 +2113,7 @@ if (!isAdmin()) { closeAdmin(); return toast("Accès administrateur requis.", tr
       <label>Nom de l’entreprise<input class="input" name="company" required value="${esc(s.company||"SAMA-PACK")}"></label>
       <label>WhatsApp professionnel (ex. 22177…)<input class="input" name="whatsapp" value="${esc(s.whatsapp||"")}"></label>
       <label>Frais de livraison par défaut (FCFA)<input class="input" name="delivery_fee" type="number" min="0" step="1" value="${Number(s.delivery_fee||0)}"></label>
+      <label>Taux de frais de paiement estimé (%)<input class="input" name="payment_fee_percent" type="number" min="0" max="100" step="0.01" value="${Number(s.payment_fee_percent||0)}"></label>
       <label>Devise<input class="input" name="currency" required maxlength="10" value="${esc(s.currency||"FCFA")}"></label>
       <label class="full">Image de fond de l’accueil (JPG, PNG ou WebP · 5 Mo maximum)<input class="input" name="homepage_background_file" type="file" accept="image/jpeg,image/png,image/webp"></label>
       <label class="full">Ou URL HTTPS de l’image de fond<input class="input" name="homepage_background_url" type="url" placeholder="https://…" value="${esc(backgroundUrl)}"></label>
@@ -2216,6 +2217,7 @@ if (!isAdmin()) { closeAdmin(); return toast("Accès administrateur requis.", tr
           company:String(f.get("company")||"").trim(),
           whatsapp:String(f.get("whatsapp")||"").replace(/\D/g,""),
           delivery_fee:Number(f.get("delivery_fee")),
+          payment_fee_percent:Math.max(0,Math.min(100,Number(f.get("payment_fee_percent")||0))),
           currency:String(f.get("currency")||"FCFA").trim(),
           homepage_background_url: homepageBackgroundUrl
         }).eq("id",true);
@@ -2226,6 +2228,21 @@ if (!isAdmin()) { closeAdmin(); return toast("Accès administrateur requis.", tr
         toast("Paramètres, image de fond et e-mail de notification enregistrés.");
         await loadPublicData();
         await showAdminView("settings");
+      };
+    }
+    if (view === "sales_codes") {
+      const form = $("salesCodeForm");
+      if (form) form.onsubmit = async event => {
+        event.preventDefault();
+        if (!isAdmin()) return toast("Accès administrateur requis.", true);
+        const fd = new FormData(form);
+        const code = String(fd.get("code") || "").trim().toUpperCase();
+        if (!/^[A-Z0-9][A-Z0-9_-]{2,29}$/.test(code)) return toast("Le code doit contenir 3 à 30 caractères : lettres, chiffres, tiret ou souligné.", true);
+        const payload = { owner_user_id:String(fd.get("owner_user_id")||""), code, label:String(fd.get("label")||"").trim(), active:true, created_by:currentUser.id };
+        const { error } = await client.from("sales_referral_codes").insert(payload);
+        if (error) return toast(errorMessage(error), true);
+        toast("Code commercial créé : " + code);
+        await showAdminView("sales_codes");
       };
     }
     if (view === "orders" || view === "quotes") { /* les sélecteurs déclaratifs utilisent les fonctions globales */ }
