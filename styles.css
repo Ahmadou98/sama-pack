@@ -2148,3 +2148,22 @@ tr[hidden]{display:none!important}
   .subscription-actions .btn { flex:1 1 100%; }
   .order-track { grid-template-columns:repeat(2,minmax(0,1fr)); }
 }
+
+
+/* Profil client et galeries multi-photos SAMA-PACK */
+.account-profile-panel { margin: 0 0 14px; }
+.account-profile-panel h3 { margin: 4px 0 6px; }
+.profile-whatsapp-test { display:flex; flex-direction:column; justify-content:center; gap:5px; min-width:0; }
+.profile-whatsapp-test .small-note { margin:0; line-height:1.4; }
+.auth-whatsapp-test { display:flex; flex-direction:column; justify-content:center; gap:5px; min-width:0; }
+.auth-whatsapp-test .small-note { margin:0; line-height:1.4; }
+.product-detail-gallery { display:grid; gap:10px; margin:12px 0 16px; }
+.product-detail-gallery .product-detail-image-wrap { margin:0; }
+.product-image-thumbnails { display:flex; gap:8px; overflow-x:auto; padding:2px 1px 6px; }
+.product-image-thumb { flex:0 0 68px; width:68px; height:68px; padding:3px; border:1px solid var(--line,#e5e7eb); border-radius:10px; background:#fff; overflow:hidden; cursor:pointer; }
+.product-image-thumb.is-active { border-color:#198754; box-shadow:0 0 0 2px rgba(25,135,84,.14); }
+.product-image-thumb img { width:100%; height:100%; object-fit:contain; display:block; }
+@media(max-width:600px) {
+  .profile-whatsapp-test .btn,.auth-whatsapp-test .btn { width:100%; }
+  .product-image-thumb { flex-basis:58px; width:58px; height:58px; }
+}

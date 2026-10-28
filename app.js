@@ -41,10 +41,50 @@
   let budgetBuilderState = { budget: 5000, category: "all", items: [] };
 
   function normalizeFallbackProduct(p) {
-    return { id: String(p.id), public_ref: String(p.public_ref || p.id), availability_status: String(p.availability_status || "available"), catalog_type: String(p.catalog_type || "pack"), name: String(p.name || "Pack"), cat: String(p.cat || p.category || "Autre"), category: String(p.cat || p.category || "Autre"), price: Number(p.price || 0), desc: String(p.desc || p.description || ""), description: String(p.desc || p.description || ""), items: Array.isArray(p.items) ? p.items : [], image_path: p.image_path || "", active: p.active !== false, promo_active: p.promo_active === true, promo_price: p.promo_price == null || p.promo_price === "" ? null : Number(p.promo_price), promo_label: String(p.promo_label || "Offre spéciale"), promo_end_at: p.promo_end_at || null };
+    return { id: String(p.id), public_ref: String(p.public_ref || p.id), availability_status: String(p.availability_status || "available"), catalog_type: String(p.catalog_type || "pack"), name: String(p.name || "Pack"), cat: String(p.cat || p.category || "Autre"), category: String(p.cat || p.category || "Autre"), price: Number(p.price || 0), desc: String(p.desc || p.description || ""), description: String(p.desc || p.description || ""), items: Array.isArray(p.items) ? p.items : [], image_path: p.image_path || "", image_paths: Array.isArray(p.image_paths) ? p.image_paths : [], active: p.active !== false, promo_active: p.promo_active === true, promo_price: p.promo_price == null || p.promo_price === "" ? null : Number(p.promo_price), promo_label: String(p.promo_label || "Offre spéciale"), promo_end_at: p.promo_end_at || null };
   }
   function normalizeProduct(p) {
-    return { ...p, id: String(p.id), public_ref: String(p.public_ref || p.id), availability_status: String(p.availability_status || "available"), catalog_type: String(p.catalog_type || "pack"), cat: String(p.category || p.cat || "Autre"), category: String(p.category || p.cat || "Autre"), price: Number(p.price || 0), desc: String(p.description || p.desc || ""), description: String(p.description || p.desc || ""), items: Array.isArray(p.items) ? p.items : [], image_path: String(p.image_path || ""), active: p.active !== false, promo_active: p.promo_active === true, promo_price: p.promo_price == null || p.promo_price === "" ? null : Number(p.promo_price), promo_label: String(p.promo_label || "Offre spéciale") };
+    return { ...p, id: String(p.id), public_ref: String(p.public_ref || p.id), availability_status: String(p.availability_status || "available"), catalog_type: String(p.catalog_type || "pack"), cat: String(p.category || p.cat || "Autre"), category: String(p.category || p.cat || "Autre"), price: Number(p.price || 0), desc: String(p.description || p.desc || ""), description: String(p.description || p.desc || ""), items: Array.isArray(p.items) ? p.items : [], image_path: String(p.image_path || ""), image_paths: Array.isArray(p.image_paths) ? p.image_paths : [], active: p.active !== false, promo_active: p.promo_active === true, promo_price: p.promo_price == null || p.promo_price === "" ? null : Number(p.promo_price), promo_label: String(p.promo_label || "Offre spéciale") };
+  }
+  function getProductImages(p) {
+    const paths = Array.isArray(p?.image_paths) ? p.image_paths : [];
+    const legacy = String(p?.image_path || "").trim();
+    return [...new Set([...paths, legacy].map(value => String(value || "").trim()).filter(Boolean))].slice(0, 8);
+  }
+  function resolveProductImageUrl(path) {
+    const value = String(path || "").trim();
+    return /^https?:\/\//i.test(value) ? value : value.replace(/^\//, "");
+  }
+  function selectProductImage(button) {
+    const gallery = button?.closest(".product-detail-gallery");
+    const main = gallery?.querySelector(".product-photo-detail");
+    const source = button?.dataset?.imageSrc;
+    if (!main || !source) return;
+    main.src = source;
+    main.alt = button.dataset.imageAlt || main.alt;
+    gallery.querySelectorAll(".product-image-thumb").forEach(item => item.classList.toggle("is-active", item === button));
+  }
+  function normalizeWhatsAppNumber(value) {
+    let digits = String(value || "").replace(/\D/g, "");
+    if (digits.startsWith("00")) digits = digits.slice(2);
+    if (digits.length === 9 && /^[37]/.test(digits)) digits = "221" + digits;
+    else if (digits.length === 10 && digits.startsWith("0")) digits = "221" + digits.slice(1);
+    return /^[1-9]\d{7,14}$/.test(digits) ? digits : "";
+  }
+  function testWhatsAppNumber(inputId) {
+    const input = $(inputId);
+    const number = normalizeWhatsAppNumber(input?.value);
+    if (!number) return toast("Saisis un numéro valide avec son indicatif (ex. +221 77 123 45 67).", true);
+    window.open("https://wa.me/" + number + "?text=" + encodeURIComponent("Bonjour, je vérifie ce numéro WhatsApp pour mon compte SAMA-PACK."), "_blank", "noopener,noreferrer");
+    toast("WhatsApp est ouvert. Vérifie si le numéro est joignable dans l’application.");
+  }
+  function profileDeliveryAddress(profile) {
+    const p = profile || {};
+    return [p.delivery_address, p.delivery_landmark ? "Repère : " + p.delivery_landmark : "", p.delivery_instructions ? "Instructions : " + p.delivery_instructions : ""].filter(Boolean).join(" — ").slice(0, 300);
+  }
+  function profileDeliveryZone(profile) {
+    const p = profile || {};
+    return [p.delivery_region, p.delivery_city, p.delivery_commune, p.delivery_neighborhood].filter(Boolean).join(", ").slice(0, 300);
   }
   function publicProductRef(p) { return String(p?.public_ref || p?.id || ""); }
   function availabilityStatusLabel(status) { return status === "out_of_stock" ? "Rupture de stock" : "Disponible"; }
@@ -100,7 +140,7 @@
 
   async function getProfile(user = currentUser) {
     if (!client || !user) return null;
-    const { data, error } = await client.from("profiles").select("id,full_name,phone,email,role,is_super_admin,invited_by,created_at").eq("id", user.id).maybeSingle();
+    const { data, error } = await client.from("profiles").select("id,full_name,phone,phone_secondary,delivery_region,delivery_city,delivery_commune,delivery_neighborhood,delivery_address,delivery_landmark,delivery_instructions,email,role,is_super_admin,invited_by,created_at").eq("id", user.id).maybeSingle();
     if (error) { console.warn("Profile unavailable", error); return null; }
     return data;
   }
@@ -558,7 +598,7 @@
     const host = $("adminContent");
     if (!host || !client || !isAdmin()) return;
     const { data: rows, error } = await client.from("products")
-      .select("id,public_ref,availability_status,name,catalog_type,category,price,description,items,image_path,active,promo_active,promo_price,promo_label,promo_end_at")
+      .select("id,public_ref,availability_status,name,catalog_type,category,price,description,items,image_path,image_paths,active,promo_active,promo_price,promo_label,promo_end_at")
       .in("catalog_type", ["product", "tool"])
       .order("name", { ascending: true });
     if (error) {
@@ -611,7 +651,7 @@
         <label>Disponibilité au catalogue<select class="input" name="availability_status"><option value="available" ${(current.availability_status || "out_of_stock") === "available" ? "selected" : ""}>Disponible</option><option value="out_of_stock" ${(current.availability_status || "out_of_stock") === "out_of_stock" ? "selected" : ""}>Rupture de stock</option></select></label>
         <p class="small-note price-calculation-feedback full" data-pricing-feedback>Renseigne le coût fournisseur et la marge pour calculer automatiquement le prix de vente.</p>
         <label class="full">Description<textarea class="input" name="description" maxlength="1200" rows="4" placeholder="Description fidèle et vérifiée de l’article.">${esc(current.description || "")}</textarea></label>
-        <label class="full">Image (URL HTTPS ou chemin de l’image)<input class="input" name="image_path" maxlength="1000" value="${esc(current.image_path || "")}" placeholder="https://… ou images/produit.jpg"></label>
+        <label class="full">Image principale (URL HTTPS ou chemin)<input class="input" name="image_path" maxlength="1000" value="${esc(current.image_path || "")}" placeholder="https://… ou images/produit.jpg"></label><p class="small-note full">Photos actuellement enregistrées : ${getProductImages(current).length}. Jusqu’à 8 photos par article.</p><label class="full">Photos supplémentaires (JPG, PNG ou WebP · 5 Mo maximum par photo)<input class="input" name="image_files" type="file" accept="image/jpeg,image/png,image/webp" multiple></label><label class="check-label full"><input type="checkbox" name="replace_images"> Remplacer les photos actuelles par les nouvelles (ou les supprimer si aucune photo n’est choisie)</label>
         <label class="full">Caractéristiques visibles (une ligne par élément)<textarea class="input" name="items" maxlength="3000" rows="5" placeholder="Format, variante, usage, précautions vérifiées…">${esc(itemsText)}</textarea></label>
         <label class="catalog-active-check"><input type="checkbox" name="active" ${editing && current.active ? "checked" : ""}> Article visible dans le catalogue</label>
         <div class="full"><button class="btn primary" type="submit">${editing ? "Enregistrer l’article" : "Créer l’article masqué"}</button></div>
@@ -655,13 +695,18 @@
       if (payload.active && payload.price <= 0) return toast("Définis un prix de vente supérieur à zéro avant la publication.", true);
       setBusy(form, true, editingCatalogItemId ? "Enregistrement…" : "Ajout…");
       try {
+        const productId = editingCatalogItemId || ("CAT-" + Date.now() + "-" + Math.random().toString(36).slice(2, 7).toUpperCase());
+        const replaceImages = data.get("replace_images") === "on";
+        let existingImages = replaceImages ? [] : getProductImages(current);
+        if (!replaceImages && payload.image_path && !existingImages.includes(payload.image_path)) existingImages.unshift(payload.image_path);
+        const imageUpload = await uploadProductImages(data.getAll("image_files"), productId, existingImages);
+        if (imageUpload.error) return toast(imageUpload.error, true);
+        payload.image_paths = imageUpload.images;
+        payload.image_path = payload.image_paths[0] || (replaceImages ? "" : payload.image_path);
         let result;
-        let productId;
         if (editingCatalogItemId) {
-          productId = editingCatalogItemId;
           result = await client.from("products").update(payload).eq("id", productId);
         } else {
-          productId = `CAT-${Date.now()}-${Math.random().toString(36).slice(2, 7).toUpperCase()}`;
           result = await client.from("products").insert({ ...payload, id: productId, promo_active: false, promo_price: null, promo_label: "Offre spéciale" });
         }
         if (result.error) return toast(errorMessage(result.error), true);
@@ -699,10 +744,28 @@
     await renderIndividualCatalogAdmin();
   }
 
+  async function uploadProductImages(files, productId, existingImages = []) {
+    const selected = Array.from(files || []).filter(file => file instanceof File && file.size > 0);
+    if (selected.length + existingImages.length > 8) return { error: "Un article peut contenir au maximum 8 photos. Retire des photos ou coche le remplacement." };
+    const allowed = ["image/jpeg", "image/png", "image/webp"];
+    if (selected.some(file => !allowed.includes(file.type) || file.size > 5 * 1024 * 1024)) {
+      return { error: "Chaque photo doit être au format JPG, PNG ou WebP et peser 5 Mo maximum." };
+    }
+    const images = [...existingImages];
+    for (const file of selected) {
+      const ext = file.type === "image/jpeg" ? "jpg" : file.type === "image/png" ? "png" : "webp";
+      const path = String(productId) + "/" + Date.now() + "-" + Math.random().toString(36).slice(2, 8) + "." + ext;
+      const { data, error } = await client.storage.from("sama-pack-products").upload(path, file, { cacheControl: "3600", upsert: false, contentType: file.type });
+      if (error) return { error: "Envoi d’une photo impossible : " + errorMessage(error) };
+      images.push(client.storage.from("sama-pack-products").getPublicUrl(data.path).data.publicUrl);
+    }
+    return { images: [...new Set(images)].slice(0, 8) };
+  }
+
   async function loadPublicData() {
     if (!client) return;
     const { data: rows, error } = await client.from("products")
-      .select("id,public_ref,availability_status,name,catalog_type,category,price,description,items,image_path,active,promo_active,promo_price,promo_label,promo_end_at")
+      .select("id,public_ref,availability_status,name,catalog_type,category,price,description,items,image_path,image_paths,active,promo_active,promo_price,promo_label,promo_end_at")
       .order("id", { ascending: true });
     if (!error && Array.isArray(rows)) products = rows.map(normalizeProduct);
     else console.warn("Catalogue distant indisponible; affichage du catalogue de secours.", error);
@@ -895,9 +958,10 @@
   }
 
   function productCard(p) {
-    const path = String(p.image_path || "").trim();
+    const images = getProductImages(p);
+    const path = images[0] || "";
     const hasImage = Boolean(path);
-    const src = /^https?:\/\//i.test(path) ? path : path.replace(/^\//, "");
+    const src = resolveProductImageUrl(path);
     const photo = hasImage ? `<img class="product-photo" src="${esc(src)}" alt="${esc(p.name)}" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='grid'">` : "";
     const fallback = `<div class="product-placeholder ${hasImage ? "photo-fallback" : ""}" ${hasImage ? 'style="display:none"' : ""}>${cleaningBottleSvg()}</div>`;
     const out = p.availability_status === "out_of_stock";
@@ -908,13 +972,15 @@
 
   function openProduct(id) {
     const p = getP(id); if (!p) return;
-    const path = String(p.image_path || "").trim();
-    const src = /^https?:\/\//i.test(path) ? path : path.replace(/^\//, "");
+    const images = getProductImages(p);
+    const path = images[0] || "";
+    const src = resolveProductImageUrl(path);
     const photo = path
-      ? `<div class="product-detail-image-wrap"><img class="product-photo product-photo-detail" src="${esc(src)}" alt="${esc(p.name)}" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='grid'"><div class="product-placeholder" style="display:none">${cleaningBottleSvg()}</div></div>`
-      : `<div class="product-detail-placeholder product-placeholder">${cleaningBottleSvg()}</div>`;
+      ? '<div class="product-detail-gallery"><div class="product-detail-image-wrap"><img class="product-photo product-photo-detail" src="' + esc(src) + '" alt="' + esc(p.name) + '" loading="lazy" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'grid\'"><div class="product-placeholder" style="display:none">' + cleaningBottleSvg() + '</div></div>' +
+        (images.length > 1 ? '<div class="product-image-thumbnails" aria-label="Photos du produit">' + images.map((image, index) => '<button type="button" class="product-image-thumb ' + (index === 0 ? 'is-active' : '') + '" data-image-src="' + esc(resolveProductImageUrl(image)) + '" data-image-alt="' + esc(p.name + ' — photo ' + (index + 1)) + '" onclick="selectProductImage(this)" aria-label="Afficher la photo ' + (index + 1) + '"><img src="' + esc(resolveProductImageUrl(image)) + '" alt="" loading="lazy"></button>').join('') + '</div>' : '') + '</div>'
+      : '<div class="product-detail-placeholder product-placeholder">' + cleaningBottleSvg() + '</div>';
     const canAdd = canSellProduct(p);
-    showModal(`<div class="modal-head"><div><div class="eyebrow">${esc(p.cat)}</div><h2>${esc(p.name)}</h2></div><button class="close" onclick="closeModal()">✕</button></div>${photo}<div class="product-detail-meta">${availabilityBadgeHtml(p)}</div><div id="productRatingSummaryDetail">${renderProductRatingSummary(p.id)}</div><p>${esc(p.desc)}</p><ul class="pack-items">${p.items.map(i => `<li>${esc(i)}</li>`).join("")}</ul><div class="price-row">${priceDisplayHtml(p)}<button class="btn primary" ${canAdd ? `onclick="addToCart('${esc(p.id)}');closeModal()"` : "disabled"}>${p.availability_status === "out_of_stock" ? "Rupture de stock" : canAdd ? "Ajouter au panier" : "Prix à confirmer"}</button></div><section id="productReviewsPanel" class="product-reviews-panel" data-product-id="${esc(p.id)}"><p class="review-loading">Chargement des avis…</p></section>`);
+    showModal('<div class="modal-head"><div><div class="eyebrow">' + esc(p.cat) + '</div><h2>' + esc(p.name) + '</h2></div><button class="close" onclick="closeModal()">✕</button></div>' + photo + '<div class="product-detail-meta">' + availabilityBadgeHtml(p) + '</div><div id="productRatingSummaryDetail">' + renderProductRatingSummary(p.id) + '</div><p>' + esc(p.desc) + '</p><ul class="pack-items">' + p.items.map(i => '<li>' + esc(i) + '</li>').join('') + '</ul><div class="price-row">' + priceDisplayHtml(p) + '<button class="btn primary" ' + (canAdd ? 'onclick="addToCart(\'' + esc(p.id) + '\');closeModal()"' : 'disabled') + '>' + (p.availability_status === "out_of_stock" ? "Rupture de stock" : canAdd ? "Ajouter au panier" : "Prix à confirmer") + '</button></div><section id="productReviewsPanel" class="product-reviews-panel" data-product-id="' + esc(p.id) + '"><p class="review-loading">Chargement des avis…</p></section>');
     void renderProductReviews(p.id);
   }
 
@@ -1096,14 +1162,48 @@
   }
   function renderAuthForm(mode = "login", message = "") {
     const signup = mode === "signup";
-    showModal(`<div class="modal-head"><div><div class="eyebrow">ESPACE CLIENT</div><h2>${signup ? "Créer un compte" : "Se connecter"}</h2></div><button class="close" onclick="closeModal()">✕</button></div><p class="muted">Crée ton compte pour commander directement sur Sama-Pack, retrouver tes commandes et recevoir des notifications.</p>${message ? `<div class="inline-message">${esc(message)}</div>` : ""}<form id="authForm" class="checkout-grid"><input class="input full ${signup ? "" : "hidden"}" name="full_name" placeholder="Nom complet" autocomplete="name" ${signup ? "required minlength=2" : ""}><input class="input ${signup ? "" : "full"}" name="email" type="email" required placeholder="Adresse e-mail" autocomplete="email"><input class="input ${signup ? "" : "hidden"}" name="phone" placeholder="Téléphone (facultatif)" autocomplete="tel" ${signup ? "" : "disabled"} ${signup ? "" : "value=\"\""}><input class="input full" name="password" type="password" required minlength="8" placeholder="Mot de passe (8 caractères minimum)" autocomplete="${signup ? "new-password" : "current-password"}"><div class="full auth-actions"><button class="btn primary full" type="submit">${signup ? "Créer mon compte" : "Se connecter"}</button><button class="link-btn dark-link" type="button" onclick="renderAuthForm('${signup ? "login" : "signup"}')">${signup ? "J’ai déjà un compte" : "Créer un compte client"}</button>${signup ? "" : `<button class="link-btn dark-link" type="button" onclick="resetPassword()">Mot de passe oublié ?</button>`}</div></form><p class="small-note">Tes commandes et coordonnées ne seront accessibles qu’à toi et aux administrateurs autorisés.</p>`);
+    showModal(`<div class="modal-head"><div><div class="eyebrow">ESPACE CLIENT</div><h2>${signup ? "Créer un compte" : "Se connecter"}</h2></div><button class="close" onclick="closeModal()">✕</button></div><p class="muted">Crée ton compte pour commander directement sur Sama-Pack, retrouver tes commandes et recevoir des notifications.</p>${message ? `<div class="inline-message">${esc(message)}</div>` : ""}<form id="authForm" class="checkout-grid">
+      <label class="full ${signup ? "" : "hidden"}">Nom complet<input class="input" name="full_name" placeholder="Nom complet" autocomplete="name" ${signup ? "required minlength=2 maxlength=120" : ""}></label>
+      <label class="full">Adresse e-mail<input class="input" name="email" type="email" required maxlength="254" placeholder="Adresse e-mail" autocomplete="email"></label>
+      <label class="${signup ? "" : "hidden"}">WhatsApp (obligatoire)<input class="input" id="signupPhone" name="phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="+221 77 123 45 67" ${signup ? "required maxlength=25" : "disabled"}></label>
+      <div class="${signup ? "" : "hidden"} auth-whatsapp-test"><button class="btn ghost small" id="testSignupWhatsappBtn" type="button">Tester dans WhatsApp</button><p class="small-note">Le test ouvre WhatsApp ; il ne confirme pas automatiquement l’existence du compte.</p></div>
+      <label class="${signup ? "" : "hidden"}">Téléphone supplémentaire (facultatif)<input class="input" name="phone_secondary" type="tel" inputmode="tel" autocomplete="tel" placeholder="+221 …" ${signup ? "maxlength=25" : "disabled"}></label>
+      <label class="${signup ? "" : "hidden"}">Région<input class="input" name="delivery_region" maxlength="100" placeholder="Ex. Dakar" ${signup ? "required" : "disabled"}></label>
+      <label class="${signup ? "" : "hidden"}">Ville<input class="input" name="delivery_city" maxlength="100" placeholder="Ex. Dakar" ${signup ? "required" : "disabled"}></label>
+      <label class="${signup ? "" : "hidden"}">Commune<input class="input" name="delivery_commune" maxlength="100" placeholder="Ex. Parcelles Assainies" ${signup ? "required" : "disabled"}></label>
+      <label class="${signup ? "" : "hidden"}">Quartier<input class="input" name="delivery_neighborhood" maxlength="120" placeholder="Ex. Unité 15" ${signup ? "required" : "disabled"}></label>
+      <label class="full ${signup ? "" : "hidden"}">Adresse précise<input class="input" name="delivery_address" maxlength="300" placeholder="Rue, numéro, bâtiment…" ${signup ? "required" : "disabled"}></label>
+      <label class="full ${signup ? "" : "hidden"}">Repère pour le livreur (facultatif)<input class="input" name="delivery_landmark" maxlength="200" placeholder="Ex. près de la pharmacie…"></label>
+      <label class="full ${signup ? "" : "hidden"}">Instructions de livraison (facultatif)<textarea class="input" name="delivery_instructions" maxlength="500" rows="2" placeholder="Précisions utiles au livreur"></textarea></label>
+      <label class="full">Mot de passe<input class="input" name="password" type="password" required minlength="8" placeholder="Mot de passe (8 caractères minimum)" autocomplete="${signup ? "new-password" : "current-password"}"></label>
+      <div class="full auth-actions"><button class="btn primary full" type="submit">${signup ? "Créer mon compte" : "Se connecter"}</button><button class="link-btn dark-link" type="button" onclick="renderAuthForm('${signup ? "login" : "signup"}')">${signup ? "J’ai déjà un compte" : "Créer un compte client"}</button>${signup ? "" : '<button class="link-btn dark-link" type="button" onclick="resetPassword()">Mot de passe oublié ?</button>'}</div>
+    </form><p class="small-note">Tes commandes et coordonnées ne seront accessibles qu’à toi et aux administrateurs autorisés.</p>`);
     const form = $("authForm");
+    const testSignupButton = $("testSignupWhatsappBtn");
+    if (testSignupButton) testSignupButton.onclick = () => testWhatsAppNumber("signupPhone");
     form.onsubmit = async (e) => {
       e.preventDefault(); if (authBusy) return; authBusy = true; setBusy(form, true, signup ? "Création du compte…" : "Connexion…");
       const fd = new FormData(form); const email = String(fd.get("email") || "").trim().toLowerCase(); const password = String(fd.get("password") || "");
+      const signupProfile = {
+        full_name: String(fd.get("full_name") || "").trim(),
+        phone: normalizeWhatsAppNumber(fd.get("phone")),
+        phone_secondary: String(fd.get("phone_secondary") || "").trim() ? normalizeWhatsAppNumber(fd.get("phone_secondary")) : "",
+        delivery_region: String(fd.get("delivery_region") || "").trim(),
+        delivery_city: String(fd.get("delivery_city") || "").trim(),
+        delivery_commune: String(fd.get("delivery_commune") || "").trim(),
+        delivery_neighborhood: String(fd.get("delivery_neighborhood") || "").trim(),
+        delivery_address: String(fd.get("delivery_address") || "").trim(),
+        delivery_landmark: String(fd.get("delivery_landmark") || "").trim(),
+        delivery_instructions: String(fd.get("delivery_instructions") || "").trim()
+      };
+      if (signup) {
+        if (!signupProfile.phone) { setBusy(form, false); authBusy = false; return toast("Le numéro WhatsApp doit être valide (ex. +221 77 123 45 67).", true); }
+        if (String(fd.get("phone_secondary") || "").trim() && !signupProfile.phone_secondary) { setBusy(form, false); authBusy = false; return toast("Le numéro supplémentaire n’est pas valide.", true); }
+        if (!signupProfile.full_name || !signupProfile.delivery_region || !signupProfile.delivery_city || !signupProfile.delivery_commune || !signupProfile.delivery_neighborhood || !signupProfile.delivery_address) { setBusy(form, false); authBusy = false; return toast("Complète ton nom et toutes les informations obligatoires de livraison.", true); }
+      }
       try {
         if (signup) {
-          const { data, error } = await client.auth.signUp({ email, password, options: { emailRedirectTo: "https://sama-pack.store/", data: { full_name: String(fd.get("full_name") || "").trim(), phone: String(fd.get("phone") || "").trim() } } });
+          const { data, error } = await client.auth.signUp({ email, password, options: { emailRedirectTo: "https://sama-pack.store/", data: { ...signupProfile, account_type: "customer" } } });
           if (error) throw error;
           if (data.session) { await syncAuth(data.user); closeModal(); toast("Compte créé. Bienvenue sur Sama-Pack !"); }
           else { renderAuthForm("login", "Compte créé. Vérifie ta boîte e-mail et clique sur le lien de confirmation avant de te connecter."); }
@@ -1315,6 +1415,65 @@
     window.open("https://wa.me/" + phone + "?text=" + encodeURIComponent(message), "_blank", "noopener,noreferrer");
   }
 
+  function customerProfileFormHtml(profile) {
+    const p = profile || {};
+    const field = (label, name, value, placeholder, required = false, full = false) =>
+      '<label class="' + (full ? 'full' : '') + '">' + label + '<input class="input" name="' + name + '" value="' + esc(value || '') + '" maxlength="300" placeholder="' + placeholder + '"' + (required ? ' required' : '') + '></label>';
+    return '<div class="panel account-profile-panel"><div class="section-head"><div><div class="eyebrow">COORDONNÉES ENREGISTRÉES</div><h3>Mon profil et mon adresse de livraison</h3></div></div><p class="small-note">Ces informations seront préremplies à chaque commande. Ton adresse e-mail ne peut pas être modifiée ici.</p>' +
+      '<form id="profileForm" class="checkout-grid">' +
+      '<label class="full">Adresse e-mail (non modifiable)<input class="input" type="email" value="' + esc(currentUser?.email || p.email || '') + '" disabled readonly></label>' +
+      field('Nom complet', 'full_name', p.full_name, 'Nom et prénom', true, true) +
+      '<label>WhatsApp obligatoire<input class="input" id="profilePhone" name="phone" type="tel" inputmode="tel" value="' + esc(p.phone || '') + '" placeholder="+221 77 123 45 67" required maxlength="25"></label>' +
+      '<div class="profile-whatsapp-test"><button class="btn ghost small" id="testProfileWhatsappBtn" type="button">Tester dans WhatsApp</button><p class="small-note">Ce test ouvre WhatsApp, sans vérification automatique par Meta.</p></div>' +
+      '<label>Téléphone supplémentaire (facultatif)<input class="input" name="phone_secondary" type="tel" inputmode="tel" value="' + esc(p.phone_secondary || '') + '" placeholder="+221 …" maxlength="25"></label>' +
+      field('Région', 'delivery_region', p.delivery_region, 'Ex. Dakar', true) +
+      field('Ville', 'delivery_city', p.delivery_city, 'Ex. Dakar', true) +
+      field('Commune', 'delivery_commune', p.delivery_commune, 'Ex. Parcelles Assainies', true) +
+      field('Quartier', 'delivery_neighborhood', p.delivery_neighborhood, 'Ex. Unité 15', true) +
+      field('Adresse précise', 'delivery_address', p.delivery_address, 'Rue, numéro, bâtiment…', true, true) +
+      '<label class="full">Repère pour le livreur (facultatif)<input class="input" name="delivery_landmark" value="' + esc(p.delivery_landmark || '') + '" maxlength="200" placeholder="Ex. près de la pharmacie…"></label>' +
+      '<label class="full">Instructions de livraison (facultatif)<textarea class="input" name="delivery_instructions" maxlength="500" rows="2" placeholder="Précisions utiles au livreur">' + esc(p.delivery_instructions || '') + '</textarea></label>' +
+      '<div class="full"><button class="btn primary" type="submit">Enregistrer mes coordonnées</button></div></form></div>';
+  }
+
+  async function saveCustomerProfile(form) {
+    if (!currentUser || !form) return;
+    const fd = new FormData(form);
+    const name = String(fd.get('full_name') || '').trim();
+    const phone = normalizeWhatsAppNumber(fd.get('phone'));
+    const secondaryRaw = String(fd.get('phone_secondary') || '').trim();
+    const phoneSecondary = secondaryRaw ? normalizeWhatsAppNumber(secondaryRaw) : '';
+    const delivery = {
+      delivery_region: String(fd.get('delivery_region') || '').trim(),
+      delivery_city: String(fd.get('delivery_city') || '').trim(),
+      delivery_commune: String(fd.get('delivery_commune') || '').trim(),
+      delivery_neighborhood: String(fd.get('delivery_neighborhood') || '').trim(),
+      delivery_address: String(fd.get('delivery_address') || '').trim(),
+      delivery_landmark: String(fd.get('delivery_landmark') || '').trim(),
+      delivery_instructions: String(fd.get('delivery_instructions') || '').trim()
+    };
+    if (name.length < 2 || !phone) return toast('Vérifie ton nom et ton numéro WhatsApp.', true);
+    if (secondaryRaw && !phoneSecondary) return toast('Le numéro supplémentaire n’est pas valide.', true);
+    if (!delivery.delivery_region || !delivery.delivery_city || !delivery.delivery_commune || !delivery.delivery_neighborhood || !delivery.delivery_address) return toast('Complète toutes les informations obligatoires de livraison.', true);
+    const profilePayload = { full_name: name, phone, phone_secondary: phoneSecondary || '', ...delivery, updated_at: new Date().toISOString() };
+    setBusy(form, true, 'Enregistrement…');
+    try {
+      const { error: authError } = await client.auth.updateUser({ data: { full_name: name, phone } });
+      if (authError) throw authError;
+      const { data, error } = await client.from('profiles').update(profilePayload).eq('id', currentUser.id)
+        .select('id,full_name,phone,phone_secondary,delivery_region,delivery_city,delivery_commune,delivery_neighborhood,delivery_address,delivery_landmark,delivery_instructions,email,role,is_super_admin,invited_by,created_at').maybeSingle();
+      if (error) throw error;
+      if (!data) throw new Error('Aucune modification du profil n’a été enregistrée.');
+      currentProfile = data;
+      toast('Tes coordonnées de livraison ont été mises à jour.');
+      await showAccountHome();
+    } catch (error) {
+      toast(errorMessage(error), true);
+    } finally {
+      if (form.isConnected) setBusy(form, false);
+    }
+  }
+
   async function showAccountHome() {
     if (!currentUser) { renderAuthForm("login"); return; }
     const p = currentProfile || await getProfile();
@@ -1344,7 +1503,7 @@
       return '<tr><td><strong>' + esc(o.id) + '</strong></td><td>' + esc(fmtDate(o.created_at)) + '</td><td>' + money(o.total) + '</td><td><span class="small-note">' + esc(paymentStatusLabel(o.payment_status)) + '</span><br><span class="small-note">Payé : ' + money(o.amount_paid || 0) + '</span><br><span class="small-note">Solde : ' + money(balance) + '</span></td><td><span class="status ' + esc(o.status) + '">' + esc(statusLabel(o.status)) + '</span>' + orderTrackingHtml(o) + slotHtml + '</td><td>' + actionHtml + '</td></tr>';
     }).join("") + '</tbody></table></div>' : '<div class="empty compact-empty">Tu n’as pas encore passé de commande en ligne.</div>';
     const subscriptionsHtml = renderSubscriptionsHtml(cachedSubscriptions);
-    showModal('<div class="modal-head"><div><div class="eyebrow">MON COMPTE</div><h2>' + esc(p?.full_name || currentUser.email || "Client") + '</h2><p class="small-note">' + esc(currentUser.email || "") + '</p></div><button class="close" onclick="closeModal()">✕</button></div>' + salesLinkHtml +
+    showModal('<div class="modal-head"><div><div class="eyebrow">MON COMPTE</div><h2>' + esc(p?.full_name || currentUser.email || "Client") + '</h2><p class="small-note">' + esc(currentUser.email || "") + '</p></div><button class="close" onclick="closeModal()">✕</button></div>' + salesLinkHtml + customerProfileFormHtml(p) +
       '<div class="panel account-business-launch"><div><h3>Vous êtes un professionnel ?</h3><p class="small-note">Enregistrez votre entreprise, demandez des devis détaillés et retrouvez ses commandes en quantité.</p></div><button class="btn secondary" onclick="openB2BWorkspace()">Espace professionnel</button></div>' +
       '<div class="account-buttons"><button class="btn secondary" onclick="enableBrowserNotifications()">🔔 Activer les alertes du navigateur</button><button class="btn ghost" onclick="loadAndShowNotifications()">Mes notifications (' + userNotifications.filter(n=>!n.read_at).length + ')</button></div>' +
       '<div class="panel account-orders"><div class="subscription-panel-heading"><h3>Mes commandes</h3><p class="small-note">Le suivi affiche l’avancement, le montant déjà payé, le solde et le créneau prévu.</p></div>' + orderHtml + '</div>' +
@@ -1352,6 +1511,10 @@
       '<div class="panel account-password"><h3>' + (currentUser?.last_sign_in_at ? "Sécurité du compte" : "Définir un mot de passe") + '</h3><form id="changePasswordForm" class="checkout-grid"><input class="input full" name="password" type="password" minlength="8" required placeholder="Nouveau mot de passe (8 caractères minimum)"><button class="btn ghost full" type="submit">Enregistrer le mot de passe</button></form></div>' +
       (!initialized ? '<div class="panel bootstrap-panel"><h3>Configurer le premier administrateur</h3><p>Cette option n’apparaît que tant qu’aucun administrateur n’est configuré. Utilise le code initial transmis par le propriétaire.</p><form id="bootstrapAdminForm" class="checkout-grid"><input class="input full" name="bootstrap_token" autocomplete="off" required placeholder="Code initial du propriétaire"><button class="btn primary full" type="submit">Devenir le premier administrateur</button></form></div>' : '') +
       '<button class="btn ghost full" onclick="signOut()">Se déconnecter</button>');
+    const profileForm = $("profileForm");
+    const profileWhatsappTest = $("testProfileWhatsappBtn");
+    if (profileWhatsappTest) profileWhatsappTest.onclick = () => testWhatsAppNumber("profilePhone");
+    if (profileForm) profileForm.onsubmit = async e => { e.preventDefault(); await saveCustomerProfile(profileForm); };
     const pw = $("changePasswordForm"); pw.onsubmit = async e => { e.preventDefault(); const form = e.currentTarget; const password = String(new FormData(form).get("password") || ""); if (password.length < 8) return toast("Choisis au moins 8 caractères.", true); setBusy(form, true, "Enregistrement…"); const { error } = await client.auth.updateUser({ password }); if (error) toast(errorMessage(error), true); else { toast("Mot de passe mis à jour."); form.reset(); } setBusy(form, false); };
     const bootstrap = $("bootstrapAdminForm"); if (bootstrap) bootstrap.onsubmit = async e => { e.preventDefault(); const form = e.currentTarget; setBusy(form, true, "Configuration…"); const token = String(new FormData(form).get("bootstrap_token") || "").trim(); const { data, error } = await client.rpc("sama_bootstrap_first_admin", { p_token: token }); setBusy(form, false); if (error) return toast(errorMessage(error), true); await syncAuth(currentUser); closeModal(); toast(data?.message || "Compte administrateur configuré."); };
   }
@@ -1428,13 +1591,16 @@
     if (unavailableLines.length) return toast("Retire les articles en rupture ou sans prix confirmé du panier avant de commander.", true);
     if (!currentUser) { closeModal(); renderAuthForm("login", "Connecte-toi ou crée un compte pour confirmer ta commande en ligne."); return; }
     const totals = cartTotals(); const profile = currentProfile || {};
+    const savedAddress = profileDeliveryAddress(profile);
+    const savedZone = profileDeliveryZone(profile);
     const deliveryAllowed = Number(totals.delivery) > 0;
     showModal(`<div class="modal-head"><div><div class="eyebrow">COMMANDE EN LIGNE</div><h2>Finaliser la commande</h2></div><button class="close" onclick="closeModal()">✕</button></div>
       <form id="checkoutForm" class="checkout-grid">
+        <p class="small-note full">Les coordonnées de ton profil sont préremplies. Modifie-les ici seulement si cette commande doit être livrée ailleurs.</p>
         <input class="input full" name="name" required minlength="2" maxlength="120" placeholder="Nom complet" value="${esc(profile.full_name || currentUser.user_metadata?.full_name || "")}">
-        <input class="input" name="phone" required minlength="8" maxlength="25" placeholder="Téléphone" value="${esc(profile.phone || currentUser.user_metadata?.phone || "")}">
-        <input class="input" name="zone" placeholder="Zone / quartier" maxlength="100">
-        <input class="input full" name="address" required minlength="4" maxlength="300" placeholder="Adresse de livraison">
+        <input class="input" name="phone" required minlength="8" maxlength="25" placeholder="WhatsApp" value="${esc(profile.phone || currentUser.user_metadata?.phone || "")}">
+        <input class="input" name="zone" placeholder="Zone / quartier" maxlength="300" value="${esc(savedZone)}">
+        <input class="input full" name="address" required minlength="4" maxlength="300" placeholder="Adresse de livraison" value="${esc(savedAddress)}">
         <input class="input full" name="slot" placeholder="Créneau souhaité (facultatif)" maxlength="120">
         <div class="payment-choice-list full">
           <div class="eyebrow">COMMENT SOUHAITES-TU PAYER ?</div>
@@ -2048,7 +2214,7 @@ if (!isAdmin()) { closeAdmin(); return toast("Accès administrateur requis.", tr
     const idLabel = editing ? editing.id : nextProductId();
     const supplierOptions = '<option value="">— Aucun fournisseur associé —</option>' + suppliers.map(s => `<option value="${esc(s.id)}" ${editing?.supplier_id === s.id ? "selected" : ""}>${esc(s.name)}</option>`).join("");
     const tableHtml = rows.length ? `<div class="table-wrap"><table class="table"><thead><tr><th>Réf. SAMA-PACK</th><th>Pack</th><th>Fournisseur / réf. fournisseur</th><th>Coût fournisseur</th><th>Marge</th><th>Prix de vente</th><th>Disponibilité</th><th>Publication</th><th>Actions</th></tr></thead><tbody>${rows.filter(p=>p.catalog_type === "pack").map(p=>`<tr data-admin-search-row data-search="${esc([p.public_ref,p.id,p.name,p.cat,p.supplier_name,p.supplier_ref].join(" ").toLowerCase())}"><td><strong>${esc(p.public_ref || "—")}</strong></td><td><strong>${esc(p.name)}</strong><br><span class="small-note">${esc(p.cat)}</span></td><td>${esc(p.supplier_name || "—")}<br><span class="small-note">${esc(p.supplier_ref || "Réf. non renseignée")}</span></td><td>${p.supplier_price == null ? "—" : money(p.supplier_price)}${p.carton_price == null ? "" : `<br><span class="small-note">Colis : ${money(p.carton_price)} HT</span>`}</td><td>${p.margin_percent == null ? "—" : Number(p.margin_percent)+" %"}</td><td>${money(p.price)}</td><td>${availabilityBadgeHtml(p)}</td><td><span class="status ${p.active?"delivered":"cancelled"}">${p.active?"Publié":"Masqué"}</span></td><td><div class="table-actions"><button class="btn small ghost" onclick="editPack('${esc(p.id)}')">Modifier</button><button class="btn small ${p.active?"ghost":"secondary"}" onclick="togglePack('${esc(p.id)}',${!p.active})">${p.active?"Masquer":"Publier"}</button></div></td></tr>`).join("")}</tbody></table></div>` : '<div class="empty">Aucun pack enregistré.</div>';
-    return `<div class="panel"><div class="admin-panel-head"><h3>${formTitle}</h3><span class="small-note">ID interne : ${esc(idLabel)} · Réf. publique : ${esc(editing?.public_ref || "attribuée automatiquement")}</span></div><form id="packForm" class="admin-form"><label class="full">Référence publique SAMA-PACK<input class="input" readonly value="${esc(editing?.public_ref || "Attribuée automatiquement à l’enregistrement")}"></label><label class="full">Nom du pack<input class="input" name="name" required maxlength="150" placeholder="Nom du pack" value="${esc(editing?.name||"")}"></label><label>Catégorie<input class="input" name="category" required maxlength="80" placeholder="Catégorie" value="${esc(editing?.cat||"")}"></label><label>Fournisseur associé<select class="input" name="supplier_id">${supplierOptions}</select></label><label>Référence chez le fournisseur<input class="input" name="supplier_ref" maxlength="100" placeholder="Réf. fournisseur (facultatif)" value="${esc(editing?.supplier_ref||"")}"></label><label>Coût d’achat total du pack (FCFA HT)<input class="input" name="supplier_price" type="number" min="0" step="0.01" placeholder="Coût de revient du pack" value="${editing?.supplier_price == null ? "" : Number(editing.supplier_price)}"></label><label>Marge souhaitée / majoration (%)<input class="input" name="margin_percent" type="number" min="0" max="1000" step="0.1" placeholder="Ex. 30" value="${editing?.margin_percent == null ? "" : Number(editing.margin_percent)}"></label><label>Prix du colis fournisseur (FCFA HT)<input class="input" name="supplier_carton_price" type="number" min="0" step="0.01" value="${editing?.carton_price == null ? "" : Number(editing.carton_price)}" placeholder="Optionnel"></label><label>Unités / lots par colis<input class="input" name="supplier_units_per_carton" maxlength="80" value="${esc(editing?.units_per_carton||"")}" placeholder="Ex. 12 pièces / colis"></label><label>Prix de vente calculé (FCFA)<input class="input selling-price-input" name="price" type="number" min="0" step="1" required placeholder="Prix en FCFA" value="${editing ? Number(editing.price) : ""}" ${editing?.supplier_price != null && editing?.margin_percent != null ? "readonly" : ""}></label><label>Disponibilité<select class="input" name="availability_status"><option value="available" ${(editing?.availability_status || "out_of_stock") === "available" ? "selected" : ""}>Disponible</option><option value="out_of_stock" ${(editing?.availability_status || "out_of_stock") === "out_of_stock" ? "selected" : ""}>Rupture de stock</option></select></label><p class="small-note price-calculation-feedback full" data-pricing-feedback>Renseigne le coût d’achat et la marge souhaitée pour calculer le prix de vente automatiquement.</p><textarea class="input full" name="description" required maxlength="1500" placeholder="Description du pack">${esc(editing?.desc||"")}</textarea><textarea class="input full" name="items" required placeholder="Composition : un élément par ligne">${esc(itemsStr)}</textarea><input class="input full" name="image_path" maxlength="500" placeholder="Chemin de l’image ou URL (facultatif)" value="${esc(editing?.image_path||"")}"><div class="promo-admin-fields full"><label class="check-label"><input type="checkbox" name="promo_active" ${editing?.promo_active===true ? "checked" : ""}> Afficher ce pack dans les promotions</label><label>Prix promotionnel (FCFA)<input class="input" name="promo_price" type="number" min="0" step="1" placeholder="Ex. 12 000" value="${editing?.promo_price == null ? "" : Number(editing.promo_price)}"></label><label>Texte de la promotion<input class="input" name="promo_label" maxlength="80" placeholder="Vente flash" value="${esc(editing?.promo_label||"Vente flash")}"></label><label class="full">Date et heure de fin de la vente flash<input class="input" type="datetime-local" name="promo_end_at" value="${esc(toLocalDateTimeInput(editing?.promo_end_at))}"></label><p class="small-note">Le prix promotionnel doit être inférieur au prix normal. La date de fin désactive la réduction à son échéance.</p></div><label class="full">Photo du pack (facultatif, JPG/PNG/WebP, 5 Mo maximum)<input class="input" name="image_file" type="file" accept="image/jpeg,image/png,image/webp"></label><label class="check-label full"><input type="checkbox" name="active" ${editing?.active===true?"checked":""}> Publier ce pack dans le catalogue</label><div class="form-actions full"><button class="btn primary" type="submit">${editing ? "Enregistrer les modifications" : "Créer le pack masqué"}</button>${editing ? `<button class="btn ghost" type="button" onclick="cancelPackEdit()">Annuler</button>` : ""}</div></form></div><div style="height:16px"></div><div class="panel"><div class="admin-panel-head"><h3>Catalogue complet (${rows.filter(p=>p.catalog_type === "pack").length} packs)</h3><span class="small-note">Les packs masqués restent dans la gestion et le stock.</span></div><label class="catalog-admin-search-label">Rechercher par référence, désignation ou fournisseur<input class="input" id="packAdminSearch" type="search" placeholder="Ex. SP-PACK-001, SNAD, Grand Ménage…"></label>${tableHtml}</div>`;
+    return `<div class="panel"><div class="admin-panel-head"><h3>${formTitle}</h3><span class="small-note">ID interne : ${esc(idLabel)} · Réf. publique : ${esc(editing?.public_ref || "attribuée automatiquement")}</span></div><form id="packForm" class="admin-form"><label class="full">Référence publique SAMA-PACK<input class="input" readonly value="${esc(editing?.public_ref || "Attribuée automatiquement à l’enregistrement")}"></label><label class="full">Nom du pack<input class="input" name="name" required maxlength="150" placeholder="Nom du pack" value="${esc(editing?.name||"")}"></label><label>Catégorie<input class="input" name="category" required maxlength="80" placeholder="Catégorie" value="${esc(editing?.cat||"")}"></label><label>Fournisseur associé<select class="input" name="supplier_id">${supplierOptions}</select></label><label>Référence chez le fournisseur<input class="input" name="supplier_ref" maxlength="100" placeholder="Réf. fournisseur (facultatif)" value="${esc(editing?.supplier_ref||"")}"></label><label>Coût d’achat total du pack (FCFA HT)<input class="input" name="supplier_price" type="number" min="0" step="0.01" placeholder="Coût de revient du pack" value="${editing?.supplier_price == null ? "" : Number(editing.supplier_price)}"></label><label>Marge souhaitée / majoration (%)<input class="input" name="margin_percent" type="number" min="0" max="1000" step="0.1" placeholder="Ex. 30" value="${editing?.margin_percent == null ? "" : Number(editing.margin_percent)}"></label><label>Prix du colis fournisseur (FCFA HT)<input class="input" name="supplier_carton_price" type="number" min="0" step="0.01" value="${editing?.carton_price == null ? "" : Number(editing.carton_price)}" placeholder="Optionnel"></label><label>Unités / lots par colis<input class="input" name="supplier_units_per_carton" maxlength="80" value="${esc(editing?.units_per_carton||"")}" placeholder="Ex. 12 pièces / colis"></label><label>Prix de vente calculé (FCFA)<input class="input selling-price-input" name="price" type="number" min="0" step="1" required placeholder="Prix en FCFA" value="${editing ? Number(editing.price) : ""}" ${editing?.supplier_price != null && editing?.margin_percent != null ? "readonly" : ""}></label><label>Disponibilité<select class="input" name="availability_status"><option value="available" ${(editing?.availability_status || "out_of_stock") === "available" ? "selected" : ""}>Disponible</option><option value="out_of_stock" ${(editing?.availability_status || "out_of_stock") === "out_of_stock" ? "selected" : ""}>Rupture de stock</option></select></label><p class="small-note price-calculation-feedback full" data-pricing-feedback>Renseigne le coût d’achat et la marge souhaitée pour calculer le prix de vente automatiquement.</p><textarea class="input full" name="description" required maxlength="1500" placeholder="Description du pack">${esc(editing?.desc||"")}</textarea><textarea class="input full" name="items" required placeholder="Composition : un élément par ligne">${esc(itemsStr)}</textarea><input class="input full" name="image_path" maxlength="500" placeholder="Chemin de l’image ou URL (facultatif)" value="${esc(editing?.image_path||"")}"><div class="promo-admin-fields full"><label class="check-label"><input type="checkbox" name="promo_active" ${editing?.promo_active===true ? "checked" : ""}> Afficher ce pack dans les promotions</label><label>Prix promotionnel (FCFA)<input class="input" name="promo_price" type="number" min="0" step="1" placeholder="Ex. 12 000" value="${editing?.promo_price == null ? "" : Number(editing.promo_price)}"></label><label>Texte de la promotion<input class="input" name="promo_label" maxlength="80" placeholder="Vente flash" value="${esc(editing?.promo_label||"Vente flash")}"></label><label class="full">Date et heure de fin de la vente flash<input class="input" type="datetime-local" name="promo_end_at" value="${esc(toLocalDateTimeInput(editing?.promo_end_at))}"></label><p class="small-note">Le prix promotionnel doit être inférieur au prix normal. La date de fin désactive la réduction à son échéance.</p></div><p class="small-note full">Photos actuellement enregistrées : ${getProductImages(editing || {}).length}. Jusqu’à 8 photos par pack.</p><label class="full">Photos du pack (JPG, PNG ou WebP · 5 Mo maximum par photo)<input class="input" name="image_files" type="file" accept="image/jpeg,image/png,image/webp" multiple></label><label class="check-label full"><input type="checkbox" name="replace_images"> Remplacer les photos actuelles par les nouvelles (ou les supprimer si aucune photo n’est choisie)</label><label class="check-label full"><input type="checkbox" name="active" ${editing?.active===true?"checked":""}> Publier ce pack dans le catalogue</label><div class="form-actions full"><button class="btn primary" type="submit">${editing ? "Enregistrer les modifications" : "Créer le pack masqué"}</button>${editing ? `<button class="btn ghost" type="button" onclick="cancelPackEdit()">Annuler</button>` : ""}</div></form></div><div style="height:16px"></div><div class="panel"><div class="admin-panel-head"><h3>Catalogue complet (${rows.filter(p=>p.catalog_type === "pack").length} packs)</h3><span class="small-note">Les packs masqués restent dans la gestion et le stock.</span></div><label class="catalog-admin-search-label">Rechercher par référence, désignation ou fournisseur<input class="input" id="packAdminSearch" type="search" placeholder="Ex. SP-PACK-001, SNAD, Grand Ménage…"></label>${tableHtml}</div>`;
   }
 
   function editPack(id) { editingProductId = id; showAdminView("packs"); }
@@ -2144,19 +2310,17 @@ if (!isAdmin()) { closeAdmin(); return toast("Accès administrateur requis.", tr
       const packSearch = $("packAdminSearch"); if (packSearch) packSearch.addEventListener("input", () => { const q=packSearch.value.toLowerCase().trim(); document.querySelectorAll("tr[data-admin-search-row]").forEach(row => { row.hidden = !row.dataset.search.includes(q); }); });
       const form = $("packForm"); if (form) { bindProductPriceCalculator(form); form.onsubmit = async e => {
         e.preventDefault(); if (!isAdmin()) return toast("Accès refusé.", true); setBusy(form,true,"Enregistrement…");
-        const fd = new FormData(form); const pricing = readProductPricing(fd); if (pricing.error) { setBusy(form,false); return toast(pricing.error,true); } const uploadFile = fd.get("image_file"); const promoPriceInput = String(fd.get("promo_price")||"").trim(); const promoEndInput = String(fd.get("promo_end_at")||"").trim(); const payload = { name:String(fd.get("name")||"").trim(),category:String(fd.get("category")||"").trim(),price:pricing.salePrice,description:String(fd.get("description")||"").trim(),items:String(fd.get("items")||"").split(/\r?\n/).map(x=>x.trim()).filter(Boolean),image_path:String(fd.get("image_path")||"").trim(),active:fd.get("active")==="on",availability_status:fd.get("availability_status")==="available"?"available":"out_of_stock",promo_active:fd.get("promo_active")==="on",promo_price:promoPriceInput === "" ? null : Number(promoPriceInput),promo_label:String(fd.get("promo_label")||"Vente flash").trim() || "Vente flash",promo_end_at:promoEndInput ? new Date(promoEndInput).toISOString() : null };
+        const fd = new FormData(form); const pricing = readProductPricing(fd); if (pricing.error) { setBusy(form,false); return toast(pricing.error,true); } const uploadFiles = fd.getAll("image_files"); const promoPriceInput = String(fd.get("promo_price")||"").trim(); const promoEndInput = String(fd.get("promo_end_at")||"").trim(); const payload = { name:String(fd.get("name")||"").trim(),category:String(fd.get("category")||"").trim(),price:pricing.salePrice,description:String(fd.get("description")||"").trim(),items:String(fd.get("items")||"").split(/\r?\n/).map(x=>x.trim()).filter(Boolean),image_path:String(fd.get("image_path")||"").trim(),active:fd.get("active")==="on",availability_status:fd.get("availability_status")==="available"?"available":"out_of_stock",promo_active:fd.get("promo_active")==="on",promo_price:promoPriceInput === "" ? null : Number(promoPriceInput),promo_label:String(fd.get("promo_label")||"Vente flash").trim() || "Vente flash",promo_end_at:promoEndInput ? new Date(promoEndInput).toISOString() : null };
         if (payload.active && payload.price <= 0) { setBusy(form,false); return toast("Définis un prix de vente supérieur à zéro avant la publication.",true); } if (payload.availability_status === "available" && payload.price <= 0) { setBusy(form,false); return toast("Définis un prix de vente supérieur à zéro avant de marquer le pack disponible.",true); } if (!payload.name || !payload.category || !payload.description || !payload.items.length || !Number.isFinite(payload.price) || payload.price < 0) { setBusy(form,false); return toast("Complète le nom, la catégorie, le prix, la description et la composition.",true); } if (payload.promo_active && (!Number.isFinite(payload.promo_price) || payload.promo_price < 0 || payload.promo_price >= payload.price)) { setBusy(form,false); return toast("Le prix promotionnel doit être positif et inférieur au prix normal.",true); } if (payload.promo_active && payload.promo_end_at && new Date(payload.promo_end_at).getTime() <= Date.now()) { setBusy(form,false); return toast("La fin de la vente flash doit être dans le futur.",true); } if (!payload.promo_active && !Number.isFinite(payload.promo_price)) payload.promo_price = null;
         if (payload.image_path && !/^https:\/\//i.test(payload.image_path) && /^(?:javascript:|data:|vbscript:)/i.test(payload.image_path)) { setBusy(form,false); return toast("Le chemin de l’image n’est pas valide.",true); }
         let productId = editingProductId || nextProductId();
-        if (uploadFile instanceof File && uploadFile.size > 0) {
-          const allowed = ["image/jpeg","image/png","image/webp"];
-          if (!allowed.includes(uploadFile.type) || uploadFile.size > 5 * 1024 * 1024) { setBusy(form,false); return toast("Choisis une image JPG, PNG ou WebP de 5 Mo maximum.",true); }
-          const ext = uploadFile.type === "image/jpeg" ? "jpg" : uploadFile.type === "image/png" ? "png" : "webp";
-          const path = `${productId}/${Date.now()}-${Math.random().toString(36).slice(2,8)}.${ext}`;
-          const { data:uploaded, error:uploadError } = await client.storage.from("sama-pack-products").upload(path,uploadFile,{cacheControl:"3600",upsert:false,contentType:uploadFile.type});
-          if (uploadError) { setBusy(form,false); return toast("Envoi de la photo impossible : " + errorMessage(uploadError),true); }
-          payload.image_path = client.storage.from("sama-pack-products").getPublicUrl(uploaded.path).data.publicUrl;
-        }
+        const replaceImages = fd.get("replace_images") === "on";
+        let existingImages = replaceImages ? [] : getProductImages(editingProductId ? getP(editingProductId) : null);
+        if (!replaceImages && payload.image_path && !existingImages.includes(payload.image_path)) existingImages.unshift(payload.image_path);
+        const imageUpload = await uploadProductImages(uploadFiles, productId, existingImages);
+        if (imageUpload.error) { setBusy(form,false); return toast(imageUpload.error,true); }
+        payload.image_paths = imageUpload.images;
+        payload.image_path = payload.image_paths[0] || (replaceImages ? "" : payload.image_path);
         let result;
         if (editingProductId) result = await client.from("products").update(payload).eq("id",editingProductId);
         else result = await client.from("products").insert({id:productId,...payload});
