@@ -3304,9 +3304,43 @@
     return `<div class="panel"><h3>Ajouter un fournisseur</h3><form id="supplierForm" class="admin-form"><input class="input" name="name" required placeholder="Nom du fournisseur"><input class="input" name="phone" placeholder="Téléphone"><input class="input full" name="family" placeholder="Famille de produits"><input class="input full" name="terms" placeholder="MOQ / délai / conditions"><button class="btn primary full" type="submit">Ajouter le fournisseur</button></form></div><div style="height:16px"></div><div class="panel"><h3>Fournisseurs (${rows.length})</h3>${rows.length ? `<div class="table-wrap"><table class="table"><thead><tr><th>Fournisseur</th><th>Téléphone</th><th>Famille</th><th>Conditions</th></tr></thead><tbody>${rows.map(s=>`<tr><td>${esc(s.name)}</td><td>${esc(s.phone||"")}</td><td>${esc(s.family||"")}</td><td>${esc(s.terms||"")}</td></tr>`).join("")}</tbody></table></div>` : '<div class="empty">Aucun fournisseur enregistré.</div>'}</div>`;
   }
   async function adminExpenses() {
-    const rows = await readRows("expenses"); cachedExpenses = rows;
-    return `<div class="panel"><h3>Enregistrer une dépense</h3><form id="expenseForm" class="admin-form"><input class="input" name="label" required maxlength="200" placeholder="Libellé"><input class="input" type="number" min="0" step="1" name="amount" required placeholder="Montant FCFA"><input class="input" name="category" placeholder="Catégorie"><input class="input" type="date" name="date" value="${new Date().toISOString().slice(0,10)}"><button class="btn primary full" type="submit">Enregistrer la dépense</button></form></div><div style="height:16px"></div><div class="panel"><h3>Dépenses — Total ${money(rows.reduce((s,x)=>s+Number(x.amount||0),0))}</h3>${rows.length ? `<div class="table-wrap"><table class="table"><thead><tr><th>Date</th><th>Libellé</th><th>Catégorie</th><th>Montant</th></tr></thead><tbody>${rows.sort((a,b)=>new Date(b.expense_date)-new Date(a.expense_date)).map(e=>`<tr><td>${esc(e.expense_date)}</td><td>${esc(e.label)}</td><td>${esc(e.category||"")}</td><td>${money(e.amount)}</td></tr>`).join("")}</tbody></table></div>` : '<div class="empty">Aucune dépense enregistrée.</div>'}</div>`;
+    const rows = await readRows("expenses");
+    cachedExpenses = rows;
+    const approved = rows.filter(row => row.approval_status === "approved");
+    const pending = rows.filter(row => row.approval_status === "pending");
+    const totalApproved = approved.reduce((sum,row) => sum + Number(row.amount || 0),0);
+    const statusLabel = row => row.approval_status === "approved" ? "Validée" : row.approval_status === "rejected" ? "Refusée" : "En attente";
+    const statusCss = row => row.approval_status === "approved" ? "delivered" : row.approval_status === "rejected" ? "cancelled" : "processing";
+    const table = rows.length
+      ? '<div class="table-wrap"><table class="table"><thead><tr><th>Date</th><th>Dépense</th><th>Catégorie</th><th>Montant</th><th>Statut</th>' + (isGeneralAdmin() ? '<th>Actions</th>' : '') + '</tr></thead><tbody>' +
+        rows.slice().sort((a,b) => new Date(b.expense_date)-new Date(a.expense_date)).map(row =>
+          '<tr><td>' + esc(row.expense_date) + '</td><td><strong>' + esc(row.label) + '</strong></td><td>' + esc(row.category || "") + '</td><td>' + money(row.amount) + '</td><td><span class="status ' + statusCss(row) + '">' + statusLabel(row) + '</span></td>' +
+          (isGeneralAdmin() ? '<td>' + (row.approval_status === "pending" ? '<div class="table-actions"><button class="btn small primary" onclick="setExpenseApproval(\'' + esc(row.id) + '\',\'approved\')">Valider</button><button class="btn small danger" onclick="setExpenseApproval(\'' + esc(row.id) + '\',\'rejected\')">Refuser</button></div>' : '<span class="small-note">' + esc(row.approved_by ? "Traitement effectué" : "—") + '</span>') + '</td>' : '') +
+          '</tr>'
+        ).join("") + '</tbody></table></div>'
+      : '<div class="empty">' + (isGeneralAdmin() ? "Aucune dépense enregistrée." : "Tu n’as soumis aucune dépense.") + '</div>';
+    return '<div class="panel"><h3>Soumettre une dépense</h3><p class="small-note">' +
+      (isGeneralAdmin() ? "Les dépenses saisies par le propriétaire sont validées immédiatement. Les demandes des associés doivent être approuvées ici." : "Tes dépenses sont soumises au propriétaire et restent en attente jusqu’à sa validation.") +
+      '</p><form id="expenseForm" class="admin-form"><input class="input" name="label" required maxlength="200" placeholder="Libellé"><input class="input" type="number" min="0" step="1" name="amount" required placeholder="Montant FCFA"><input class="input" name="category" placeholder="Catégorie"><input class="input" type="date" name="date" value="' + new Date().toISOString().slice(0,10) + '"><button class="btn primary full" type="submit">Soumettre la dépense</button></form></div>' +
+      '<div style="height:16px"></div><div class="panel"><div class="admin-panel-head"><h3>' + (isGeneralAdmin() ? "Suivi des dépenses" : "Mes dépenses soumises") + '</h3><span class="small-note">' +
+      (isGeneralAdmin() ? "Dépenses validées : " + money(totalApproved) + " · En attente : " + pending.length : "Les montants affichés ne sont pas des dépenses validées tant que le propriétaire ne les a pas approuvés.") +
+      '</span></div>' + table + '</div>';
   }
+
+  async function setExpenseApproval(id, status) {
+    if (!isGeneralAdmin()) return toast("Seul le propriétaire peut valider une dépense.", true);
+    if (!["approved","rejected"].includes(status)) return toast("Décision invalide.", true);
+    const { error } = await client.from("expenses").update({
+      approval_status: status,
+      approved_by: status === "approved" ? currentUser.id : null,
+      approved_at: status === "approved" ? new Date().toISOString() : null
+    }).eq("id", id).eq("approval_status", "pending");
+    if (error) return toast(errorMessage(error), true);
+    toast(status === "approved" ? "Dépense validée." : "Dépense refusée.");
+    await showAdminView("expenses");
+  }
+  window.setExpenseApproval = setExpenseApproval;
+
   async function adminMarketing() {
     const [campaigns, subscriberCountResult] = await Promise.all([
       readRows("customer_email_campaigns", "id,campaign_key,campaign_type,subject,product_id,status,recipients_total,recipients_sent,recipients_failed,error_message,created_at,completed_at"),
@@ -3440,7 +3474,7 @@
       toast(data?.message || "Invitation envoyée."); await showAdminView("admins");
     }; }
     if (view === "suppliers") { const form=$("supplierForm"); if(form) form.onsubmit=async e=>{e.preventDefault();setBusy(form,true,"Enregistrement…");const f=new FormData(form);const {error}=await client.from("suppliers").insert({name:String(f.get("name")||"").trim(),phone:String(f.get("phone")||"").trim(),family:String(f.get("family")||"").trim(),terms:String(f.get("terms")||"").trim()});setBusy(form,false);if(error)return toast(errorMessage(error),true);toast("Fournisseur ajouté.");await showAdminView("suppliers");}; }
-    if (view === "expenses") { const form=$("expenseForm"); if(form) form.onsubmit=async e=>{e.preventDefault();setBusy(form,true,"Enregistrement…");const f=new FormData(form);const {error}=await client.from("expenses").insert({id:"DEP-"+crypto.randomUUID().slice(0,8).toUpperCase(),label:String(f.get("label")||"").trim(),amount:Number(f.get("amount")),category:String(f.get("category")||"").trim(),expense_date:String(f.get("date")||new Date().toISOString().slice(0,10))});setBusy(form,false);if(error)return toast(errorMessage(error),true);toast("Dépense enregistrée.");await showAdminView("expenses");}; }
+    if (view === "expenses") { const form=$("expenseForm"); if(form) form.onsubmit=async e=>{e.preventDefault();setBusy(form,true,"Enregistrement…");const f=new FormData(form);const owner=isGeneralAdmin();const {error}=await client.from("expenses").insert({id:"DEP-"+crypto.randomUUID().slice(0,8).toUpperCase(),label:String(f.get("label")||"").trim(),amount:Number(f.get("amount")),category:String(f.get("category")||"").trim(),expense_date:String(f.get("date")||new Date().toISOString().slice(0,10)),submitted_by:currentUser.id,approval_status:owner?"approved":"pending",approved_by:owner?currentUser.id:null,approved_at:owner?new Date().toISOString():null});setBusy(form,false);if(error)return toast(errorMessage(error),true);toast(owner?"Dépense enregistrée et validée.":"Dépense soumise au propriétaire pour validation.");await showAdminView("expenses");}; }
     if (view === "quotes") { /* Le statut est enregistré dans le gestionnaire ci-dessous. */ }
     if (view === "settings") {
       const form = $("settingsForm");
