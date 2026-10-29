@@ -2613,3 +2613,94 @@ tr[hidden]{display:none!important}
   .profile-photo-actions { flex-direction: column; }
   .profile-photo-actions .btn { width: 100%; }
 }
+
+
+/* En-tête : photo de compte au-dessus du libellé */
+#accountBtn.account-nav-user {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  min-width: 64px;
+  min-height: 58px;
+  padding: 3px 7px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  background: transparent;
+  font-size: 11px;
+  line-height: 1.05;
+  white-space: nowrap;
+}
+#accountBtn.account-nav-user:hover {
+  border-color: #b4d8bf;
+  background: #f4faf5;
+}
+.account-nav-avatar {
+  display: grid;
+  flex: 0 0 32px;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  overflow: hidden;
+  border: 2px solid #dcfce7;
+  border-radius: 50%;
+  background: linear-gradient(145deg, #166534, #22c55e);
+  color: #fff;
+  box-shadow: 0 0 0 1px #bbf7d0;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: .02em;
+}
+.account-nav-avatar img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.account-nav-label {
+  display: block;
+  max-width: 78px;
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1.1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+@media (max-width: 600px) {
+  #accountBtn.account-nav-user {
+    min-width: 54px;
+    min-height: 51px;
+    padding: 2px 4px;
+    gap: 3px;
+    font-size: 10px;
+  }
+  .account-nav-avatar {
+    flex-basis: 27px;
+    width: 27px;
+    height: 27px;
+    border-width: 1.5px;
+    font-size: 10px;
+  }
+  .account-nav-label {
+    max-width: 62px;
+    font-size: 9px;
+  }
+}
+@media (max-width: 380px) {
+  #accountBtn.account-nav-user {
+    min-width: 48px;
+    padding-inline: 2px;
+  }
+  .account-nav-avatar {
+    flex-basis: 25px;
+    width: 25px;
+    height: 25px;
+  }
+  .account-nav-label {
+    max-width: 54px;
+    font-size: 8px;
+  }
+}
