@@ -3850,3 +3850,40 @@ body.general-admin-mode .general-admin-account-modal {
   .permission-option { padding: 11px; gap: 10px; }
   .permission-option-copy strong { font-size: 13px; }
 }
+
+
+/* SAMA-PACK — correctifs audit : accueil, cartes mobiles et fiches produits indexables */
+#home .hero-grid:has(#promoSection.hidden) { grid-template-columns: minmax(0, 1fr); }
+#home .hero-content { max-width: 820px; }
+.desktop-nav { gap: 16px; font-size: 13px; }
+.product-name-link { display:block; color:var(--ink); font-weight:900; line-height:1.25; text-decoration:none; }
+.product-name-link:hover { color:var(--green); text-decoration:underline; text-underline-offset:3px; }
+.product-load-error { grid-column:1/-1; padding:22px; border:1px solid #fecaca; border-radius:16px; background:#fff7f7; color:#7f1d1d; }
+.product-load-error p { margin:8px 0 14px; color:#7f1d1d; }
+.seo-product-layout { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:34px; align-items:start; }
+.seo-product-photo-wrap { min-height:300px; display:grid; place-items:center; border:1px solid var(--line); border-radius:22px; overflow:hidden; background:var(--alt); }
+.seo-product-photo { display:block; width:100%; height:auto; max-height:520px; object-fit:contain; }
+.seo-product-info { display:flex; flex-direction:column; gap:14px; }
+.seo-product-price { font-size:clamp(25px,3.5vw,38px); font-weight:950; letter-spacing:-.04em; }
+.seo-product-list { padding-left:22px; color:var(--muted); line-height:1.9; }
+.seo-product-breadcrumb { font-size:13px; color:var(--muted); margin-bottom:20px; }
+.seo-product-breadcrumb a { color:var(--green); font-weight:700; }
+.legal-content { max-width:880px; margin:0 auto; }
+.legal-content h2 { margin-top:32px; font-size:24px; letter-spacing:-.025em; }
+.legal-content p,.legal-content li { color:#475569; line-height:1.8; font-size:15px; }
+.legal-content ul { padding-left:22px; }
+.legal-updated { color:var(--muted); font-size:12px; margin-top:12px; }
+@media (max-width: 600px) {
+  .product-grid { grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
+  .product-card { min-width:0; border-radius:14px; }
+  .pack-visual { min-height:132px; padding:9px; }
+  .product-body { min-width:0; padding:11px; gap:9px; }
+  .product-name-link { font-size:14px; }
+  .product-desc { font-size:12px; min-height:0; }
+  .product-card .price { font-size:16px; }
+  .product-actions { flex-direction:column; gap:6px; }
+  .product-actions .btn { width:100%; min-height:36px; padding:8px; font-size:12px; }
+  .seo-product-layout { grid-template-columns:minmax(0,1fr); gap:22px; }
+  .seo-product-photo-wrap { min-height:220px; }
+  body.legal-page, body.product-detail-page { padding-bottom:calc(90px + env(safe-area-inset-bottom)); }
+}
