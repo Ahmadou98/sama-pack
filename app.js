@@ -20,6 +20,7 @@
   let products = FALLBACK_PRODUCTS.map(normalizeFallbackProduct);
   let currentUser = null;
   let currentProfile = null;
+  let profilePhotoPreviewUrl = null;
   let adminInitialized = true;
   let userNotifications = [];
   let notificationsChannel = null;
@@ -140,7 +141,7 @@
 
   async function getProfile(user = currentUser) {
     if (!client || !user) return null;
-    const { data, error } = await client.from("profiles").select("id,full_name,phone,phone_secondary,delivery_region,delivery_city,delivery_commune,delivery_neighborhood,delivery_address,delivery_landmark,delivery_instructions,email,role,is_super_admin,invited_by,created_at").eq("id", user.id).maybeSingle();
+    const { data, error } = await client.from("profiles").select("id,full_name,phone,phone_secondary,delivery_region,delivery_city,delivery_commune,delivery_neighborhood,delivery_address,delivery_landmark,delivery_instructions,email,role,is_super_admin,invited_by,created_at,avatar_path").eq("id", user.id).maybeSingle();
     if (error) { console.warn("Profile unavailable", error); return null; }
     return data;
   }
@@ -1458,9 +1459,15 @@
     const field = (label, name, value, placeholder, required = false, full = false) =>
       '<label class="' + (full ? 'full' : '') + '">' + label + '<input class="input" name="' + name + '" value="' + esc(value || '') + '" maxlength="300" placeholder="' + placeholder + '"' + (required ? ' required' : '') + '></label>';
     return '<section class="panel account-profile-panel">' +
-      '<div class="profile-card-header"><button type="button" class="profile-avatar" id="toggleProfileDetails" aria-label="Afficher mes informations" aria-expanded="false" aria-controls="profileDetails">' + esc(initials) + '</button><div class="profile-card-heading"><div class="eyebrow">ESPACE CLIENT</div><h3>Mon profil</h3><p class="small-note">Appuie sur le rond pour consulter tes informations personnelles.</p></div></div>' +
+      '<div class="profile-card-header"><button type="button" class="profile-avatar" id="toggleProfileDetails" aria-label="Afficher mes informations" aria-expanded="false" aria-controls="profileDetails">' + (p.avatar_url ? '<img class="profile-avatar-image" src="' + esc(p.avatar_url) + '" alt="Photo de profil">' : esc(initials)) + '</button><div class="profile-card-heading"><div class="eyebrow">ESPACE CLIENT</div><h3>Mon profil</h3><p class="small-note">Appuie sur le rond pour consulter tes informations personnelles.</p></div></div>' +
       '<div id="profileDetails" class="profile-details hidden">' +
       '<div class="profile-details-heading"><div><h3>' + esc(fullName) + '</h3><p class="small-note">' + esc(email) + '</p><span class="profile-completion ' + (isComplete ? 'is-complete' : 'is-incomplete') + '">' + (isComplete ? 'Profil renseigné' : 'Profil à compléter') + '</span></div></div>' +
+      '<section class="profile-photo-settings" aria-labelledby="profilePhotoTitle">' +
+      '<div class="profile-photo-preview-wrap">' + (p.avatar_url ? '<img id="profilePhotoPreview" class="profile-photo-preview" src="' + esc(p.avatar_url) + '" alt="Aperçu de la photo de profil">' : '<div id="profilePhotoPlaceholder" class="profile-photo-placeholder">' + esc(initials) + '</div><img id="profilePhotoPreview" class="profile-photo-preview hidden" alt="Aperçu de la nouvelle photo">') + '</div>' +
+      '<div class="profile-photo-content"><div><h4 id="profilePhotoTitle">Photo de profil <span class="profile-photo-optional">Facultative</span></h4><p class="small-note">Recommandée pour personnaliser ton compte.</p></div>' +
+      '<label class="profile-photo-input-label">Choisir une photo<input class="input" id="profilePhotoInput" type="file" accept="image/jpeg,image/png,image/webp"></label>' +
+      '<p class="small-note profile-photo-help">JPG, PNG ou WebP · 2 Mo maximum. Ta photo reste privée.</p>' +
+      '<div class="profile-photo-actions"><button type="button" class="btn primary small" id="saveProfilePhotoBtn" disabled>Enregistrer la photo</button>' + (p.avatar_path ? '<button type="button" class="btn ghost small" id="removeProfilePhotoBtn">Retirer la photo</button>' : '') + '</div></div></section>' +
       '<div class="profile-summary-heading"><div><h4>Mes informations</h4><p class="small-note">Tes coordonnées sont conservées pour accélérer tes prochaines commandes.</p></div><button class="btn primary small" id="editProfileBtn" type="button">Modifier le profil</button></div>' +
       '<div class="profile-summary-grid" id="profileSummary">' +
       summaryItem('Nom complet', fullName) +
@@ -1513,7 +1520,7 @@
       const { error: authError } = await client.auth.updateUser({ data: { full_name: name, phone } });
       if (authError) throw authError;
       const { data, error } = await client.from('profiles').update(profilePayload).eq('id', currentUser.id)
-        .select('id,full_name,phone,phone_secondary,delivery_region,delivery_city,delivery_commune,delivery_neighborhood,delivery_address,delivery_landmark,delivery_instructions,email,role,is_super_admin,invited_by,created_at').maybeSingle();
+        .select('id,full_name,phone,phone_secondary,delivery_region,delivery_city,delivery_commune,delivery_neighborhood,delivery_address,delivery_landmark,delivery_instructions,email,role,is_super_admin,invited_by,created_at,avatar_path').maybeSingle();
       if (error) throw error;
       if (!data) throw new Error('Aucune modification du profil n’a été enregistrée.');
       currentProfile = data;
@@ -1526,9 +1533,93 @@
     }
   }
 
+  async function uploadCustomerProfilePhoto(fileInput) {
+    if (!currentUser || !fileInput) return;
+    const file = fileInput.files?.[0];
+    if (!file) return toast("Choisis d’abord une photo.", true);
+    const allowedTypes = ["image/jpeg", "image/png", "image/webp"];
+    if (!allowedTypes.includes(file.type)) return toast("Format non pris en charge. Utilise une image JPG, PNG ou WebP.", true);
+    if (file.size > 2 * 1024 * 1024) return toast("La photo doit faire 2 Mo maximum.", true);
+
+    const ext = file.type === "image/png" ? "png" : file.type === "image/webp" ? "webp" : "jpg";
+    const oldPath = currentProfile?.avatar_path || "";
+    const path = currentUser.id + "/profile-" + Date.now() + "." + ext;
+    const button = $("saveProfilePhotoBtn");
+    if (button) { button.disabled = true; button.dataset.oldText = button.textContent; button.textContent = "Envoi…"; }
+
+    try {
+      const bucket = client.storage.from("sama-pack-avatars");
+      const { error: uploadError } = await bucket.upload(path, file, {
+        cacheControl: "3600",
+        contentType: file.type,
+        upsert: false
+      });
+      if (uploadError) throw uploadError;
+
+      const { data, error: profileError } = await client.from("profiles")
+        .update({ avatar_path: path, updated_at: new Date().toISOString() })
+        .eq("id", currentUser.id)
+        .select("id,avatar_path")
+        .maybeSingle();
+      if (profileError || !data) {
+        await bucket.remove([path]);
+        if (profileError) throw profileError;
+        throw new Error("La photo a été envoyée mais le profil n’a pas été mis à jour.");
+      }
+
+      currentProfile = { ...(currentProfile || {}), avatar_path: path };
+      if (oldPath && oldPath !== path) {
+        const { error: cleanupError } = await bucket.remove([oldPath]);
+        if (cleanupError) console.warn("Ancienne photo non supprimée", cleanupError);
+      }
+      if (profilePhotoPreviewUrl) URL.revokeObjectURL(profilePhotoPreviewUrl);
+      profilePhotoPreviewUrl = null;
+      toast("Photo de profil enregistrée.");
+      await showAccountHome();
+      $("toggleProfileDetails")?.click();
+    } catch (error) {
+      toast(errorMessage(error), true);
+      if (button) { button.disabled = false; button.textContent = button.dataset.oldText || "Enregistrer la photo"; }
+    }
+  }
+
+  async function removeCustomerProfilePhoto() {
+    if (!currentUser || !currentProfile?.avatar_path) return;
+    const oldPath = currentProfile.avatar_path;
+    const button = $("removeProfilePhotoBtn");
+    if (button) { button.disabled = true; button.textContent = "Retrait…"; }
+    try {
+      const { data, error } = await client.from("profiles")
+        .update({ avatar_path: null, updated_at: new Date().toISOString() })
+        .eq("id", currentUser.id)
+        .select("id,avatar_path")
+        .maybeSingle();
+      if (error) throw error;
+      if (!data) throw new Error("La photo n’a pas pu être retirée du profil.");
+      currentProfile = { ...(currentProfile || {}), avatar_path: null };
+      const { error: removeError } = await client.storage.from("sama-pack-avatars").remove([oldPath]);
+      if (removeError) console.warn("La photo retirée du profil n’a pas pu être supprimée du stockage", removeError);
+      if (profilePhotoPreviewUrl) URL.revokeObjectURL(profilePhotoPreviewUrl);
+      profilePhotoPreviewUrl = null;
+      toast("Photo de profil retirée.");
+      await showAccountHome();
+      $("toggleProfileDetails")?.click();
+    } catch (error) {
+      toast(errorMessage(error), true);
+      if (button) { button.disabled = false; button.textContent = "Retirer la photo"; }
+    }
+  }
+
   async function showAccountHome() {
     if (!currentUser) { renderAuthForm("login"); return; }
     const p = currentProfile || await getProfile();
+    let profileAvatarUrl = "";
+    if (p?.avatar_path) {
+      const { data: avatarData, error: avatarError } = await client.storage.from("sama-pack-avatars").createSignedUrl(p.avatar_path, 60 * 60);
+      if (avatarError) console.warn("Photo de profil indisponible", avatarError);
+      else profileAvatarUrl = avatarData?.signedUrl || "";
+    }
+    const profileForDisplay = { ...(p || {}), avatar_url: profileAvatarUrl };
     const businessResult = await client.from("business_accounts").select("*").eq("owner_user_id", currentUser.id).maybeSingle();
     currentBusinessAccount = businessResult.error ? null : (businessResult.data || null);
     const { data: activeSalesCode } = await client.from("sales_referral_codes").select("code,label").eq("owner_user_id", currentUser.id).eq("active", true).maybeSingle();
@@ -1567,7 +1658,7 @@
           '<button type="button" class="account-tab" role="tab" aria-selected="false" data-account-tab="security"><span class="account-tab-icon">⌑</span><span>Sécurité</span></button>' +
         '</nav>' +
         '<section class="account-tab-panel" id="accountTab-profile" role="tabpanel">' +
-          salesLinkHtml + customerProfileFormHtml(p) +
+          salesLinkHtml + customerProfileFormHtml(profileForDisplay) +
           '<div class="panel account-business-launch"><div><h3>Vous êtes un professionnel ?</h3><p class="small-note">Enregistrez votre entreprise, demandez des devis détaillés et retrouvez ses commandes en quantité.</p></div><button class="btn secondary" onclick="openB2BWorkspace()">Espace professionnel</button></div>' +
         '</section>' +
         '<section class="account-tab-panel hidden" id="accountTab-orders" role="tabpanel">' +
@@ -1631,6 +1722,40 @@
       profileDetailsToggle.classList.toggle("is-expanded", visible);
     };
     if (profileDetailsToggle) profileDetailsToggle.onclick = () => setProfileDetailsVisible(profileDetails.classList.contains("hidden"));
+
+    const profilePhotoInput = $("profilePhotoInput");
+    const saveProfilePhotoBtn = $("saveProfilePhotoBtn");
+    if (profilePhotoInput && saveProfilePhotoBtn) {
+      profilePhotoInput.onchange = () => {
+        const file = profilePhotoInput.files?.[0];
+        saveProfilePhotoBtn.disabled = !file;
+        if (file && !["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
+          profilePhotoInput.value = "";
+          saveProfilePhotoBtn.disabled = true;
+          return toast("Format non pris en charge. Utilise une image JPG, PNG ou WebP.", true);
+        }
+        if (file && file.size > 2 * 1024 * 1024) {
+          profilePhotoInput.value = "";
+          saveProfilePhotoBtn.disabled = true;
+          return toast("La photo doit faire 2 Mo maximum.", true);
+        }
+        const preview = $("profilePhotoPreview");
+        const placeholder = $("profilePhotoPlaceholder");
+        if (file && preview) {
+          if (profilePhotoPreviewUrl) URL.revokeObjectURL(profilePhotoPreviewUrl);
+          profilePhotoPreviewUrl = URL.createObjectURL(file);
+          preview.src = profilePhotoPreviewUrl;
+          preview.classList.remove("hidden");
+          if (placeholder) placeholder.classList.add("hidden");
+        } else if (preview) {
+          preview.classList.toggle("hidden", !currentProfile?.avatar_path);
+          if (placeholder) placeholder.classList.toggle("hidden", Boolean(currentProfile?.avatar_path));
+        }
+      };
+      saveProfilePhotoBtn.onclick = () => uploadCustomerProfilePhoto(profilePhotoInput);
+    }
+    const removeProfilePhotoBtn = $("removeProfilePhotoBtn");
+    if (removeProfilePhotoBtn) removeProfilePhotoBtn.onclick = removeCustomerProfilePhoto;
 
     const profileEditBtn = $("editProfileBtn");
     const profileSummary = $("profileSummary");
