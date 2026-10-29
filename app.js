@@ -1621,7 +1621,41 @@
     }
   }
 
-  function showGeneralAdminHome() {
+  async function saveGeneralAdminProfile(form) {
+    if (!currentUser || !client || !form) return;
+    const fd = new FormData(form);
+    const name = String(fd.get("full_name") || "").trim();
+    const phoneRaw = String(fd.get("phone") || "").trim();
+    const phone = normalizeWhatsAppNumber(phoneRaw);
+    const secondaryRaw = String(fd.get("phone_secondary") || "").trim();
+    const phoneSecondary = secondaryRaw ? normalizeWhatsAppNumber(secondaryRaw) : "";
+    if (name.length < 2) return toast("Saisis ton nom complet (au moins 2 caractères).", true);
+    if (!phone) return toast("Saisis un numéro WhatsApp valide.", true);
+    if (secondaryRaw && !phoneSecondary) return toast("Le téléphone supplémentaire n’est pas valide.", true);
+
+    setBusy(form, true, "Enregistrement…");
+    try {
+      const { error: authError } = await client.auth.updateUser({ data: { full_name: name, phone } });
+      if (authError) throw authError;
+      const { data, error } = await client.from("profiles")
+        .update({ full_name: name, phone, phone_secondary: phoneSecondary, updated_at: new Date().toISOString() })
+        .eq("id", currentUser.id)
+        .select("id,full_name,phone,phone_secondary,delivery_region,delivery_city,delivery_commune,delivery_neighborhood,delivery_address,delivery_landmark,delivery_instructions,email,role,is_super_admin,invited_by,created_at,avatar_path")
+        .maybeSingle();
+      if (error) throw error;
+      if (!data) throw new Error("Aucune modification du profil n’a été enregistrée.");
+      currentProfile = data;
+      await refreshAccountButtonAvatar();
+      toast("Les informations de ton profil ont été mises à jour.");
+      await showAccountHome();
+    } catch (error) {
+      toast(errorMessage(error), true);
+    } finally {
+      if (form.isConnected) setBusy(form, false);
+    }
+  }
+
+  async function showGeneralAdminHome() {
     const profile = currentProfile || {};
     const displayName = String(profile.full_name || currentUser?.email || "Administrateur général");
     const initialsParts = displayName.trim().split(/[\s._-]+/).filter(Boolean);
@@ -1629,18 +1663,87 @@
       ? initialsParts[0].charAt(0) + initialsParts[initialsParts.length - 1].charAt(0)
       : (initialsParts[0] || "AG").slice(0, 2)).toUpperCase();
     const email = String(currentUser?.email || profile.email || "");
+    let avatarUrl = "";
+    if (profile.avatar_path && client) {
+      const { data, error } = await client.storage.from("sama-pack-avatars").createSignedUrl(profile.avatar_path, 60 * 60);
+      if (error) console.warn("Photo du profil administrateur indisponible", error);
+      else avatarUrl = data?.signedUrl || "";
+      accountButtonAvatarPath = profile.avatar_path;
+      accountButtonAvatarUrl = avatarUrl;
+      updateAccountButtons();
+    }
+    const avatarMarkup = avatarUrl
+      ? '<img src="' + esc(avatarUrl) + '" alt="Photo de profil">'
+      : esc(initials);
+    const profilePhotoMarkup = avatarUrl
+      ? '<img id="profilePhotoPreview" class="profile-photo-preview" src="' + esc(avatarUrl) + '" alt="Aperçu de la photo de profil">'
+      : '<div id="profilePhotoPlaceholder" class="profile-photo-placeholder">' + esc(initials) + '</div><img id="profilePhotoPreview" class="profile-photo-preview hidden" alt="Aperçu de la nouvelle photo">';
     showModal(
-      '<div class="modal-head general-admin-modal-head"><div><div class="eyebrow">ESPACE DE PILOTAGE</div><h2>Compte administrateur général</h2><p class="small-note">Ce compte est réservé à la gestion de SAMA-PACK, pas aux achats clients.</p></div><button class="close" onclick="closeModal()" aria-label="Fermer">✕</button></div>' +
-      '<section class="general-admin-identity"><div class="general-admin-avatar" aria-hidden="true">' + esc(initials) + '</div><div><span class="general-admin-role">ADMINISTRATEUR GÉNÉRAL</span><h3>' + esc(displayName) + '</h3><p>' + esc(email) + '</p><span class="general-admin-status">Accès de gestion actif</span></div></section>' +
+      '<div class="modal-head general-admin-modal-head"><div><div class="eyebrow">ESPACE DE PILOTAGE</div><h2>Compte administrateur général</h2><p class="small-note">Gère tes coordonnées et la sécurité de ton compte SAMA-PACK.</p></div><button class="close" onclick="closeModal()" aria-label="Fermer">✕</button></div>' +
+      '<section class="general-admin-identity"><div class="general-admin-avatar" aria-hidden="true">' + avatarMarkup + '</div><div><span class="general-admin-role">ADMINISTRATEUR GÉNÉRAL</span><h3>' + esc(displayName) + '</h3><p>' + esc(email) + '</p><span class="general-admin-status">Accès de gestion actif</span></div></section>' +
       '<section class="general-admin-control"><div><span class="general-admin-kicker">GESTION DE LA BOUTIQUE</span><h3>Administration SAMA-PACK</h3><p>Accède aux commandes, clients, produits, stocks, fournisseurs, devis, comptes administrateurs et paramètres depuis le panneau de gestion.</p></div><button class="btn primary full" type="button" onclick="closeModal();openAdmin()">Ouvrir le panneau de gestion</button></section>' +
+      '<section class="general-admin-control general-admin-profile-control"><div><span class="general-admin-kicker">INFORMATIONS PERSONNELLES</span><h3>Mon profil</h3><p>Modifie ton nom et tes numéros de contact. L’adresse e-mail de connexion ne peut pas être changée depuis cet écran.</p></div>' +
+        '<section class="profile-photo-settings general-admin-profile-photo" aria-labelledby="profilePhotoTitle">' +
+          '<div class="profile-photo-preview-wrap">' + profilePhotoMarkup + '</div>' +
+          '<div class="profile-photo-content"><div><h4 id="profilePhotoTitle">Photo de profil <span class="profile-photo-optional">Facultative</span></h4><p class="small-note">JPG, PNG ou WebP · 2 Mo maximum. Ta photo reste privée.</p></div>' +
+          '<label class="profile-photo-input-label">Choisir une photo<input class="input" id="profilePhotoInput" type="file" accept="image/jpeg,image/png,image/webp"></label>' +
+          '<div class="profile-photo-actions"><button type="button" class="btn primary small" id="saveProfilePhotoBtn" disabled>Enregistrer la photo</button>' + (profile.avatar_path ? '<button type="button" class="btn ghost small" id="removeProfilePhotoBtn">Retirer la photo</button>' : '') + '</div></div></section>' +
+        '<form id="generalAdminProfileForm" class="checkout-grid general-admin-profile-form">' +
+          '<label class="full">Adresse e-mail de connexion<input class="input" type="email" value="' + esc(email) + '" disabled readonly></label>' +
+          '<label class="full">Nom complet<input class="input" name="full_name" value="' + esc(profile.full_name || "") + '" maxlength="150" required autocomplete="name" placeholder="Prénom et nom"></label>' +
+          '<label>WhatsApp principal<input class="input" name="phone" type="tel" inputmode="tel" value="' + esc(profile.phone || "") + '" required maxlength="25" autocomplete="tel" placeholder="+221 77 123 45 67"></label>' +
+          '<label>Téléphone supplémentaire (facultatif)<input class="input" name="phone_secondary" type="tel" inputmode="tel" value="' + esc(profile.phone_secondary || "") + '" maxlength="25" placeholder="+221 …"></label>' +
+          '<button class="btn primary full" type="submit">Enregistrer les informations</button></form></section>' +
       '<section class="general-admin-control general-admin-security"><div><span class="general-admin-kicker">SÉCURITÉ</span><h3>Mot de passe</h3><p>Modifie le mot de passe de ce compte administrateur.</p></div><form id="generalAdminPasswordForm" class="checkout-grid">' +
         '<label class="full password-field">Nouveau mot de passe<span class="password-input-wrap"><input class="input" id="generalAdminNewPassword" name="password" type="password" minlength="8" required placeholder="8 caractères minimum" autocomplete="new-password">' + passwordVisibilityToggleHtml("generalAdminNewPassword") + '</span></label>' +
         '<label class="full password-field">Confirmer le mot de passe<span class="password-input-wrap"><input class="input" id="generalAdminConfirmPassword" name="password_confirmation" type="password" minlength="8" required placeholder="Confirme le nouveau mot de passe" autocomplete="new-password">' + passwordVisibilityToggleHtml("generalAdminConfirmPassword") + '</span></label>' +
         '<button class="btn secondary full" type="submit">Mettre à jour le mot de passe</button></form></section>' +
       '<button class="btn ghost full account-signout" type="button" onclick="signOut()">Se déconnecter</button>'
     );
+
     const accountModalCard = document.querySelector(".modal-card");
     if (accountModalCard) accountModalCard.classList.add("general-admin-account-modal");
+
+    const profileForm = $("generalAdminProfileForm");
+    if (profileForm) profileForm.onsubmit = async event => {
+      event.preventDefault();
+      await saveGeneralAdminProfile(profileForm);
+    };
+
+    const profilePhotoInput = $("profilePhotoInput");
+    const saveProfilePhotoBtn = $("saveProfilePhotoBtn");
+    if (profilePhotoInput && saveProfilePhotoBtn) {
+      profilePhotoInput.onchange = () => {
+        const file = profilePhotoInput.files?.[0];
+        saveProfilePhotoBtn.disabled = !file;
+        if (file && !["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
+          profilePhotoInput.value = "";
+          saveProfilePhotoBtn.disabled = true;
+          return toast("Format non pris en charge. Utilise une image JPG, PNG ou WebP.", true);
+        }
+        if (file && file.size > 2 * 1024 * 1024) {
+          profilePhotoInput.value = "";
+          saveProfilePhotoBtn.disabled = true;
+          return toast("La photo doit faire 2 Mo maximum.", true);
+        }
+        const preview = $("profilePhotoPreview");
+        const placeholder = $("profilePhotoPlaceholder");
+        if (file && preview) {
+          if (profilePhotoPreviewUrl) URL.revokeObjectURL(profilePhotoPreviewUrl);
+          profilePhotoPreviewUrl = URL.createObjectURL(file);
+          preview.src = profilePhotoPreviewUrl;
+          preview.classList.remove("hidden");
+          if (placeholder) placeholder.classList.add("hidden");
+        } else if (preview) {
+          preview.classList.toggle("hidden", !currentProfile?.avatar_path);
+          if (placeholder) placeholder.classList.toggle("hidden", Boolean(currentProfile?.avatar_path));
+        }
+      };
+      saveProfilePhotoBtn.onclick = () => uploadCustomerProfilePhoto(profilePhotoInput);
+    }
+    const removeProfilePhotoBtn = $("removeProfilePhotoBtn");
+    if (removeProfilePhotoBtn) removeProfilePhotoBtn.onclick = removeCustomerProfilePhoto;
+
     const form = $("generalAdminPasswordForm");
     if (form) {
       bindPasswordVisibilityToggles(form);
@@ -1659,10 +1762,9 @@
       };
     }
   }
-
   async function showAccountHome() {
     if (!currentUser) { renderAuthForm("login"); return; }
-    if (isGeneralAdmin()) { showGeneralAdminHome(); return; }
+    if (isGeneralAdmin()) { await showGeneralAdminHome(); return; }
     const p = currentProfile || await getProfile();
     let profileAvatarUrl = "";
     if (p?.avatar_path) {
