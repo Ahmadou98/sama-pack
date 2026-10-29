@@ -148,8 +148,8 @@
 
 <div id="adminPanel" class="admin-overlay hidden">
   <div class="admin-shell">
-    <aside class="admin-sidebar" aria-label="Navigation de gestion">
-      <div class="brand admin-brand"><span class="brand-mark">S</span><span>SAMA<span>-PACK</span></span></div>
+    <aside class="admin-sidebar" id="adminSidebar" aria-label="Navigation de gestion">
+      <div class="admin-sidebar-header"><div class="brand admin-brand"><span class="brand-mark">S</span><span>SAMA<span>-PACK</span></span></div><button class="admin-menu-toggle" id="adminMenuToggle" type="button" aria-controls="adminSidebarContent" aria-expanded="false" aria-label="Ouvrir le menu de gestion"><span class="admin-menu-icon" aria-hidden="true"><i></i><i></i><i></i></span><span>Menu</span></button></div><div class="admin-sidebar-content" id="adminSidebarContent">
       <div class="admin-session-label" id="adminFlag">Espace réservé aux administrateurs</div>
       <label class="admin-nav-search" for="adminNavSearch"><span>Retrouver une rubrique</span><input id="adminNavSearch" class="input" type="search" placeholder="Ex. stock, devis, client…" autocomplete="off"></label>
       <div class="admin-nav-group">
@@ -188,6 +188,7 @@
         <button class="btn small ghost full" id="viewShopBtnSide">Voir la boutique</button>
         <button class="link-btn" id="closeAdminBtn">Fermer la gestion</button>
       </div>
+    </div>
     </aside>
     <section class="admin-main">
       <div class="admin-top">
