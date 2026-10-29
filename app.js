@@ -3172,16 +3172,16 @@
   }
 
   async function adminStock() {
-    const stockResult = await client.from("stock").select("product_id,quantity,min_quantity,supplier,updated_at");
+    const stockResult = await client.from("stock").select("product_id,quantity,min_quantity,updated_at");
     if (stockResult.error) throw stockResult.error;
     const productResult = await client.from("products").select("id,public_ref,name,category,catalog_type,price,active,availability_status").order("name",{ascending:true});
     if (productResult.error) throw productResult.error;
-    let links = [], suppliers = [], stockCosts = new Map();
+    let links = [], suppliers = [], stockCosts = new Map(), stockSuppliers = new Map();
     if (isGeneralAdmin()) {
       const [linkResult,supplierResult,costResult] = await Promise.all([
         client.from("product_supplier_links").select("product_id,supplier_id,supplier_ref"),
         client.from("suppliers").select("id,name").order("name",{ascending:true}),
-        client.rpc("sama_get_stock_costs")
+        client.rpc("sama_get_stock_procurement")
       ]);
       if (linkResult.error) throw linkResult.error;
       if (supplierResult.error) throw supplierResult.error;
@@ -3189,9 +3189,10 @@
       links = linkResult.data || [];
       suppliers = supplierResult.data || [];
       stockCosts = new Map((costResult.data || []).map(row => [row.product_id, Number(row.unit_cost || 0)]));
+      stockSuppliers = new Map((costResult.data || []).map(row => [row.product_id, String(row.supplier || "")]));
     }
     const rows = (stockResult.data || []).map(row => isGeneralAdmin()
-      ? { ...row, unit_cost: Number(stockCosts.get(row.product_id) || 0) }
+      ? { ...row, unit_cost: Number(stockCosts.get(row.product_id) || 0), supplier: stockSuppliers.get(row.product_id) || "" }
       : row);
     stockRows = rows;
     products = (productResult.data || []).map(normalizeProduct);
@@ -3203,7 +3204,7 @@
       const link = linkByProduct.get(p.id) || {};
       const supplierLabel = isGeneralAdmin()
         ? esc(link.supplier_name || s.supplier || "—") + (link.supplier_ref ? '<br><span class="small-note">Réf. ' + esc(link.supplier_ref) + '</span>' : "")
-        : esc(s.supplier || "—");
+        : '<span class="small-note">Réservé au propriétaire</span>';
       const unitCost = Number(stockCosts.get(p.id) || 0);
       const stockCostCell = isGeneralAdmin()
         ? '<td><input class="input stock-field" type="number" min="0" step="0.01" aria-label="Coût unitaire du stock" data-stock-id="' + esc(p.id) + '" data-stock-key="unit_cost" value="' + unitCost + '"><br><span class="small-note">Valeur : ' + money(Number(s.quantity || 0) * unitCost) + '</span></td>'
@@ -3574,9 +3575,11 @@
         if (!isGeneralAdmin() && !hasAdminPermission("stock.update")) { toast("Tu peux consulter le stock, mais pas le modifier.", true); return showAdminView("stock"); }
         if (key !== "supplier") { val = Number(val); if (!Number.isFinite(val) || val < 0) { toast("Valeur numérique invalide.",true); return showAdminView("stock"); } }
         const existing = stockRows.find(x=>x.product_id===productId);
-        const row = { product_id: productId, quantity: Number(existing?.quantity||0), min_quantity: Number(existing?.min_quantity||0), supplier: existing?.supplier||"", ...(isGeneralAdmin() ? { unit_cost: Number(existing?.unit_cost||0) } : {}) };
+        if (key === "supplier") { toast("La gestion des fournisseurs est réservée au propriétaire.", true); return showAdminView("stock"); }
+        const row = { product_id: productId, quantity: Number(existing?.quantity||0), min_quantity: Number(existing?.min_quantity||0), ...(isGeneralAdmin() ? { supplier: existing?.supplier||"", unit_cost: Number(existing?.unit_cost||0) } : {}) };
         row[key] = val;
-        const { error } = await client.from("stock").upsert(row,{onConflict:"product_id"});
+        const writeRow = { product_id: productId, quantity: row.quantity, min_quantity: row.min_quantity, ...(isGeneralAdmin() ? { unit_cost: Number(row.unit_cost||0) } : {}) };
+        const { error } = await client.from("stock").upsert(writeRow,{onConflict:"product_id"});
         if (error) toast(errorMessage(error),true); else { const idx = stockRows.findIndex(x=>x.product_id===productId); if (idx>=0) stockRows[idx]=row; else stockRows.push(row);
           if (key === "quantity") { const newStatus = Number(val) > 0 ? "available" : "out_of_stock"; const { error:statusError } = await client.from("products").update({ availability_status:newStatus, updated_at:new Date().toISOString() }).eq("id",productId); if (statusError) return toast("Stock enregistré, disponibilité non mise à jour : " + errorMessage(statusError),true); await loadPublicData(); }
           toast("Stock enregistré."); }
