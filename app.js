@@ -3176,16 +3176,19 @@
     if (stockResult.error) throw stockResult.error;
     const productResult = await client.from("products").select("id,public_ref,name,category,catalog_type,price,active,availability_status").order("name",{ascending:true});
     if (productResult.error) throw productResult.error;
-    let links = [], suppliers = [];
+    let links = [], suppliers = [], stockCosts = new Map();
     if (isGeneralAdmin()) {
-      const [linkResult,supplierResult] = await Promise.all([
+      const [linkResult,supplierResult,costResult] = await Promise.all([
         client.from("product_supplier_links").select("product_id,supplier_id,supplier_ref"),
-        client.from("suppliers").select("id,name").order("name",{ascending:true})
+        client.from("suppliers").select("id,name").order("name",{ascending:true}),
+        client.rpc("sama_get_stock_costs")
       ]);
       if (linkResult.error) throw linkResult.error;
       if (supplierResult.error) throw supplierResult.error;
+      if (costResult.error) throw costResult.error;
       links = linkResult.data || [];
       suppliers = supplierResult.data || [];
+      stockCosts = new Map((costResult.data || []).map(row => [row.product_id, Number(row.unit_cost || 0)]));
     }
     const rows = stockResult.data || [];
     stockRows = rows;
@@ -3197,19 +3200,23 @@
       const s = rows.find(x => x.product_id === p.id) || {quantity:0,min_quantity:0,supplier:""};
       const link = linkByProduct.get(p.id) || {};
       const supplierLabel = isGeneralAdmin()
-        ? (link.supplier_name || s.supplier || "—") + (link.supplier_ref ? '<br><span class="small-note">Réf. ' + esc(link.supplier_ref) + '</span>' : "")
+        ? esc(link.supplier_name || s.supplier || "—") + (link.supplier_ref ? '<br><span class="small-note">Réf. ' + esc(link.supplier_ref) + '</span>' : "")
         : esc(s.supplier || "—");
+      const unitCost = Number(stockCosts.get(p.id) || 0);
+      const stockCostCell = isGeneralAdmin()
+        ? '<td>' + money(unitCost) + '<br><span class="small-note">Valeur : ' + money(Number(s.quantity || 0) * unitCost) + '</span></td>'
+        : "";
       const searchText = [p.public_ref,p.id,p.name,p.category,link.supplier_name,link.supplier_ref,s.supplier].join(" ").toLowerCase();
       return '<tr data-stock-search-row data-search="' + esc(searchText) + '">' +
         '<td><strong>' + esc(p.public_ref || p.id) + '</strong><br>' + esc(p.name) + '<br><span class="small-note">' + esc(p.category || p.cat || "") + '</span></td>' +
-        '<td>' + supplierLabel + '</td>' +
+        '<td>' + supplierLabel + '</td>' + stockCostCell +
         '<td><input class="input stock-field" type="number" min="0" step="1" aria-label="Quantité en stock" data-stock-id="' + esc(p.id) + '" data-stock-key="quantity" ' + (!isGeneralAdmin() && !hasAdminPermission("stock.update") ? "disabled" : "") + ' value="' + Number(s.quantity||0) + '"></td>' +
         '<td><input class="input stock-field" type="number" min="0" step="1" aria-label="Seuil d’alerte" data-stock-id="' + esc(p.id) + '" data-stock-key="min_quantity" ' + (!isGeneralAdmin() && !hasAdminPermission("stock.update") ? "disabled" : "") + ' value="' + Number(s.min_quantity||0) + '"></td>' +
         '<td><select class="input stock-field" aria-label="Disponibilité au catalogue" data-stock-id="' + esc(p.id) + '" data-stock-key="availability_status" ' + (!isGeneralAdmin() && !hasAdminPermission("stock.update") ? "disabled" : "") + '><option value="available" ' + (p.availability_status !== "out_of_stock" ? "selected" : "") + '>Disponible</option><option value="out_of_stock" ' + (p.availability_status === "out_of_stock" ? "selected" : "") + '>Rupture de stock</option></select><div>' + availabilityBadgeHtml(p) + '</div></td>' +
         '</tr>';
     }).join("");
     return '<div class="panel"><div class="admin-panel-head"><h3>Stock, réception et réapprovisionnement</h3><span class="small-note">Les coûts d’achat sont confidentiels et ne sont pas exposés dans ce module. Une quantité positive ne modifie pas le prix de vente.</span></div>' +
-      '<div class="table-wrap"><table class="table"><thead><tr><th>Référence / article</th><th>Fournisseur associé / réf.</th><th>Quantité</th><th>Seuil</th><th>Disponibilité catalogue</th></tr></thead><tbody>' + tableRows + '</tbody></table></div>' +
+      '<div class="table-wrap"><table class="table"><thead><tr><th>Référence / article</th><th>Fournisseur associé / réf.</th>' + (isGeneralAdmin() ? '<th>Coût d’achat / valeur</th>' : '') + '<th>Quantité</th><th>Seuil</th><th>Disponibilité catalogue</th></tr></thead><tbody>' + tableRows + '</tbody></table></div>' +
       '<p class="small-note">Les changements sont enregistrés à la sortie du champ. Les prix fournisseur et les marges restent accessibles uniquement au propriétaire.</p></div>';
   }
 
