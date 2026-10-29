@@ -3810,6 +3810,29 @@
     if ($("budgetPackBuilderBtn")) $("budgetPackBuilderBtn").onclick = openBudgetPackBuilder;
     document.querySelectorAll("[data-mobile-action=cart]").forEach(b => b.addEventListener("click", renderCartModal));
     document.querySelectorAll("[data-mobile-action=account]").forEach(b => b.addEventListener("click", openAccountModal));
+    const mobileNav = $("mobileBottomNav");
+    const mobileMenuToggle = $("mobileMenuToggle");
+    const closeMobileNav = () => {
+      if (!mobileNav || !mobileMenuToggle) return;
+      mobileNav.classList.remove("is-open");
+      mobileMenuToggle.setAttribute("aria-expanded", "false");
+    };
+    if (mobileNav && mobileMenuToggle) {
+      mobileMenuToggle.addEventListener("click", () => {
+        const isOpen = !mobileNav.classList.contains("is-open");
+        mobileNav.classList.toggle("is-open", isOpen);
+        mobileMenuToggle.setAttribute("aria-expanded", String(isOpen));
+      });
+      mobileNav.querySelectorAll(".mobile-nav-menu .mobile-nav-item").forEach(item => {
+        item.addEventListener("click", closeMobileNav);
+      });
+      document.addEventListener("keydown", event => {
+        if (event.key === "Escape") closeMobileNav();
+      });
+      document.addEventListener("click", event => {
+        if (!mobileNav.contains(event.target)) closeMobileNav();
+      });
+    }
     if ($("heroWhatsApp")) $("heroWhatsApp").onclick = () => document.getElementById("catalogue").scrollIntoView({behavior:"smooth"});
     if ($("contactWhatsApp")) $("contactWhatsApp").onclick = () => openWA("Bonjour Sama-Pack, je souhaite avoir plus d’informations sur vos packs.");
     if ($("quoteBtn")) $("quoteBtn").onclick = openQuoteModal;
