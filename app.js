@@ -3025,8 +3025,9 @@
       const balance = Math.max(0, Number(order.total || 0) - Number(order.amount_paid || 0));
       return '<article class="customer-history-order"><div class="customer-history-order-head"><div><strong>' + esc(order.id) + '</strong><span class="small-note">' + esc(fmtDate(order.created_at)) + '</span></div><span class="status ' + esc(order.status) + '">' + esc(statusLabel(order.status)) + '</span><strong>' + money(order.total) + '</strong></div>' +
         itemsMarkup +
-        '<div class="customer-history-order-meta"><span>Paiement : ' + esc(paymentStatusLabel(order.payment_status)) + '</span><span>Encaissé : ' + money(order.amount_paid || 0) + '</span><span>Solde : ' + money(balance) + '</span></div>' +
+        '<div class="customer-history-order-meta"><span>Mode : ' + esc(order.payment_choice || order.payment || "—") + '</span><span>Paiement : ' + esc(paymentStatusLabel(order.payment_status)) + '</span><span>Encaissé : ' + money(order.amount_paid || 0) + '</span><span>Solde : ' + money(balance) + '</span></div>' +
         (order.slot ? '<p class="small-note">Créneau : ' + esc(order.slot) + '</p>' : '') +
+        ((order.delivery_address || order.delivery_zone) ? '<p class="small-note">Livraison : ' + esc([order.delivery_address, order.delivery_zone].filter(Boolean).join(" · ")) + '</p>' : '') +
         '<button class="btn ghost small" type="button" onclick="showOrder(\'' + esc(order.id) + '\')">Voir le détail de la commande</button></article>';
     }).join("") : '<div class="empty">Aucune commande liée à cette fiche.</div>';
     const quoteMarkup = quotes.length ? '<div class="customer-detail-list">' + quotes.map(quote => '<article class="customer-detail-list-item"><strong>' + esc(quote.company || "Demande de devis") + '</strong><span class="status ' + esc(quote.status) + '">' + esc(statusLabel(quote.status)) + '</span><p>' + esc(quote.need || "") + '</p><small>' + esc(fmtDate(quote.created_at)) + (quote.email ? " · " + esc(quote.email) : "") + '</small></article>').join("") + '</div>' : '<p class="small-note">Aucune demande de devis liée à ce compte.</p>';
