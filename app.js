@@ -1528,7 +1528,7 @@
     showModal(
       '<div class="modal-head account-modal-header"><div><div class="eyebrow">ESPACE CLIENT</div><h2>Mon compte</h2><p class="small-note">Retrouve tes commandes et paramètres ici.</p></div><div class="account-header-actions"><button type="button" class="account-menu-toggle" id="accountMenuToggle" aria-expanded="false" aria-controls="accountTabsMenu" aria-label="Ouvrir le menu du compte"><span></span><span></span><span></span></button><button class="close" onclick="closeModal()" aria-label="Fermer">✕</button></div></div>' +
       '<div class="account-workspace">' +
-        '<nav id="accountTabsMenu" class="account-tabs hidden" role="tablist" aria-label="Rubriques du compte">' +
+        '<nav id="accountTabsMenu" class="account-tabs" role="tablist" aria-label="Rubriques du compte">' +
           '<button type="button" class="account-tab is-active" role="tab" aria-selected="true" data-account-tab="profile"><span class="account-tab-icon">◉</span><span>Mon profil</span></button>' +
           '<button type="button" class="account-tab" role="tab" aria-selected="false" data-account-tab="orders"><span class="account-tab-icon">▤</span><span>Commandes</span><span class="account-tab-count">' + orders.length + '</span></button>' +
           '<button type="button" class="account-tab" role="tab" aria-selected="false" data-account-tab="replenishments"><span class="account-tab-icon">↻</span><span>Rappels</span></button>' +
@@ -1566,12 +1566,16 @@
     const accountTabsMenu = $("accountTabsMenu");
     const setAccountMenuOpen = (open) => {
       if (!accountTabsMenu || !accountMenuToggle) return;
-      accountTabsMenu.classList.toggle("hidden", !open);
-      accountTabsMenu.classList.toggle("account-menu-open", open);
-      accountMenuToggle.setAttribute("aria-expanded", open ? "true" : "false");
-      accountMenuToggle.setAttribute("aria-label", open ? "Fermer le menu du compte" : "Ouvrir le menu du compte");
+      const isMobile = window.matchMedia("(max-width: 600px)").matches;
+      const expanded = isMobile && open;
+      accountTabsMenu.classList.toggle("hidden", isMobile && !expanded);
+      accountTabsMenu.classList.toggle("account-menu-open", expanded);
+      accountMenuToggle.setAttribute("aria-expanded", expanded ? "true" : "false");
+      accountMenuToggle.setAttribute("aria-label", expanded ? "Fermer le menu du compte" : "Ouvrir le menu du compte");
     };
+    setAccountMenuOpen(false);
     if (accountMenuToggle) accountMenuToggle.onclick = () => setAccountMenuOpen(accountTabsMenu?.classList.contains("hidden"));
+    window.matchMedia("(max-width: 600px)").addEventListener("change", () => setAccountMenuOpen(false));
     const activateAccountTab = (tabName) => {
       accountTabButtons.forEach(button => {
         const active = button.dataset.accountTab === tabName;
