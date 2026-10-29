@@ -2826,9 +2826,147 @@
     await showAdminView("orders");
   }
   async function adminCustomers() {
-    const rows = await readRows("customers"); cachedCustomers = rows;
-    return `<div class="panel"><div class="admin-panel-head"><h3>Clients (${rows.length})</h3><span class="small-note">Les comptes inscrits peuvent consulter leurs propres commandes.</span></div>${rows.length ? `<div class="table-wrap"><table class="table"><thead><tr><th>Nom</th><th>Téléphone</th><th>Zone</th><th>Commandes</th><th>Dernière commande</th></tr></thead><tbody>${rows.sort((a,b)=>new Date(b.last_order_at||0)-new Date(a.last_order_at||0)).map(c=>`<tr><td>${esc(c.name)}</td><td>${esc(c.phone)}</td><td>${esc(c.zone || "")}</td><td>${Number(c.orders_count || 0)}</td><td>${esc(fmtDate(c.last_order_at))}</td></tr>`).join("")}</tbody></table></div>` : '<div class="empty">Les clients apparaîtront après leurs premières commandes.</div>'}</div>`;
+    const rows = await readRows("customers");
+    cachedCustomers = rows;
+    const userIds = [...new Set(rows.map(row => row.user_id).filter(Boolean))];
+    let profileRows = [];
+    if (userIds.length) {
+      const { data, error } = await client.from("profiles")
+        .select("id,full_name,email,phone,phone_secondary,delivery_region,delivery_city,delivery_commune,delivery_neighborhood,delivery_address,marketing_opt_in,created_at")
+        .in("id", userIds);
+      if (error) throw error;
+      profileRows = data || [];
+    }
+    const profilesById = new Map(profileRows.map(row => [row.id, row]));
+    const enriched = rows.map(customer => ({ ...customer, profile: profilesById.get(customer.user_id) || null }));
+    const subscribedCount = enriched.filter(customer => customer.profile?.marketing_opt_in === true).length;
+    const tableHtml = enriched.length ? '<div class="table-wrap"><table class="table"><thead><tr><th>Client</th><th>Contact</th><th>Zone</th><th>Commandes</th><th>Dernière commande</th><th>E-mails commerciaux</th><th>Fiche</th></tr></thead><tbody>' +
+      enriched.slice().sort((a,b) => new Date(b.last_order_at || 0) - new Date(a.last_order_at || 0)).map(customer => {
+        const profile = customer.profile || {};
+        const name = profile.full_name || customer.name || "Client";
+        return '<tr><td><strong>' + esc(name) + '</strong><br><span class="small-note">' + esc(profile.email || "E-mail non renseigné") + '</span></td>' +
+          '<td>' + esc(profile.phone || customer.phone || "—") + (profile.phone_secondary ? '<br><span class="small-note">Secondaire : ' + esc(profile.phone_secondary) + '</span>' : '') + '</td>' +
+          '<td>' + esc([profile.delivery_commune, profile.delivery_neighborhood].filter(Boolean).join(" · ") || customer.zone || "—") + '</td>' +
+          '<td>' + Number(customer.orders_count || 0) + '</td><td>' + esc(fmtDate(customer.last_order_at)) + '</td>' +
+          '<td><span class="status ' + (profile.marketing_opt_in ? 'delivered' : 'cancelled') + '">' + (profile.marketing_opt_in ? 'Abonné' : 'Non abonné') + '</span></td>' +
+          '<td><button class="btn small secondary" type="button" onclick="showCustomerProfile(\'' + esc(customer.id) + '\')">Fiche client</button></td></tr>';
+      }).join("") + '</tbody></table></div>' : '<div class="empty">Les clients apparaîtront après leurs premières commandes.</div>';
+    return '<div class="panel admin-customers-intro"><div class="admin-panel-head"><h3>Fiches clients (' + rows.length + ')</h3><span class="small-note">' + subscribedCount + ' client(s) autorisent les e-mails commerciaux.</span></div><p class="small-note">Ouvre une fiche pour consulter les coordonnées enregistrées, les commandes, les paiements, les devis et les rappels, puis contacter le client directement sur WhatsApp.</p>' + tableHtml + '</div>';
   }
+
+  async function showCustomerProfile(customerId) {
+    if (!isAdmin()) return toast("Accès réservé aux administrateurs.", true);
+    if (!customerId) return toast("Référence client manquante.", true);
+    const { data: customer, error: customerError } = await client.from("customers")
+      .select("id,name,phone,address,zone,orders_count,last_order_at,created_at,updated_at,user_id")
+      .eq("id", customerId).maybeSingle();
+    if (customerError || !customer) return toast(errorMessage(customerError || new Error("Client introuvable.")), true);
+
+    const orderColumns = "id,customer_id,user_id,created_at,status,slot,payment,subtotal,delivery,total,customer_name,customer_phone,delivery_address,delivery_zone,payment_choice,payment_status,amount_paid,updated_at,delivery_cost_actual";
+    const primaryOrderResult = await client.from("orders").select(orderColumns)
+      .eq("customer_id", customerId).order("created_at", { ascending: false }).limit(100);
+    if (primaryOrderResult.error) return toast(errorMessage(primaryOrderResult.error), true);
+    const profileId = customer.user_id || (primaryOrderResult.data || []).find(order => order.user_id)?.user_id || null;
+
+    let profile = null, quotes = [], subscriptions = [], reviews = [], userOrders = [];
+    if (profileId) {
+      const [profileResult, linkedOrdersResult, quotesResult, subscriptionsResult, reviewsResult] = await Promise.all([
+        client.from("profiles").select("id,full_name,email,phone,phone_secondary,delivery_region,delivery_city,delivery_commune,delivery_neighborhood,delivery_address,delivery_landmark,delivery_instructions,role,created_at,avatar_path,marketing_opt_in").eq("id", profileId).maybeSingle(),
+        client.from("orders").select(orderColumns).eq("user_id", profileId).order("created_at", { ascending: false }).limit(100),
+        client.from("quotes").select("id,company,phone,email,need,message,status,created_at").eq("user_id", profileId).order("created_at", { ascending: false }).limit(30),
+        client.from("replenishment_subscriptions").select("id,label,frequency,next_reminder_at,status,created_at").eq("user_id", profileId).order("next_reminder_at", { ascending: true }).limit(30),
+        client.from("product_reviews").select("id,product_id,rating,review,display_name,created_at").eq("user_id", profileId).order("created_at", { ascending: false }).limit(30)
+      ]);
+      if (profileResult.error) console.warn("Fiche profil client partielle", profileResult.error);
+      else profile = profileResult.data || null;
+      if (linkedOrdersResult.error) console.warn("Historique par compte indisponible", linkedOrdersResult.error);
+      else userOrders = linkedOrdersResult.data || [];
+      quotes = quotesResult.error ? [] : (quotesResult.data || []);
+      subscriptions = subscriptionsResult.error ? [] : (subscriptionsResult.data || []);
+      reviews = reviewsResult.error ? [] : (reviewsResult.data || []);
+    } else {
+      const quoteResult = await client.from("quotes").select("id,company,phone,email,need,message,status,created_at")
+        .eq("phone", customer.phone).order("created_at", { ascending: false }).limit(20);
+      quotes = quoteResult.error ? [] : (quoteResult.data || []);
+    }
+
+    const orderMap = new Map();
+    [...(primaryOrderResult.data || []), ...userOrders].forEach(order => orderMap.set(order.id, order));
+    const orders = [...orderMap.values()].sort((a,b) => new Date(b.created_at) - new Date(a.created_at)).slice(0, 100);
+    const orderIds = orders.map(order => order.id);
+    let orderItems = [];
+    if (orderIds.length) {
+      const itemResult = await client.from("order_items")
+        .select("id,order_id,product_id,product_name,quantity,unit_price")
+        .in("order_id", orderIds);
+      if (itemResult.error) console.warn("Lignes de commande client indisponibles", itemResult.error);
+      else orderItems = itemResult.data || [];
+    }
+
+    let avatarUrl = "";
+    if (profile?.avatar_path) {
+      const { data: signed, error } = await client.storage.from("sama-pack-avatars").createSignedUrl(profile.avatar_path, 60 * 60);
+      if (!error) avatarUrl = signed?.signedUrl || "";
+    }
+
+    cachedOrders = orders;
+    cachedOrderItems = orderItems;
+    cachedCustomers = [customer];
+    const orderItemsById = new Map();
+    orderItems.forEach(item => {
+      if (!orderItemsById.has(item.order_id)) orderItemsById.set(item.order_id, []);
+      orderItemsById.get(item.order_id).push(item);
+    });
+    const name = profile?.full_name || customer.name || "Client";
+    const phone = profile?.phone || customer.phone || "";
+    const secondaryPhone = profile?.phone_secondary || "";
+    const email = profile?.email || quotes.find(quote => emailValid(quote.email))?.email || "";
+    const zone = [profile?.delivery_region, profile?.delivery_city, profile?.delivery_commune, profile?.delivery_neighborhood].filter(Boolean).join(" · ") || customer.zone || "";
+    const address = [profile?.delivery_address || customer.address, profile?.delivery_landmark ? "Repère : " + profile.delivery_landmark : "", profile?.delivery_instructions ? "Instructions : " + profile.delivery_instructions : ""].filter(Boolean).join(" · ");
+    const whatsapp = normalizeCustomerWhatsapp(phone);
+    const whatsappHref = /^[1-9]\d{7,14}$/.test(whatsapp) ? "https://wa.me/" + whatsapp + "?text=" + encodeURIComponent("Bonjour " + name + ", je vous contacte depuis SAMA-PACK au sujet de vos commandes et de vos besoins en produits de nettoyage et d’hygiène.") : "";
+    const nonCancelled = orders.filter(order => order.status !== "cancelled");
+    const totalOrders = Math.max(Number(customer.orders_count || 0), orders.length);
+    const totalValue = nonCancelled.reduce((sum, order) => sum + Number(order.total || 0), 0);
+    const paidValue = nonCancelled.reduce((sum, order) => sum + Number(order.amount_paid || 0), 0);
+    const balanceValue = nonCancelled.reduce((sum, order) => sum + Math.max(0, Number(order.total || 0) - Number(order.amount_paid || 0)), 0);
+    const deliveredCount = orders.filter(order => order.status === "delivered").length;
+    const identityMarkup = avatarUrl
+      ? '<img src="' + esc(avatarUrl) + '" alt="" class="customer-detail-avatar-image">'
+      : '<span class="customer-detail-avatar-fallback">' + esc(name.trim().split(/\s+/).filter(Boolean).slice(0,2).map(part => part.charAt(0)).join("").toUpperCase() || "CL") + '</span>';
+    const orderMarkup = orders.length ? orders.map(order => {
+      const lines = orderItemsById.get(order.id) || [];
+      const itemsMarkup = lines.length
+        ? '<ul class="customer-order-items">' + lines.map(item => '<li>' + Number(item.quantity) + ' × ' + esc(item.product_name) + ' — ' + money(item.unit_price) + '</li>').join("") + '</ul>'
+        : '<p class="small-note">Détail des articles indisponible pour cette commande.</p>';
+      const balance = Math.max(0, Number(order.total || 0) - Number(order.amount_paid || 0));
+      return '<article class="customer-history-order"><div class="customer-history-order-head"><div><strong>' + esc(order.id) + '</strong><span class="small-note">' + esc(fmtDate(order.created_at)) + '</span></div><span class="status ' + esc(order.status) + '">' + esc(statusLabel(order.status)) + '</span><strong>' + money(order.total) + '</strong></div>' +
+        itemsMarkup +
+        '<div class="customer-history-order-meta"><span>Paiement : ' + esc(paymentStatusLabel(order.payment_status)) + '</span><span>Encaissé : ' + money(order.amount_paid || 0) + '</span><span>Solde : ' + money(balance) + '</span></div>' +
+        (order.slot ? '<p class="small-note">Créneau : ' + esc(order.slot) + '</p>' : '') +
+        '<button class="btn ghost small" type="button" onclick="showOrder(\'' + esc(order.id) + '\')">Voir le détail de la commande</button></article>';
+    }).join("") : '<div class="empty">Aucune commande liée à cette fiche.</div>';
+    const quoteMarkup = quotes.length ? '<div class="customer-detail-list">' + quotes.map(quote => '<article class="customer-detail-list-item"><strong>' + esc(quote.company || "Demande de devis") + '</strong><span class="status ' + esc(quote.status) + '">' + esc(statusLabel(quote.status)) + '</span><p>' + esc(quote.need || "") + '</p><small>' + esc(fmtDate(quote.created_at)) + (quote.email ? " · " + esc(quote.email) : "") + '</small></article>').join("") + '</div>' : '<p class="small-note">Aucune demande de devis liée à ce compte.</p>';
+    const subscriptionMarkup = subscriptions.length ? '<div class="customer-detail-list">' + subscriptions.map(item => '<article class="customer-detail-list-item"><strong>' + esc(item.label) + '</strong><span class="status ' + (item.status === "active" ? "delivered" : "processing") + '">' + esc(item.status === "active" ? "Actif" : item.status) + '</span><p>' + esc(frequencyLabel(item.frequency)) + ' · prochaine échéance : ' + esc(fmtDate(item.next_reminder_at)) + '</p></article>').join("") + '</div>' : '<p class="small-note">Aucun rappel de réapprovisionnement programmé.</p>';
+    const reviewsMarkup = reviews.length ? '<div class="customer-detail-list">' + reviews.map(review => '<article class="customer-detail-list-item"><strong>' + esc(getP(String(review.product_id))?.name || String(review.product_id)) + ' · ' + Number(review.rating) + '/5</strong><p>' + esc(review.review || "") + '</p><small>' + esc(fmtDate(review.created_at)) + '</small></article>').join("") + '</div>' : '<p class="small-note">Aucun avis produit publié par ce client.</p>';
+    showModal(
+      '<div class="modal-head customer-detail-modal-head"><div><div class="eyebrow">CRM · DOSSIER CLIENT</div><h2>Fiche client</h2><p class="small-note">Informations et historique consolidés depuis SAMA-PACK.</p></div><button class="close" type="button" onclick="closeModal()" aria-label="Fermer">✕</button></div>' +
+      '<section class="customer-detail-identity">' + identityMarkup + '<div class="customer-detail-identity-copy"><span class="customer-detail-kicker">' + esc(profile?.role === "customer" ? "Compte client" : "Fiche client") + '</span><h3>' + esc(name) + '</h3><p>' + esc(email || "Adresse e-mail non renseignée") + '</p><small>Client depuis ' + esc(fmtDate(customer.created_at)) + '</small></div></section>' +
+      '<div class="customer-detail-contact-actions">' + (whatsappHref ? '<a class="btn primary" href="' + esc(whatsappHref) + '" target="_blank" rel="noopener noreferrer">Discuter avec lui sur WhatsApp</a>' : '<span class="small-note">Numéro WhatsApp non valide ou non renseigné.</span>') + (email ? '<a class="btn ghost" href="mailto:' + esc(email) + '">Envoyer un e-mail</a>' : '') + '</div>' +
+      '<section class="customer-detail-stats"><article><span>Commandes</span><strong>' + totalOrders + '</strong></article><article><span>Livrées</span><strong>' + deliveredCount + '</strong></article><article><span>Valeur des commandes non annulées</span><strong>' + money(totalValue) + '</strong></article><article><span>Montant encaissé</span><strong>' + money(paidValue) + '</strong></article><article><span>Solde restant estimé</span><strong>' + money(balanceValue) + '</strong></article><article><span>Dernière commande</span><strong>' + esc(fmtDate(customer.last_order_at) || "—") + '</strong></article></section>' +
+      '<section class="customer-detail-section"><div class="customer-detail-section-heading"><h3>Coordonnées et livraison</h3></div><div class="customer-detail-info-grid">' +
+      '<div><span>WhatsApp principal</span><strong>' + esc(phone || "Non renseigné") + '</strong></div><div><span>Téléphone secondaire</span><strong>' + esc(secondaryPhone || "Non renseigné") + '</strong></div>' +
+      '<div><span>Zone</span><strong>' + esc(zone || "Non renseignée") + '</strong></div><div class="customer-detail-info-full"><span>Adresse précise</span><strong>' + esc(address || "Non renseignée") + '</strong></div>' +
+      '<div><span>E-mails commerciaux</span><strong>' + (profile?.marketing_opt_in ? 'Consentement actif' : 'Non activés') + '</strong></div><div><span>Compte créé</span><strong>' + esc(fmtDate(profile?.created_at || customer.created_at)) + '</strong></div></div></section>' +
+      '<section class="customer-detail-section"><div class="customer-detail-section-heading"><h3>Historique des commandes</h3><span>' + orders.length + ' affichée(s), jusqu’à 100</span></div>' + orderMarkup + '</section>' +
+      '<section class="customer-detail-section"><div class="customer-detail-section-heading"><h3>Devis professionnels</h3></div>' + quoteMarkup + '</section>' +
+      '<section class="customer-detail-section"><div class="customer-detail-section-heading"><h3>Rappels de réapprovisionnement</h3></div>' + subscriptionMarkup + '</section>' +
+      '<section class="customer-detail-section"><div class="customer-detail-section-heading"><h3>Avis publiés</h3></div>' + reviewsMarkup + '</section>'
+    );
+    const modalCard = document.querySelector(".modal-card");
+    if (modalCard) modalCard.classList.add("admin-customer-detail-modal");
+  }
+
   async function adminStock() {
     const [rows, productRows, linkResult, supplierResult] = await Promise.all([
       readRows("stock"),
