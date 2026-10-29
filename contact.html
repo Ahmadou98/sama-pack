@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#087a45">
+  <meta name="description" content="Contacter SAMA-PACK : WhatsApp, e-mail ou formulaire de contact pour vos questions et demandes.">
+  <title>Contact | SAMA-PACK</title>
+  <link rel="stylesheet" href="styles.css">
+  <style>
+    .contact-page { min-height:70vh; padding:44px 0 64px; }
+    .contact-page-hero { max-width:720px; margin:0 auto 28px; text-align:center; }
+    .contact-page-hero h1 { margin:8px 0 12px; font-size:clamp(2rem,5vw,3.2rem); line-height:1.05; }
+    .contact-page-hero p { color:var(--muted,#65736a); line-height:1.65; }
+    .contact-page-grid { display:grid; grid-template-columns:minmax(0,.85fr) minmax(0,1.15fr); gap:22px; align-items:start; }
+    .contact-channel-list { display:grid; gap:14px; }
+    .contact-channel { display:flex; gap:14px; align-items:flex-start; padding:20px; border:1px solid var(--line,#e2e9e4); border-radius:18px; background:var(--surface,#fff); }
+    .contact-channel-icon { width:44px; height:44px; display:grid; place-items:center; flex:0 0 44px; border-radius:13px; background:#e8f6ed; color:#087a45; font-size:22px; }
+    .contact-channel h2 { margin:0 0 6px; font-size:1.05rem; }
+    .contact-channel p { margin:0 0 12px; color:var(--muted,#65736a); overflow-wrap:anywhere; }
+    .contact-form-panel { padding:24px; border:1px solid var(--line,#e2e9e4); border-radius:20px; background:var(--surface,#fff); box-shadow:0 12px 35px rgba(20,60,35,.06); }
+    .contact-form-panel h2 { margin:0 0 8px; }
+    .contact-form-panel>p { margin:0 0 22px; color:var(--muted,#65736a); line-height:1.55; }
+    .contact-form { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+    .contact-form label { display:grid; gap:7px; font-weight:700; font-size:.92rem; }
+    .contact-form .full { grid-column:1/-1; }
+    .contact-form textarea { min-height:145px; resize:vertical; }
+    .contact-form input,.contact-form select,.contact-form textarea { width:100%; }
+    .contact-form-status { display:none; padding:12px 14px; border-radius:12px; margin-bottom:14px; line-height:1.5; }
+    .contact-form-status.visible { display:block; }
+    .contact-form-status.success { color:#14532d; background:#eaf8ee; }
+    .contact-form-status.error { color:#842029; background:#fbe9eb; }
+    .contact-form .hp-field { position:absolute!important; left:-10000px!important; width:1px!important; height:1px!important; overflow:hidden!important; }
+    .contact-page-footer { margin-top:28px; text-align:center; color:var(--muted,#65736a); font-size:.9rem; }
+    @media(max-width:760px) {
+      .contact-page { padding:28px 0 42px; }
+      .contact-page-grid { grid-template-columns:1fr; gap:18px; }
+      .contact-form-panel { padding:19px; }
+      .contact-form { grid-template-columns:1fr; gap:14px; }
+      .contact-form .full { grid-column:auto; }
+      .contact-page-hero { text-align:left; margin-bottom:22px; }
+    }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="wrap nav">
+      <a class="brand" href="index.html" aria-label="SAMA-PACK, accueil"><span class="brand-mark">S</span><span>SAMA<span>-PACK</span></span></a>
+      <div class="nav-actions">
+        <a class="btn small ghost" href="index.html#catalogue">Catalogue</a>
+        <a class="btn small ghost" href="comment-ca-marche.html">Aide</a>
+        <a class="btn small primary" href="index.html">Retour à la boutique</a>
+      </div>
+    </div>
+  </header>
+  <main class="contact-page">
+    <div class="wrap">
+      <div class="contact-page-hero">
+        <div class="eyebrow">CONTACT SAMA-PACK</div>
+        <h1>Comment pouvons-nous vous aider&nbsp;?</h1>
+        <p>Choisissez votre moyen de contact ou envoyez-nous un message. Notre équipe pourra reprendre votre demande et vous répondre.</p>
+      </div>
+      <div class="contact-page-grid">
+        <section class="contact-channel-list" aria-label="Coordonnées">
+          <article class="contact-channel">
+            <div class="contact-channel-icon" aria-hidden="true">☏</div>
+            <div><h2>WhatsApp</h2><p id="contactWhatsAppValue">Chargement du numéro officiel…</p><a id="contactWhatsAppLink" class="btn secondary" href="#" target="_blank" rel="noopener noreferrer">Écrire sur WhatsApp</a></div>
+          </article>
+          <article class="contact-channel">
+            <div class="contact-channel-icon" aria-hidden="true">✉</div>
+            <div><h2>Adresse e-mail</h2><p id="contactEmailValue">Chargement de l’adresse officielle…</p><a id="contactEmailLink" class="btn ghost" href="#">Envoyer un e-mail</a></div>
+          </article>
+          <article class="contact-channel">
+            <div class="contact-channel-icon" aria-hidden="true">ⓘ</div>
+            <div><h2>Une question avant de commander&nbsp;?</h2><p>Pour une question rapide sur un pack ou un produit avant l’achat, utilisez le bouton WhatsApp de la boutique prévu à cet effet.</p><a class="btn ghost" href="index.html#catalogue">Voir les produits</a></div>
+          </article>
+        </section>
+        <section class="contact-form-panel">
+          <h2>Envoyer un message</h2>
+          <p>Remplissez le formulaire ci-dessous. Les champs marqués * sont obligatoires.</p>
+          <div id="contactFormStatus" class="contact-form-status" role="status" aria-live="polite"></div>
+          <form id="contactForm" class="contact-form">
+            <label>Nom complet *<input class="input" name="full_name" required minlength="2" maxlength="160" autocomplete="name" placeholder="Votre nom"></label>
+            <label>Adresse e-mail *<input class="input" name="email" type="email" required maxlength="254" autocomplete="email" placeholder="vous@exemple.com"></label>
+            <label>Téléphone (facultatif)<input class="input" name="phone" type="tel" maxlength="40" autocomplete="tel" placeholder="+221 …"></label>
+            <label>Objet *<select class="input" name="subject" required><option value="">Choisir un objet</option><option>Information générale</option><option>Commande existante</option><option>Produits et disponibilité</option><option>Demande professionnelle / devis</option><option>Livraison et retours</option><option>Autre demande</option></select></label>
+            <label class="full">Votre message *<textarea class="input" name="message" required minlength="5" maxlength="5000" placeholder="Décrivez votre demande…"></textarea></label>
+            <label class="hp-field" aria-hidden="true">Ne pas remplir<input name="website" tabindex="-1" autocomplete="off"></label>
+            <div class="full"><button id="contactSubmitBtn" class="btn primary full" type="submit">Envoyer le message</button><p class="small-note">Vos informations servent uniquement à traiter votre demande.</p></div>
+          </form>
+        </section>
+      </div>
+      <div class="contact-page-footer"><a href="confidentialite.html">Politique de confidentialité</a> · <a href="conditions-vente.html">Conditions de vente</a></div>
+    </div>
+  </main>
+  <footer class="footer"><div class="wrap footer-bottom">© <span id="contactYear"></span> SAMA-PACK. Tous droits réservés.</div></footer>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/dist/umd/supabase.js"></script>
+  <script>
+    (() => {
+      "use strict";
+      const SUPABASE_URL = "https://tbxxrnhcfuaeaatlrdtr.supabase.co";
+      const SUPABASE_KEY = "sb_publishable_lDAKRHFWyUYZ-tb23hbbnQ_96zF9Iwo";
+      const $ = id => document.getElementById(id);
+      let whatsapp = "", email = "", client = null;
+      $("contactYear").textContent = new Date().getFullYear();
+      function normalizeWhatsApp(value) {
+        let digits = String(value || "").replace(/\D/g, "");
+        if (digits.startsWith("00")) digits = digits.slice(2);
+        if (digits.length === 9 && /^[37]/.test(digits)) digits = "221" + digits;
+        else if (digits.length === 10 && digits.startsWith("0")) digits = "221" + digits.slice(1);
+        return /^[1-9]\d{7,14}$/.test(digits) ? digits : "";
+      }
+      function showStatus(message, kind) {
+        const el = $("contactFormStatus");
+        el.textContent = message;
+        el.className = "contact-form-status visible " + kind;
+      }
+      async function loadContacts() {
+        const [{data: setting, error: settingError}, {data: notificationSettings, error: notificationError}] = await Promise.all([
+          client.from("settings").select("company,whatsapp").eq("id", true).maybeSingle(),
+          client.from("notification_settings").select("id,order_notification_email").eq("id", true).maybeSingle()
+        ]);
+        if (settingError) console.warn("Coordonnées WhatsApp indisponibles", settingError);
+        if (notificationError) console.warn("Adresse e-mail indisponible", notificationError);
+        whatsapp = normalizeWhatsApp(setting?.whatsapp || "");
+        email = String(notificationSettings?.order_notification_email || "").trim();
+        const phoneText = $("contactWhatsAppValue"), phoneLink = $("contactWhatsAppLink");
+        if (whatsapp) {
+          phoneText.textContent = "+" + whatsapp;
+          phoneLink.href = "https://wa.me/" + whatsapp + "?text=" + encodeURIComponent("Bonjour " + (setting?.company || "SAMA-PACK") + ", je vous contacte depuis la page Contact.");
+        } else {
+          phoneText.textContent = "Numéro WhatsApp non configuré pour le moment.";
+          phoneLink.hidden = true;
+        }
+        const emailText = $("contactEmailValue"), emailLink = $("contactEmailLink");
+        if (email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+          emailText.textContent = email;
+          emailLink.href = "mailto:" + email;
+        } else {
+          emailText.textContent = "Adresse e-mail non configurée pour le moment.";
+          emailLink.hidden = true;
+        }
+      }
+      async function start() {
+        if (!window.supabase?.createClient) throw new Error("Le formulaire n’a pas pu se connecter. Rechargez la page.");
+        client = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}});
+        await loadContacts();
+        $("contactForm").addEventListener("submit", async event => {
+          event.preventDefault();
+          const form = event.currentTarget, fd = new FormData(form);
+          if (String(fd.get("website") || "").trim()) return;
+          const payload = {
+            full_name: String(fd.get("full_name") || "").trim(),
+            email: String(fd.get("email") || "").trim(),
+            phone: String(fd.get("phone") || "").trim(),
+            subject: String(fd.get("subject") || "").trim(),
+            message: String(fd.get("message") || "").trim()
+          };
+          if (payload.full_name.length < 2 || payload.email.length < 3 || payload.subject.length < 2 || payload.message.length < 5) {
+            showStatus("Vérifiez les champs obligatoires avant l’envoi.", "error"); return;
+          }
+          const button = $("contactSubmitBtn");
+          button.disabled = true; button.textContent = "Envoi en cours…";
+          try {
+            const {error} = await client.from("contact_messages").insert(payload);
+            if (error) throw error;
+            form.reset();
+            showStatus("Votre message a bien été envoyé. Merci d’avoir contacté SAMA-PACK.", "success");
+          } catch (error) {
+            console.error("Contact form submission failed", error);
+            showStatus("Le message n’a pas pu être envoyé. Réessayez dans quelques instants ou contactez-nous par WhatsApp ou e-mail.", "error");
+          } finally {
+            button.disabled = false; button.textContent = "Envoyer le message";
+          }
+        });
+      }
+      start().catch(error => {
+        console.error(error);
+        showStatus("Impossible de charger les coordonnées pour le moment. Vous pouvez toujours réessayer d’envoyer votre message.", "error");
+        $("contactWhatsAppValue").textContent = "Coordonnées temporairement indisponibles.";
+        $("contactEmailValue").textContent = "Coordonnées temporairement indisponibles.";
+      });
+    })();
+  </script>
+</body>
+</html>
