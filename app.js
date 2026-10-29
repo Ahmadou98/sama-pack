@@ -1237,7 +1237,7 @@
         delivery_address: String(fd.get("delivery_address") || "").trim(),
         delivery_landmark: String(fd.get("delivery_landmark") || "").trim(),
         delivery_instructions: String(fd.get("delivery_instructions") || "").trim(),
-        marketing_opt_in: fd.get("marketing_opt_in") === "on"
+        marketing_opt_in: ["on", "true"].includes(String(fd.get("marketing_opt_in") || ""))
       };
       if (signup) {
         if (!signupProfile.phone) { setBusy(form, false); authBusy = false; return toast("Le numéro WhatsApp doit être valide (ex. +221 77 123 45 67).", true); }
