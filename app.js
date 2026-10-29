@@ -2947,14 +2947,16 @@
     }
     const profileId = requestedProfileId || linkedProfileId;
 
-    let quotes = [], subscriptions = [], reviews = [], userOrders = [];
+    let quotes = [], subscriptions = [], reviews = [], userOrders = [], notifications = [], businessAccount = null;
     if (profileId) {
-      const [profileResult, linkedOrdersResult, quotesResult, subscriptionsResult, reviewsResult] = await Promise.all([
+      const [profileResult, linkedOrdersResult, quotesResult, subscriptionsResult, reviewsResult, notificationResult, businessResult] = await Promise.all([
         client.from("profiles").select("id,full_name,email,phone,phone_secondary,delivery_region,delivery_city,delivery_commune,delivery_neighborhood,delivery_address,delivery_landmark,delivery_instructions,role,created_at,avatar_path,marketing_opt_in").eq("id", profileId).maybeSingle(),
         client.from("orders").select(orderColumns).eq("user_id", profileId).order("created_at", { ascending: false }).limit(100),
         client.from("quotes").select("id,company,phone,email,need,message,status,created_at").eq("user_id", profileId).order("created_at", { ascending: false }).limit(30),
         client.from("replenishment_subscriptions").select("id,label,frequency,next_reminder_at,status,created_at").eq("user_id", profileId).order("next_reminder_at", { ascending: true }).limit(30),
-        client.from("product_reviews").select("id,product_id,rating,review,display_name,created_at").eq("user_id", profileId).order("created_at", { ascending: false }).limit(30)
+        client.from("product_reviews").select("id,product_id,rating,review,display_name,created_at").eq("user_id", profileId).order("created_at", { ascending: false }).limit(30),
+        client.from("notifications").select("id,type,title,message,entity_type,entity_id,read_at,created_at").eq("recipient_user_id", profileId).order("created_at", { ascending: false }).limit(40),
+        client.from("business_accounts").select("id,company_name,sector,contact_name,phone,email,address,delivery_zone,created_at,updated_at").eq("owner_user_id", profileId).maybeSingle()
       ]);
       if (profileResult.error) console.warn("Fiche profil client partielle", profileResult.error);
       else profile = profileResult.data || null;
@@ -2963,6 +2965,8 @@
       quotes = quotesResult.error ? [] : (quotesResult.data || []);
       subscriptions = subscriptionsResult.error ? [] : (subscriptionsResult.data || []);
       reviews = reviewsResult.error ? [] : (reviewsResult.data || []);
+      notifications = notificationResult.error ? [] : (notificationResult.data || []);
+      businessAccount = businessResult.error ? null : (businessResult.data || null);
     } else {
       const quoteResult = await client.from("quotes").select("id,company,phone,email,need,message,status,created_at")
         .eq("phone", customer.phone).order("created_at", { ascending: false }).limit(20);
@@ -3028,6 +3032,12 @@
     const quoteMarkup = quotes.length ? '<div class="customer-detail-list">' + quotes.map(quote => '<article class="customer-detail-list-item"><strong>' + esc(quote.company || "Demande de devis") + '</strong><span class="status ' + esc(quote.status) + '">' + esc(statusLabel(quote.status)) + '</span><p>' + esc(quote.need || "") + '</p><small>' + esc(fmtDate(quote.created_at)) + (quote.email ? " · " + esc(quote.email) : "") + '</small></article>').join("") + '</div>' : '<p class="small-note">Aucune demande de devis liée à ce compte.</p>';
     const subscriptionMarkup = subscriptions.length ? '<div class="customer-detail-list">' + subscriptions.map(item => '<article class="customer-detail-list-item"><strong>' + esc(item.label) + '</strong><span class="status ' + (item.status === "active" ? "delivered" : "processing") + '">' + esc(item.status === "active" ? "Actif" : item.status) + '</span><p>' + esc(frequencyLabel(item.frequency)) + ' · prochaine échéance : ' + esc(fmtDate(item.next_reminder_at)) + '</p></article>').join("") + '</div>' : '<p class="small-note">Aucun rappel de réapprovisionnement programmé.</p>';
     const reviewsMarkup = reviews.length ? '<div class="customer-detail-list">' + reviews.map(review => '<article class="customer-detail-list-item"><strong>' + esc(getP(String(review.product_id))?.name || String(review.product_id)) + ' · ' + Number(review.rating) + '/5</strong><p>' + esc(review.review || "") + '</p><small>' + esc(fmtDate(review.created_at)) + '</small></article>').join("") + '</div>' : '<p class="small-note">Aucun avis produit publié par ce client.</p>';
+    const businessMarkup = businessAccount
+      ? '<div class="customer-detail-info-grid"><div><span>Structure</span><strong>' + esc(businessAccount.company_name || "—") + '</strong></div><div><span>Secteur</span><strong>' + esc(businessAccount.sector || "—") + '</strong></div><div><span>Contact structure</span><strong>' + esc(businessAccount.contact_name || "—") + '</strong></div><div><span>Téléphone professionnel</span><strong>' + esc(businessAccount.phone || "—") + '</strong></div><div><span>E-mail professionnel</span><strong>' + esc(businessAccount.email || "—") + '</strong></div><div class="customer-detail-info-full"><span>Adresse / zone de livraison</span><strong>' + esc([businessAccount.address, businessAccount.delivery_zone].filter(Boolean).join(" · ") || "—") + '</strong></div></div>'
+      : '<p class="small-note">Aucun compte professionnel associé à ce client.</p>';
+    const notificationMarkup = notifications.length
+      ? '<div class="customer-detail-list">' + notifications.map(note => '<article class="customer-detail-list-item"><strong>' + esc(note.title || note.type || "Notification") + '</strong><span class="status ' + (note.read_at ? "" : "processing") + '">' + (note.read_at ? "Lue" : "Non lue") + '</span><p>' + esc(note.message || "") + '</p><small>' + esc(fmtDate(note.created_at)) + (note.entity_id ? " · " + esc(note.entity_id) : "") + '</small></article>').join("") + '</div>'
+      : '<p class="small-note">Aucune notification conservée pour ce compte.</p>';
     showModal(
       '<div class="modal-head customer-detail-modal-head"><div><div class="eyebrow">CRM · DOSSIER CLIENT</div><h2>Fiche client</h2><p class="small-note">Informations et historique consolidés depuis SAMA-PACK.</p></div><button class="close" type="button" onclick="closeModal()" aria-label="Fermer">✕</button></div>' +
       '<section class="customer-detail-identity">' + identityMarkup + '<div class="customer-detail-identity-copy"><span class="customer-detail-kicker">' + esc(profile?.role === "customer" ? "Compte client" : "Fiche client") + '</span><h3>' + esc(name) + '</h3><p>' + esc(email || "Adresse e-mail non renseignée") + '</p><small>Client depuis ' + esc(fmtDate(customer.created_at)) + '</small></div></section>' +
@@ -3040,6 +3050,8 @@
       '<section class="customer-detail-section"><div class="customer-detail-section-heading"><h3>Historique des commandes</h3><span>' + orders.length + ' affichée(s), jusqu’à 100</span></div>' + orderMarkup + '</section>' +
       '<section class="customer-detail-section"><div class="customer-detail-section-heading"><h3>Devis professionnels</h3></div>' + quoteMarkup + '</section>' +
       '<section class="customer-detail-section"><div class="customer-detail-section-heading"><h3>Rappels de réapprovisionnement</h3></div>' + subscriptionMarkup + '</section>' +
+      '<section class="customer-detail-section"><div class="customer-detail-section-heading"><h3>Compte professionnel</h3></div>' + businessMarkup + '</section>' +
+      '<section class="customer-detail-section"><div class="customer-detail-section-heading"><h3>Notifications du compte</h3><span>' + notifications.length + ' récente(s)</span></div>' + notificationMarkup + '</section>' +
       '<section class="customer-detail-section"><div class="customer-detail-section-heading"><h3>Avis publiés</h3></div>' + reviewsMarkup + '</section>'
     );
     const modalCard = document.querySelector(".modal-card");
