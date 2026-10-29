@@ -165,6 +165,9 @@
   };
   function canViewAdminView(view) {
     if (isGeneralAdmin()) return true;
+    // Any authenticated administrator can always return to the dashboard.
+    // Dashboard queries remain scoped by database RLS and permission-aware reads.
+    if (view === "dashboard" && isAdmin()) return true;
     const permission = ADMIN_VIEW_PERMISSION[view];
     return Boolean(permission && hasAdminPermission(permission));
   }
@@ -2599,7 +2602,22 @@
 
   async function openAdmin() {
     if (!currentUser) { openAccountModal(); toast("Connecte-toi avec un compte administrateur."); return; }
-    if (!isAdmin()) { toast("Ce compte n’a pas les droits d’administration.", true); return; }
+    // Refresh the role/permissions before deciding which modules to display.
+    // This avoids stale client state after permission changes or an account switch.
+    try {
+      const refreshedProfile = await getProfile(currentUser);
+      if (refreshedProfile) currentProfile = refreshedProfile;
+    } catch (error) {
+      console.warn("Impossible d’actualiser le profil avant l’ouverture de la gestion.", error);
+    }
+    if (!isAdmin()) {
+      const { data: adminCheck, error: adminCheckError } = await client.rpc("sama_is_admin");
+      if (adminCheckError || adminCheck !== true) { toast("Ce compte n’a pas les droits d’administration.", true); return; }
+      // The database confirms the role; retry the profile read once before denying access.
+      const retryProfile = await getProfile(currentUser);
+      if (retryProfile) currentProfile = retryProfile;
+      if (!isAdmin()) { toast("Le compte est administrateur, mais son profil n’a pas pu être chargé. Actualise la page et reconnecte-toi si nécessaire.", true); return; }
+    }
     $("adminPanel").classList.remove("hidden"); await showAdminView("dashboard");
   }
   function closeAdmin() { $("adminPanel").classList.add("hidden"); stopDashboardPresencePolling(); }
@@ -2754,12 +2772,21 @@
   async function adminDashboard() {
     let activeAccounts = null;
     try { activeAccounts = await countActiveAccounts(); } catch (error) { console.warn("Comptes actifs indisponibles", error); }
+    const dashboardWarnings = [];
+    const readDashboardRows = async (table, columns = "*") => {
+      try { return await readRows(table, columns); }
+      catch (error) {
+        console.warn("Données du tableau de bord temporairement indisponibles :", table, error);
+        dashboardWarnings.push(table);
+        return [];
+      }
+    };
     const [orders, stock, expenses, quotes, productRows] = await Promise.all([
-      hasAdminPermission("orders.view") ? readRows("orders") : Promise.resolve([]),
-      hasAdminPermission("stock.view") ? readRows("stock", "product_id,quantity,min_quantity,supplier,updated_at") : Promise.resolve([]),
-      (isGeneralAdmin() || hasAdminPermission("expenses.submit")) ? readRows("expenses") : Promise.resolve([]),
-      hasAdminPermission("quotes.view") ? readRows("quotes") : Promise.resolve([]),
-      readRows("products")
+      hasAdminPermission("orders.view") ? readDashboardRows("orders") : Promise.resolve([]),
+      hasAdminPermission("stock.view") ? readDashboardRows("stock", "product_id,quantity,min_quantity,supplier,updated_at") : Promise.resolve([]),
+      (isGeneralAdmin() || hasAdminPermission("expenses.submit")) ? readDashboardRows("expenses") : Promise.resolve([]),
+      hasAdminPermission("quotes.view") ? readDashboardRows("quotes") : Promise.resolve([]),
+      readDashboardRows("products")
     ]);
     const sortedOrders = [...orders].sort((a,b) => new Date(b.created_at) - new Date(a.created_at));
     cachedOrders = sortedOrders; stockRows = stock; cachedExpenses = expenses; cachedQuotes = quotes;
@@ -2821,7 +2848,7 @@
       { label: "Articles en rupture", value: String(outOfStock), note: "Disponibilité à vérifier", css: "stockout" },
       { label: "Comptes actifs maintenant", value: activeAccounts === null ? "—" : String(activeAccounts), note: `Activité sur 90 s · actualisé à ${now.toLocaleTimeString("fr-SN", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}`, css: "active-users", live: true }
     ];
-    return `<div class="dashboard-welcome"><div><div class="eyebrow">PILOTAGE COMMERCIAL</div><h2>Vue d’ensemble de SAMA-PACK</h2><p>Suivi des ventes, des commandes, du catalogue et des réapprovisionnements.</p></div><button class="btn ghost small" onclick="showAdminView('dashboard')">Actualiser les données</button></div>
+    return `${dashboardWarnings.length ? '<div class="panel dashboard-data-warning"><strong>Tableau de bord partiellement chargé.</strong><p>Certains indicateurs sont momentanément indisponibles. Les autres rubriques restent accessibles. Réessaie l’actualisation pour récupérer les données manquantes.</p></div>' : ''}<div class="dashboard-welcome"><div><div class="eyebrow">PILOTAGE COMMERCIAL</div><h2>Vue d’ensemble de SAMA-PACK</h2><p>Suivi des ventes, des commandes, du catalogue et des réapprovisionnements.</p></div><button class="btn ghost small" onclick="showAdminView('dashboard')">Actualiser les données</button></div>
       <div class="dashboard-kpis">${cards.map(card=>`<article class="dashboard-kpi ${card.css}"><span class="dashboard-kpi-label">${esc(card.label)}</span><strong ${card.live ? 'id="activeAccountsCount"' : ""}>${esc(card.value)}</strong><small ${card.live ? 'id="activeAccountsLastUpdated"' : ""}>${esc(card.note)}</small></article>`).join("")}</div>
       <section class="admin-quick-actions" aria-label="Raccourcis de gestion">
         <button class="admin-quick-action" type="button" onclick="showAdminView('orders')"><span class="admin-quick-icon">▤</span><span><strong>Traiter les commandes</strong><small>Suivre paiement, préparation et livraison</small></span><span class="admin-quick-arrow">→</span></button>
