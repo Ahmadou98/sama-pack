@@ -2954,3 +2954,55 @@ body.general-admin-mode .general-admin-account-modal {
   .general-admin-control { gap: 12px; padding: 14px; border-radius: 14px; }
   .general-admin-control .btn { width: 100%; }
 }
+
+
+/* Compte administrateur général : profil modifiable et photo privée */
+.general-admin-avatar {
+  overflow: hidden;
+}
+.general-admin-avatar img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
+}
+.general-admin-profile-control .profile-photo-settings {
+  margin: 0;
+  width: 100%;
+}
+.general-admin-profile-control .general-admin-profile-form {
+  display: grid;
+  gap: 12px;
+  margin-top: 2px;
+}
+.general-admin-profile-control .general-admin-profile-form label {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  color: #344a3b;
+  font-size: 12px;
+  font-weight: 750;
+}
+.general-admin-profile-control .general-admin-profile-form .input {
+  width: 100%;
+  min-width: 0;
+  border-radius: 11px;
+}
+@media (max-width: 600px) {
+  .general-admin-profile-control .profile-photo-settings {
+    grid-template-columns: 52px minmax(0, 1fr);
+    gap: 10px;
+    padding: 10px;
+  }
+  .general-admin-profile-control .profile-photo-preview-wrap {
+    width: 52px;
+    height: 52px;
+  }
+  .general-admin-profile-control .profile-photo-actions {
+    flex-direction: column;
+  }
+  .general-admin-profile-control .profile-photo-actions .btn {
+    width: 100%;
+  }
+}
