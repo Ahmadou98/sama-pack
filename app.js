@@ -2113,6 +2113,8 @@
     }
     const adminBtn = $("adminBtn");
     if (adminBtn) { adminBtn.textContent = "Gestion"; adminBtn.classList.toggle("hidden", !isAdmin()); }
+    const mobileManageBtn = $("mobileManageBtn");
+    if (mobileManageBtn) mobileManageBtn.classList.toggle("hidden", !isAdmin());
     const footerAdminSection = $("footerAdminSection");
     if (footerAdminSection) footerAdminSection.classList.toggle("hidden", !isAdmin());
     const adminFlag = $("adminFlag"); if (adminFlag) adminFlag.textContent = isAdmin() ? `Connecté : ${currentProfile?.full_name || currentUser?.email || "Administrateur"}` : "Espace réservé aux administrateurs";
@@ -3813,6 +3815,7 @@
     if ($("quoteBtn")) $("quoteBtn").onclick = openQuoteModal;
     if ($("businessSpaceBtn")) $("businessSpaceBtn").onclick = openB2BWorkspace;
     if ($("adminBtn")) $("adminBtn").onclick = openAdmin;
+    if ($("mobileManageBtn")) $("mobileManageBtn").onclick = openAdmin;
     if ($("footerAdmin")) $("footerAdmin").onclick = e => { e.preventDefault(); openAdmin(); };
     if ($("viewShopBtn")) $("viewShopBtn").onclick = closeAdmin;
     if ($("viewShopBtnSide")) $("viewShopBtnSide").onclick = closeAdmin;
