@@ -162,6 +162,7 @@
     if (isGeneralAdmin()) return true;
     // Any authenticated administrator can always return to the dashboard.
     // Dashboard queries remain scoped by database RLS and permission-aware reads.
+    if (view === "contacts" && isAdmin()) return true;
     if (view === "dashboard" && isAdmin()) return true;
     const permission = ADMIN_VIEW_PERMISSION[view];
     return Boolean(permission && hasAdminPermission(permission));
@@ -2795,7 +2796,7 @@
     });
     const globalSearch = $("adminGlobalSearch"); if (globalSearch) globalSearch.value = "";
     updateAdminContext();
-    const titles = {dashboard:"Tableau de bord",orders:"Commandes",customers:"Clients",stock:"Stock",products:"Packs",packs:"Packs",catalogs:"Produits & outils",prospects:"Prospection",admins:"Comptes administrateurs",activity:"Journal des actions",suppliers:"Fournisseurs",expenses:"Dépenses",quotes:"Devis professionnels",settings:"Paramètres",profitability:"Rentabilité",sales_codes:"Codes commerciaux",marketing:"Campagnes e-mail"};
+    const titles = {dashboard:"Tableau de bord",orders:"Commandes",customers:"Clients",stock:"Stock",products:"Packs",packs:"Packs",catalogs:"Produits & outils",prospects:"Prospection",admins:"Comptes administrateurs",activity:"Journal des actions",suppliers:"Fournisseurs",expenses:"Dépenses",quotes:"Devis professionnels",settings:"Paramètres",profitability:"Rentabilité",sales_codes:"Codes commerciaux",marketing:"Campagnes e-mail",contacts:"Messages de contact"};
     $("adminTitle").textContent = titles[view] || "Gestion";
     $("adminContent").innerHTML = '<div class="panel loading-panel">Chargement des données…</div>';
     try {
@@ -2813,6 +2814,7 @@
       else if (view === "expenses") html = await adminExpenses();
       else if (view === "quotes") html = await adminQuotes();
       else if (view === "marketing") html = await adminMarketing();
+      else if (view === "contacts") html = await adminContacts();
       else if (view === "profitability") html = await adminProfitability();
       else if (view === "sales_codes") html = await adminSalesCodes();
       else if (view === "settings") html = await adminSettings();
@@ -3608,6 +3610,38 @@
     }
   }
 
+  async function adminContacts() {
+    if (!isAdmin()) throw new Error("Accès administrateur requis.");
+    const { data, error } = await client.from("contact_messages")
+      .select("id,full_name,email,phone,subject,message,status,created_at,updated_at")
+      .order("created_at", { ascending: false }).limit(300);
+    if (error) throw error;
+    const rows = data || [];
+    const labels = {new:"Nouveau",read:"Lu",replied:"Répondu",closed:"Clôturé"};
+    const badge = status => '<span class="status-badge status-' + esc(status) + '">' + esc(labels[status] || status) + '</span>';
+    const body = rows.map(row => '<tr>' +
+      '<td>' + esc(new Date(row.created_at).toLocaleString("fr-FR")) + '</td>' +
+      '<td><strong>' + esc(row.full_name) + '</strong><br><a href="mailto:' + esc(row.email) + '">' + esc(row.email) + '</a>' +
+      (row.phone ? '<br><span class="small-note">' + esc(row.phone) + '</span>' : '') + '</td>' +
+      '<td><strong>' + esc(row.subject) + '</strong><p class="contact-message-body">' + esc(row.message).replace(/\n/g,"<br>") + '</p></td>' +
+      '<td>' + badge(row.status) + '<select class="input contact-message-status" aria-label="Statut du message" data-contact-message-id="' + esc(row.id) + '">' +
+      Object.entries(labels).map(([value,label]) => '<option value="' + value + '"' + (row.status===value?' selected':'') + '>' + label + '</option>').join("") +
+      '</select></td></tr>').join("");
+    const counts = {new:rows.filter(r=>r.status==="new").length,read:rows.filter(r=>r.status==="read").length,replied:rows.filter(r=>r.status==="replied").length,closed:rows.filter(r=>r.status==="closed").length};
+    return '<div class="panel"><div class="admin-panel-head"><div><h3>Messages du formulaire de contact (' + rows.length + ')</h3><p class="small-note">Messages reçus via la page Contact. Les changements de statut sont enregistrés.</p></div><button class="btn small ghost" onclick="showAdminView(\'contacts\')">Actualiser</button></div>' +
+      '<div class="stats-grid"><div class="stat-card"><span>Nouveaux</span><strong>' + counts.new + '</strong></div><div class="stat-card"><span>Lus</span><strong>' + counts.read + '</strong></div><div class="stat-card"><span>Répondus</span><strong>' + counts.replied + '</strong></div><div class="stat-card"><span>Clôturés</span><strong>' + counts.closed + '</strong></div></div>' +
+      (rows.length ? '<div class="table-wrap"><table class="table"><thead><tr><th>Reçu le</th><th>Contact</th><th>Objet et message</th><th>Suivi</th></tr></thead><tbody>' + body + '</tbody></table></div>' : '<div class="empty">Aucun message reçu pour le moment.</div>') + '</div>';
+  }
+
+  async function updateContactMessageStatus(id, status) {
+    if (!isAdmin()) return toast("Accès administrateur requis.", true);
+    if (!["new","read","replied","closed"].includes(status)) return toast("Statut de message invalide.", true);
+    const { error } = await client.from("contact_messages").update({status,updated_at:new Date().toISOString()}).eq("id",id);
+    if (error) return toast("Le statut n’a pas pu être enregistré : " + errorMessage(error), true);
+    toast("Statut du message mis à jour.");
+    await showAdminView("contacts");
+  }
+
   async function adminQuotes() {
     const rows = await readRows("quotes");
     cachedQuotes = rows.sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
@@ -3694,6 +3728,11 @@
         const wasEditing = Boolean(editingProductId); editingProductId = null; toast(wasEditing ? "Pack modifié." : "Nouveau pack ajouté."); await loadPublicData(); await showAdminView("packs");
       };
       }
+    }
+    if (view === "contacts") {
+      document.querySelectorAll(".contact-message-status").forEach(select => {
+        select.addEventListener("change", () => updateContactMessageStatus(select.dataset.contactMessageId, select.value));
+      });
     }
     if (view === "stock") {
       document.querySelectorAll(".stock-field").forEach(input => {
@@ -3892,6 +3931,6 @@
   }
 
   // Functions called by inline storefront/admin controls.
-  Object.assign(window,{openProduct,addToCart,closeModal,changeQty,checkoutModal,retryOrderPayment,resendPaymentConfirmation,showAccountHome,reorderOrder,openBudgetPackBuilder,suggestBudgetPack,changeBudgetBuilderQty,addBudgetPackToCart,signOut,renderAuthForm,resetPassword,enableBrowserNotifications,loadAndShowNotifications,markNotificationRead,showAdminView,editPack,cancelPackEdit,togglePack,setOrderStatus,showOrder,setQuoteStatus,goToProductPage,movePromo,goToPromo,selectReviewRating,editProspect,deleteProspect,setProspectStatus,editCatalogItem,archiveCatalogItem,removeAdmin,openSubscriptionEditor,addSubscriptionLine,removeSubscriptionLine,toggleSubscriptionStatus,prepareSubscriptionOrder,advanceSubscriptionReminder,deleteSubscription,openOrderWhatsApp,openB2BWorkspace,addB2BLine,removeB2BLine,submitB2BQuantityOrder,submitB2BQuote,setOrderDeliveryCost,toggleSalesCode,deleteSalesCode,copySalesLink,showCustomerProfile,sendMonthlyMarketingNow});
+  Object.assign(window,{updateContactMessageStatus,openProduct,addToCart,closeModal,changeQty,checkoutModal,retryOrderPayment,resendPaymentConfirmation,showAccountHome,reorderOrder,openBudgetPackBuilder,suggestBudgetPack,changeBudgetBuilderQty,addBudgetPackToCart,signOut,renderAuthForm,resetPassword,enableBrowserNotifications,loadAndShowNotifications,markNotificationRead,showAdminView,editPack,cancelPackEdit,togglePack,setOrderStatus,showOrder,setQuoteStatus,goToProductPage,movePromo,goToPromo,selectReviewRating,editProspect,deleteProspect,setProspectStatus,editCatalogItem,archiveCatalogItem,removeAdmin,openSubscriptionEditor,addSubscriptionLine,removeSubscriptionLine,toggleSubscriptionStatus,prepareSubscriptionOrder,advanceSubscriptionReminder,deleteSubscription,openOrderWhatsApp,openB2BWorkspace,addB2BLine,removeB2BLine,submitB2BQuantityOrder,submitB2BQuote,setOrderDeliveryCost,toggleSalesCode,deleteSalesCode,copySalesLink,showCustomerProfile,sendMonthlyMarketingNow});
   start().catch(err => { console.error(err); toast("Initialisation impossible. Recharge la page ou contacte l’administrateur.",true); });
 })();
