@@ -3333,7 +3333,7 @@ body.general-admin-mode .general-admin-account-modal {
 }
 @media (max-width: 900px) {
   #adminPanel.admin-overlay { overflow: hidden; }
-  #adminPanel.admin-shell { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+  #adminPanel .admin-shell { display: flex; flex-direction: column; height: 100%; min-height: 0; }
   #adminPanel .admin-sidebar {
     display: flex;
     flex: 0 0 auto;
@@ -3361,6 +3361,7 @@ body.general-admin-mode .general-admin-account-modal {
   #adminPanel .admin-nav-search > span { display: none; }
   #adminPanel .admin-nav-search .input { min-height: 37px; }
   #adminPanel .admin-nav-group { display: contents; }
+  #adminPanel .admin-nav-group.admin-nav-group-empty { display: none !important; }
   #adminPanel .side-btn {
     flex: 0 0 auto;
     width: auto;
