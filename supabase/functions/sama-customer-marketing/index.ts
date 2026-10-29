@@ -108,7 +108,7 @@ async function isAdminOrInternal(req: Request): Promise<boolean> {
   if (authError || !authData.user) return false;
   const { data: profile, error: profileError } = await supabase.from("profiles")
     .select("role,is_super_admin").eq("id", authData.user.id).maybeSingle();
-  return !profileError && profile?.role === "admin";
+  return !profileError && profile?.role === "admin" && profile?.is_super_admin === true;
 }
 
 async function unsubscribeByToken(token: string, origin: string | null) {
