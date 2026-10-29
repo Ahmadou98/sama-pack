@@ -4187,3 +4187,24 @@ body.general-admin-mode .general-admin-account-modal {
     transition: none;
   }
 }
+
+
+/* Admin inbox: messages submitted through the public contact page */
+.contact-message-body {
+  max-width: 620px;
+  margin: 8px 0 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.55;
+}
+.contact-message-status {
+  min-width: 120px;
+  margin-top: 8px;
+}
+.status-badge.status-new { background:#fff0d7; color:#8a4b00; }
+.status-badge.status-read { background:#e8f1ff; color:#2454a6; }
+.status-badge.status-replied { background:#e7f7eb; color:#17633a; }
+.status-badge.status-closed { background:#eef0f2; color:#475467; }
+@media(max-width:700px) {
+  .contact-message-body { min-width:220px; }
+}
