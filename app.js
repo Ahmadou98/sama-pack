@@ -20,6 +20,9 @@
   let products = FALLBACK_PRODUCTS.map(normalizeFallbackProduct);
   let currentUser = null;
   let currentProfile = null;
+  let accountButtonAvatarUrl = "";
+  let accountButtonAvatarPath = "";
+  let accountAvatarRequestId = 0;
   let profilePhotoPreviewUrl = null;
   let adminInitialized = true;
   let userNotifications = [];
@@ -1568,6 +1571,7 @@
       }
 
       currentProfile = { ...(currentProfile || {}), avatar_path: path };
+      await refreshAccountButtonAvatar();
       if (oldPath && oldPath !== path) {
         const { error: cleanupError } = await bucket.remove([oldPath]);
         if (cleanupError) console.warn("Ancienne photo non supprimée", cleanupError);
@@ -1597,6 +1601,7 @@
       if (error) throw error;
       if (!data) throw new Error("La photo n’a pas pu être retirée du profil.");
       currentProfile = { ...(currentProfile || {}), avatar_path: null };
+      await refreshAccountButtonAvatar();
       const { error: removeError } = await client.storage.from("sama-pack-avatars").remove([oldPath]);
       if (removeError) console.warn("La photo retirée du profil n’a pas pu être supprimée du stockage", removeError);
       if (profilePhotoPreviewUrl) URL.revokeObjectURL(profilePhotoPreviewUrl);
@@ -1804,12 +1809,45 @@
     setupAccountPresence(currentUser);
     adminInitialized = await isAdminInitialized();
     updateAccountButtons();
+    await refreshAccountButtonAvatar();
     await loadNotifications();
     setupNotificationsRealtime();
     if (isAdmin()) { updateCategoryFilter(); renderProducts(); }
   }
   function updateAccountButtons() {
-    const accountBtn = $("accountBtn"); if (accountBtn) accountBtn.textContent = currentUser ? (currentProfile?.role === "admin" ? "Compte admin" : "Mon compte") : "Connexion";
+    const accountBtn = $("accountBtn");
+    if (accountBtn) {
+      if (!currentUser) {
+        accountBtn.classList.remove("account-nav-user");
+        accountBtn.removeAttribute("title");
+        accountBtn.setAttribute("aria-label", "Se connecter à son compte");
+        if (accountBtn.dataset.accountMarkup !== "Connexion") {
+          accountBtn.innerHTML = "Connexion";
+          accountBtn.dataset.accountMarkup = "Connexion";
+        }
+      } else {
+        const label = currentProfile?.role === "admin" ? "Compte admin" : "Mon compte";
+        const sourceName = String(currentProfile?.full_name || currentUser.email || "SAMA-PACK").trim().replace(/@.*$/, "");
+        const parts = sourceName.split(/[\\s._-]+/).filter(Boolean);
+        const initials = (parts.length > 1
+          ? (parts[0].charAt(0) + parts[parts.length - 1].charAt(0))
+          : (parts[0] || "SP").slice(0, 2)).toUpperCase();
+        const avatarUrl = accountButtonAvatarPath && accountButtonAvatarPath === currentProfile?.avatar_path
+          ? accountButtonAvatarUrl
+          : "";
+        const avatarContent = avatarUrl
+          ? `<img src="${esc(avatarUrl)}" alt="" loading="eager">`
+          : esc(initials || "SP");
+        const markup = `<span class="account-nav-avatar" aria-hidden="true">${avatarContent}</span><span class="account-nav-label">${label}</span>`;
+        accountBtn.classList.add("account-nav-user");
+        accountBtn.setAttribute("aria-label", label + " : ouvrir mon espace");
+        accountBtn.title = "Ouvrir " + label.toLowerCase();
+        if (accountBtn.dataset.accountMarkup !== markup) {
+          accountBtn.innerHTML = markup;
+          accountBtn.dataset.accountMarkup = markup;
+        }
+      }
+    }
     const adminBtn = $("adminBtn");
     if (adminBtn) { adminBtn.textContent = "Gestion"; adminBtn.classList.toggle("hidden", !isAdmin()); }
     const footerAdminSection = $("footerAdminSection");
@@ -1817,6 +1855,28 @@
     const adminFlag = $("adminFlag"); if (adminFlag) adminFlag.textContent = isAdmin() ? `Connecté : ${currentProfile?.full_name || currentUser?.email || "Administrateur"}` : "Espace réservé aux administrateurs";
     const n = userNotifications.filter(x => !x.read_at).length; const badge = $("notificationCount");
     if (badge) { badge.textContent = String(n > 99 ? "99+" : n); badge.classList.toggle("hidden", n === 0); }
+  }
+
+  async function refreshAccountButtonAvatar() {
+    const requestId = ++accountAvatarRequestId;
+    const userId = currentUser?.id || "";
+    const path = currentProfile?.avatar_path || "";
+    if (!client || !userId || !path) {
+      accountButtonAvatarUrl = "";
+      accountButtonAvatarPath = "";
+      updateAccountButtons();
+      return;
+    }
+    if (accountButtonAvatarPath === path && accountButtonAvatarUrl) {
+      updateAccountButtons();
+      return;
+    }
+    const { data, error } = await client.storage.from("sama-pack-avatars").createSignedUrl(path, 60 * 60);
+    if (requestId !== accountAvatarRequestId || userId !== currentUser?.id) return;
+    accountButtonAvatarPath = path;
+    accountButtonAvatarUrl = error ? "" : (data?.signedUrl || "");
+    if (error) console.warn("Photo de profil de l’en-tête indisponible", error);
+    updateAccountButtons();
   }
   async function loadNotifications() {
     if (!client || !currentUser) { userNotifications = []; updateAccountButtons(); return; }
