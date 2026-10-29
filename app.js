@@ -144,7 +144,7 @@
 
   async function getProfile(user = currentUser) {
     if (!client || !user) return null;
-    const { data, error } = await client.from("profiles").select("id,full_name,phone,phone_secondary,delivery_region,delivery_city,delivery_commune,delivery_neighborhood,delivery_address,delivery_landmark,delivery_instructions,email,role,is_super_admin,invited_by,created_at,avatar_path").eq("id", user.id).maybeSingle();
+    const { data, error } = await client.from("profiles").select("id,full_name,phone,phone_secondary,delivery_region,delivery_city,delivery_commune,delivery_neighborhood,delivery_address,delivery_landmark,delivery_instructions,email,role,is_super_admin,invited_by,created_at,avatar_path,marketing_opt_in").eq("id", user.id).maybeSingle();
     if (error) { console.warn("Profile unavailable", error); return null; }
     return data;
   }
@@ -1209,6 +1209,7 @@
       <label class="full ${signup ? "" : "hidden"}">Adresse précise<input class="input" name="delivery_address" maxlength="300" placeholder="Rue, numéro, bâtiment…" ${signup ? "required" : "disabled"}></label>
       <label class="full ${signup ? "" : "hidden"}">Repère pour le livreur (facultatif)<input class="input" name="delivery_landmark" maxlength="200" placeholder="Ex. près de la pharmacie…"></label>
       <label class="full ${signup ? "" : "hidden"}">Instructions de livraison (facultatif)<textarea class="input" name="delivery_instructions" maxlength="500" rows="2" placeholder="Précisions utiles au livreur"></textarea></label>
+      <label class="full marketing-consent ${signup ? "" : "hidden"}"><span><input type="checkbox" name="marketing_opt_in" value="true" ${signup ? "" : "disabled"}> J’accepte de recevoir par e-mail les ventes flash, promotions et nouveautés de SAMA-PACK.</span><small>Tu pourras retirer ton accord à tout moment depuis ton compte ou le lien de désabonnement.</small></label>
       <label class="full password-field">Mot de passe<span class="password-input-wrap"><input class="input" id="authPassword" name="password" type="password" required minlength="8" placeholder="Mot de passe (8 caractères minimum)" autocomplete="${signup ? "new-password" : "current-password"}">${passwordVisibilityToggleHtml("authPassword")}</span></label>
       <label class="full password-field ${signup ? "" : "hidden"}">Confirmer le mot de passe<span class="password-input-wrap"><input class="input" id="authPasswordConfirmation" name="password_confirmation" type="password" minlength="8" placeholder="Confirme ton mot de passe" autocomplete="new-password" ${signup ? "required" : "disabled"}>${passwordVisibilityToggleHtml("authPasswordConfirmation")}</span></label>
       <div class="full auth-actions"><button class="btn primary full" type="submit">${signup ? "Créer mon compte" : "Se connecter"}</button><button class="link-btn dark-link" type="button" onclick="renderAuthForm('${signup ? "login" : "signup"}')">${signup ? "J’ai déjà un compte" : "Créer un compte client"}</button>${signup ? "" : '<button class="link-btn dark-link" type="button" onclick="resetPassword()">Mot de passe oublié ?</button>'}</div>
@@ -1235,7 +1236,8 @@
         delivery_neighborhood: String(fd.get("delivery_neighborhood") || "").trim(),
         delivery_address: String(fd.get("delivery_address") || "").trim(),
         delivery_landmark: String(fd.get("delivery_landmark") || "").trim(),
-        delivery_instructions: String(fd.get("delivery_instructions") || "").trim()
+        delivery_instructions: String(fd.get("delivery_instructions") || "").trim(),
+        marketing_opt_in: fd.get("marketing_opt_in") === "on"
       };
       if (signup) {
         if (!signupProfile.phone) { setBusy(form, false); authBusy = false; return toast("Le numéro WhatsApp doit être valide (ex. +221 77 123 45 67).", true); }
@@ -1485,6 +1487,7 @@
       summaryItem('Téléphone supplémentaire', p.phone_secondary || 'Non renseigné') +
       summaryItem('Zone de livraison', zone, true) +
       summaryItem('Adresse de livraison', address, true) +
+      summaryItem('E-mails promotionnels', p.marketing_opt_in ? 'Acceptés' : 'Non activés') +
       '</div>' +
       '<form id="profileForm" class="checkout-grid profile-edit-form hidden">' +
       '<div class="profile-edit-heading full"><div><h4>Modifier mes coordonnées</h4><p class="small-note">L’adresse e-mail est protégée et ne peut pas être modifiée ici.</p></div></div>' +
@@ -1500,6 +1503,7 @@
       field('Adresse précise', 'delivery_address', p.delivery_address, 'Rue, numéro, bâtiment…', true, true) +
       '<label class="full">Repère pour le livreur (facultatif)<input class="input" name="delivery_landmark" value="' + esc(p.delivery_landmark || '') + '" maxlength="200" placeholder="Ex. près de la pharmacie…"></label>' +
       '<label class="full">Instructions de livraison (facultatif)<textarea class="input" name="delivery_instructions" maxlength="500" rows="2" placeholder="Précisions utiles au livreur">' + esc(p.delivery_instructions || '') + '</textarea></label>' +
+      '<label class="full marketing-consent"><span><input type="checkbox" name="marketing_opt_in" ' + (p.marketing_opt_in ? 'checked' : '') + '> Recevoir les promotions, ventes flash et nouveautés par e-mail.</span><small>Ce choix est facultatif et modifiable à tout moment.</small></label>' +
       '<div class="profile-edit-actions full"><button class="btn primary" type="submit">Enregistrer les modifications</button><button class="btn ghost" id="cancelProfileEditBtn" type="button">Annuler</button></div></form>' +
       '</div></section>';
   }
@@ -1523,13 +1527,13 @@
     if (name.length < 2 || !phone) return toast('Vérifie ton nom et ton numéro WhatsApp.', true);
     if (secondaryRaw && !phoneSecondary) return toast('Le numéro supplémentaire n’est pas valide.', true);
     if (!delivery.delivery_region || !delivery.delivery_city || !delivery.delivery_commune || !delivery.delivery_neighborhood || !delivery.delivery_address) return toast('Complète toutes les informations obligatoires de livraison.', true);
-    const profilePayload = { full_name: name, phone, phone_secondary: phoneSecondary || '', ...delivery, updated_at: new Date().toISOString() };
+    const profilePayload = { full_name: name, phone, phone_secondary: phoneSecondary || '', marketing_opt_in: fd.get('marketing_opt_in') === 'on', ...delivery, updated_at: new Date().toISOString() };
     setBusy(form, true, 'Enregistrement…');
     try {
       const { error: authError } = await client.auth.updateUser({ data: { full_name: name, phone } });
       if (authError) throw authError;
       const { data, error } = await client.from('profiles').update(profilePayload).eq('id', currentUser.id)
-        .select('id,full_name,phone,phone_secondary,delivery_region,delivery_city,delivery_commune,delivery_neighborhood,delivery_address,delivery_landmark,delivery_instructions,email,role,is_super_admin,invited_by,created_at,avatar_path').maybeSingle();
+        .select('id,full_name,phone,phone_secondary,delivery_region,delivery_city,delivery_commune,delivery_neighborhood,delivery_address,delivery_landmark,delivery_instructions,email,role,is_super_admin,invited_by,created_at,avatar_path,marketing_opt_in').maybeSingle();
       if (error) throw error;
       if (!data) throw new Error('Aucune modification du profil n’a été enregistrée.');
       currentProfile = data;
