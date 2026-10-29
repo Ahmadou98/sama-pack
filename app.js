@@ -2898,6 +2898,13 @@
   async function adminCustomers() {
     const customerRows = await readRows("customers");
     cachedCustomers = customerRows;
+    let assignableAdmins = [];
+    if (isGeneralAdmin()) {
+      const adminResult = await client.from("profiles").select("id,full_name,email")
+        .eq("role","admin").eq("is_super_admin",false).order("created_at",{ascending:true});
+      if (adminResult.error) throw adminResult.error;
+      assignableAdmins = adminResult.data || [];
+    }
 
     const profileRows = [];
     const pageSize = 500;
@@ -2948,21 +2955,44 @@
     });
 
     const subscribedCount = profileRows.filter(profile => profile.marketing_opt_in === true).length;
-    const tableHtml = enriched.length ? '<div class="table-wrap"><table class="table"><thead><tr><th>Client</th><th>Contact</th><th>Zone</th><th>Commandes</th><th>Dernière commande</th><th>E-mails commerciaux</th><th>Fiche</th></tr></thead><tbody>' +
+    const tableHtml = enriched.length ? '<div class="table-wrap"><table class="table"><thead><tr><th>Client</th><th>Contact</th><th>Zone</th><th>Commandes</th><th>Dernière commande</th><th>E-mails commerciaux</th>' + (isGeneralAdmin() ? '<th>Responsable</th>' : '') + '<th>Fiche</th></tr></thead><tbody>' +
       enriched.slice().sort((a,b) => new Date(b.last_order_at || b.created_at || 0) - new Date(a.last_order_at || a.created_at || 0)).map(customer => {
         const profile = customer.profile || {};
         const name = profile.full_name || customer.name || "Client";
         const email = profile.email || "";
         const subscribed = profile.marketing_opt_in === true;
+        const assignedAdminId = customer.assigned_admin_id || "";
+        const customerId = String(customer.id || "");
+        const assignmentCell = isGeneralAdmin()
+          ? (customerId.startsWith("profile:")
+            ? '<td><span class="small-note">Pas encore de fiche client</span></td>'
+            : '<td><select class="input" aria-label="Attribuer le client" onchange="setCustomerAssigned(\'' + esc(customerId) + '\',this.value)"><option value="">Non attribué</option>' +
+              assignableAdmins.map(a => '<option value="' + esc(a.id) + '"' + (assignedAdminId === a.id ? ' selected' : '') + '>' + esc(a.full_name || a.email || "Administrateur") + '</option>').join("") +
+              '</select></td>')
+          : "";
         return '<tr><td><strong>' + esc(name) + '</strong><br><span class="small-note">' + esc(email || "E-mail non renseigné") + '</span></td>' +
           '<td>' + esc(profile.phone || customer.phone || "—") + (profile.phone_secondary ? '<br><span class="small-note">Secondaire : ' + esc(profile.phone_secondary) + '</span>' : '') + '</td>' +
           '<td>' + esc([profile.delivery_commune, profile.delivery_neighborhood].filter(Boolean).join(" · ") || customer.zone || "—") + '</td>' +
           '<td>' + Number(customer.orders_count || 0) + '</td><td>' + esc(fmtDate(customer.last_order_at)) + '</td>' +
           '<td><span class="status ' + (subscribed ? 'delivered' : 'cancelled') + '">' + (subscribed ? 'Abonné' : 'Non abonné') + '</span></td>' +
+          assignmentCell +
           '<td><button class="btn small secondary" type="button" onclick="showCustomerProfile(\'' + esc(customer.list_id) + '\')">Fiche client</button></td></tr>';
       }).join("") + '</tbody></table></div>' : '<div class="empty">Aucun client enregistré pour le moment.</div>';
     return '<div class="panel admin-customers-intro"><div class="admin-panel-head"><h3>Clients et fiches clients (' + enriched.length + ')</h3><span class="small-note">' + subscribedCount + ' compte(s) autorisent les e-mails commerciaux.</span></div><p class="small-note">Les comptes clients inscrits et les clients historiques sont listés. Ouvre une fiche pour consulter les coordonnées, les commandes, les paiements, les devis et les rappels, puis contacter le client sur WhatsApp.</p>' + tableHtml + '</div>';
   }
+
+  async function setCustomerAssigned(customerId, assignedAdminId) {
+    if (!isGeneralAdmin()) return toast("Seul le propriétaire peut attribuer les clients.", true);
+    if (!customerId || String(customerId).startsWith("profile:")) return toast("Cette fiche ne possède pas encore d’enregistrement client modifiable.", true);
+    const { error } = await client.from("customers").update({
+      assigned_admin_id: assignedAdminId || null,
+      updated_at: new Date().toISOString()
+    }).eq("id", customerId);
+    if (error) return toast(errorMessage(error), true);
+    toast(assignedAdminId ? "Client attribué à l’associé." : "Attribution du client retirée.");
+    await showAdminView("customers");
+  }
+  window.setCustomerAssigned = setCustomerAssigned;
 
   async function showCustomerProfile(customerId) {
     if (!isAdmin()) return toast("Accès réservé aux administrateurs.", true);
