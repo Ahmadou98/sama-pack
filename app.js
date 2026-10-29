@@ -2628,7 +2628,7 @@
     document.querySelectorAll(".side-btn").forEach(b => { b.classList.remove("admin-nav-hidden"); b.classList.toggle("active", b.dataset.view === view || (view === "products" && b.dataset.view === "packs")); });
     const globalSearch = $("adminGlobalSearch"); if (globalSearch) globalSearch.value = "";
     updateAdminContext();
-    const titles = {dashboard:"Tableau de bord",orders:"Commandes",customers:"Clients",stock:"Stock",products:"Packs",packs:"Packs",catalogs:"Produits & outils",prospects:"Prospection",admins:"Comptes administrateurs",activity:"Journal des actions",suppliers:"Fournisseurs",expenses:"Dépenses",quotes:"Devis professionnels",settings:"Paramètres",profitability:"Rentabilité",sales_codes:"Codes commerciaux"};
+    const titles = {dashboard:"Tableau de bord",orders:"Commandes",customers:"Clients",stock:"Stock",products:"Packs",packs:"Packs",catalogs:"Produits & outils",prospects:"Prospection",admins:"Comptes administrateurs",activity:"Journal des actions",suppliers:"Fournisseurs",expenses:"Dépenses",quotes:"Devis professionnels",settings:"Paramètres",profitability:"Rentabilité",sales_codes:"Codes commerciaux",marketing:"Campagnes e-mail"};
     $("adminTitle").textContent = titles[view] || "Gestion";
     $("adminContent").innerHTML = '<div class="panel loading-panel">Chargement des données…</div>';
     try {
@@ -2645,11 +2645,13 @@
       else if (view === "suppliers") html = await adminSuppliers();
       else if (view === "expenses") html = await adminExpenses();
       else if (view === "quotes") html = await adminQuotes();
+      else if (view === "marketing") html = await adminMarketing();
       else if (view === "profitability") html = await adminProfitability();
       else if (view === "sales_codes") html = await adminSalesCodes();
       else if (view === "settings") html = await adminSettings();
       $("adminContent").innerHTML = html;
       bindAdmin(view);
+      if (view === "marketing") { const button = $("sendMonthlyMarketingBtn"); if (button) button.onclick = sendMonthlyMarketingNow; }
       if (view === "dashboard") startDashboardPresencePolling();
     } catch (error) {
       console.error("Admin view failed", error);
@@ -3146,6 +3148,52 @@
     const rows = await readRows("expenses"); cachedExpenses = rows;
     return `<div class="panel"><h3>Enregistrer une dépense</h3><form id="expenseForm" class="admin-form"><input class="input" name="label" required maxlength="200" placeholder="Libellé"><input class="input" type="number" min="0" step="1" name="amount" required placeholder="Montant FCFA"><input class="input" name="category" placeholder="Catégorie"><input class="input" type="date" name="date" value="${new Date().toISOString().slice(0,10)}"><button class="btn primary full" type="submit">Enregistrer la dépense</button></form></div><div style="height:16px"></div><div class="panel"><h3>Dépenses — Total ${money(rows.reduce((s,x)=>s+Number(x.amount||0),0))}</h3>${rows.length ? `<div class="table-wrap"><table class="table"><thead><tr><th>Date</th><th>Libellé</th><th>Catégorie</th><th>Montant</th></tr></thead><tbody>${rows.sort((a,b)=>new Date(b.expense_date)-new Date(a.expense_date)).map(e=>`<tr><td>${esc(e.expense_date)}</td><td>${esc(e.label)}</td><td>${esc(e.category||"")}</td><td>${money(e.amount)}</td></tr>`).join("")}</tbody></table></div>` : '<div class="empty">Aucune dépense enregistrée.</div>'}</div>`;
   }
+  async function adminMarketing() {
+    const [campaigns, subscriberCountResult] = await Promise.all([
+      readRows("customer_email_campaigns", "id,campaign_key,campaign_type,subject,product_id,status,recipients_total,recipients_sent,recipients_failed,error_message,created_at,completed_at"),
+      client.from("profiles").select("id", { count: "exact", head: true }).eq("role", "customer").eq("marketing_opt_in", true)
+    ]);
+    if (subscriberCountResult.error) throw subscriberCountResult.error;
+    const subscribers = Number(subscriberCountResult.count || 0);
+    const sorted = campaigns.slice().sort((a,b) => new Date(b.created_at) - new Date(a.created_at));
+    const sent = campaigns.reduce((total, row) => total + Number(row.recipients_sent || 0), 0);
+    const promotionCount = campaigns.filter(row => row.campaign_type === "promotion").length;
+    const monthCount = campaigns.filter(row => row.campaign_type === "monthly").length;
+    const statusLabelForCampaign = status => ({processing:"En cours",sent:"Envoyée",partial:"Partielle",failed:"Échec",skipped:"Sans envoi"})[status] || status || "—";
+    const statusCss = status => ({processing:"processing",sent:"delivered",partial:"processing",failed:"cancelled",skipped:""})[status] || "";
+    const history = sorted.length
+      ? '<div class="table-wrap"><table class="table"><thead><tr><th>Date</th><th>Campagne</th><th>Objet</th><th>Statut</th><th>Envois réussis</th><th>Échecs</th><th>Détail</th></tr></thead><tbody>' +
+        sorted.map(row => '<tr><td>' + esc(fmtDate(row.created_at)) + '</td><td>' + (row.campaign_type === "promotion" ? "Promotion" : "Mensuelle") + '</td><td><strong>' + esc(row.subject) + '</strong></td><td><span class="status ' + statusCss(row.status) + '">' + statusLabelForCampaign(row.status) + '</span></td><td>' + Number(row.recipients_sent || 0) + ' / ' + Number(row.recipients_total || 0) + '</td><td>' + Number(row.recipients_failed || 0) + '</td><td>' + esc(row.error_message || "—") + '</td></tr>').join("") +
+        '</tbody></table></div>'
+      : '<div class="empty">Aucune campagne commerciale n’a encore été envoyée.</div>';
+    return '<section class="marketing-admin-hero"><div><div class="eyebrow">FIDÉLISATION CLIENT</div><h3>Campagnes e-mail SAMA-PACK</h3><p>Les e-mails promotionnels sont envoyés aux clients qui ont explicitement accepté de les recevoir. Les e-mails de commande restent indépendants de ce consentement.</p></div></section>' +
+      '<section class="marketing-admin-stats"><article class="marketing-admin-stat"><span>Clients abonnés</span><strong>' + subscribers + '</strong><small>Consentement commercial actif</small></article>' +
+      '<article class="marketing-admin-stat"><span>Campagnes promotion</span><strong>' + promotionCount + '</strong><small>Envoi lors de l’activation d’une vente flash</small></article>' +
+      '<article class="marketing-admin-stat"><span>Campagnes mensuelles</span><strong>' + monthCount + '</strong><small>Programmées le 1er à 08 h, heure de Dakar</small></article>' +
+      '<article class="marketing-admin-stat"><span>E-mails envoyés</span><strong>' + sent + '</strong><small>Total cumulé depuis l’activation</small></article></section>' +
+      '<section class="panel marketing-admin-schedule"><div><div class="eyebrow">AUTOMATISATION</div><h4>Le prochain rendez-vous client</h4><p>Le premier jour de chaque mois à 08 h, SAMA-PACK présente quelques essentiels disponibles et les promotions en cours. Chaque client reçoit un e-mail individuel avec un lien de désabonnement.</p><p class="small-note">Une vente flash publiée déclenche automatiquement un message dédié. Modifier le prix, la durée ou le texte d’une promotion active peut déclencher une nouvelle campagne pour cette nouvelle version.</p></div>' +
+      (isGeneralAdmin() ? '<button class="btn primary marketing-send-now" type="button" id="sendMonthlyMarketingBtn">Envoyer la campagne du mois maintenant</button>' : '<p class="small-note">L’envoi manuel est réservé à l’administrateur général.</p>') +
+      '</section><section class="panel marketing-admin-history"><div class="admin-panel-head"><h3>Historique des campagnes (' + campaigns.length + ')</h3><button class="btn ghost small" type="button" onclick="showAdminView(\'marketing\')">Actualiser</button></div>' + history + '</section>';
+  }
+
+  async function sendMonthlyMarketingNow() {
+    if (!isGeneralAdmin()) return toast("Seul l’administrateur général peut lancer une campagne manuellement.", true);
+    if (!window.confirm("Envoyer maintenant la campagne mensuelle à tous les clients ayant accepté les e-mails commerciaux ? Chaque client recevra un message personnalisé. Cette action envoie de vrais e-mails.")) return;
+    const button = $("sendMonthlyMarketingBtn");
+    if (button) { button.disabled = true; button.dataset.oldText = button.textContent; button.textContent = "Préparation de la campagne…"; }
+    try {
+      const { data, error } = await client.functions.invoke("sama-customer-marketing", { body: { action: "monthly" } });
+      if (error || data?.error || data?.ok === false) throw new Error(data?.error || errorMessage(error || new Error("La campagne n’a pas pu être envoyée.")));
+      toast(data?.message || "Campagne mensuelle traitée.");
+      await showAdminView("marketing");
+    } catch (error) {
+      toast(errorMessage(error), true);
+    } finally {
+      const currentButton = $("sendMonthlyMarketingBtn");
+      if (currentButton) { currentButton.disabled = false; currentButton.textContent = currentButton.dataset.oldText || "Envoyer la campagne du mois maintenant"; delete currentButton.dataset.oldText; }
+    }
+  }
+
   async function adminQuotes() {
     const rows = await readRows("quotes"); cachedQuotes = rows.sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
     return `<div class="panel"><h3>Demandes de devis (${rows.length})</h3>${rows.length ? `<div class="table-wrap"><table class="table"><thead><tr><th>Référence</th><th>Date</th><th>Structure</th><th>Besoin</th><th>Contact</th><th>Statut</th></tr></thead><tbody>${cachedQuotes.map(q=>`<tr><td>${esc(q.id)}</td><td>${esc(fmtDate(q.created_at))}</td><td>${esc(q.company)}</td><td>${esc(q.need)}<br><span class="small-note">${esc(q.message||"")}</span></td><td>${esc(q.phone)}<br><span class="small-note">${esc(q.email||"")}</span></td><td><select class="input" onchange="setQuoteStatus('${esc(q.id)}',this.value)">${["new","processing","won","lost"].map(s=>`<option ${q.status===s?"selected":""} value="${s}">${esc(statusLabel(s))}</option>`).join("")}</select></td></tr>`).join("")}</tbody></table></div>` : '<div class="empty">Aucune demande de devis.</div>'}</div>`;
@@ -3358,6 +3406,6 @@
   }
 
   // Functions called by inline storefront/admin controls.
-  Object.assign(window,{openProduct,addToCart,closeModal,changeQty,checkoutModal,retryOrderPayment,resendPaymentConfirmation,showAccountHome,reorderOrder,openBudgetPackBuilder,suggestBudgetPack,changeBudgetBuilderQty,addBudgetPackToCart,signOut,renderAuthForm,resetPassword,enableBrowserNotifications,loadAndShowNotifications,markNotificationRead,showAdminView,editPack,cancelPackEdit,togglePack,setOrderStatus,showOrder,setQuoteStatus,goToProductPage,movePromo,goToPromo,selectReviewRating,editProspect,deleteProspect,setProspectStatus,editCatalogItem,archiveCatalogItem,removeAdmin,openSubscriptionEditor,addSubscriptionLine,removeSubscriptionLine,toggleSubscriptionStatus,prepareSubscriptionOrder,advanceSubscriptionReminder,deleteSubscription,openOrderWhatsApp,openB2BWorkspace,addB2BLine,removeB2BLine,submitB2BQuantityOrder,submitB2BQuote,setOrderDeliveryCost,toggleSalesCode,deleteSalesCode,copySalesLink});
+  Object.assign(window,{openProduct,addToCart,closeModal,changeQty,checkoutModal,retryOrderPayment,resendPaymentConfirmation,showAccountHome,reorderOrder,openBudgetPackBuilder,suggestBudgetPack,changeBudgetBuilderQty,addBudgetPackToCart,signOut,renderAuthForm,resetPassword,enableBrowserNotifications,loadAndShowNotifications,markNotificationRead,showAdminView,editPack,cancelPackEdit,togglePack,setOrderStatus,showOrder,setQuoteStatus,goToProductPage,movePromo,goToPromo,selectReviewRating,editProspect,deleteProspect,setProspectStatus,editCatalogItem,archiveCatalogItem,removeAdmin,openSubscriptionEditor,addSubscriptionLine,removeSubscriptionLine,toggleSubscriptionStatus,prepareSubscriptionOrder,advanceSubscriptionReminder,deleteSubscription,openOrderWhatsApp,openB2BWorkspace,addB2BLine,removeB2BLine,submitB2BQuantityOrder,submitB2BQuote,setOrderDeliveryCost,toggleSalesCode,deleteSalesCode,copySalesLink,showCustomerProfile,sendMonthlyMarketingNow});
   start().catch(err => { console.error(err); toast("Initialisation impossible. Recharge la page ou contacte l’administrateur.",true); });
 })();
