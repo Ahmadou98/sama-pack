@@ -2847,7 +2847,7 @@
     };
     const [orders, stock, expenses, quotes, productRows] = await Promise.all([
       hasAdminPermission("orders.view") ? readDashboardRows("orders") : Promise.resolve([]),
-      hasAdminPermission("stock.view") ? readDashboardRows("stock", "product_id,quantity,min_quantity,supplier,updated_at") : Promise.resolve([]),
+      hasAdminPermission("stock.view") ? readDashboardRows("stock", "product_id,quantity,min_quantity,updated_at") : Promise.resolve([]),
       (isGeneralAdmin() || hasAdminPermission("expenses.submit")) ? readDashboardRows("expenses") : Promise.resolve([]),
       hasAdminPermission("quotes.view") ? readDashboardRows("quotes") : Promise.resolve([]),
       readDashboardRows("products")
