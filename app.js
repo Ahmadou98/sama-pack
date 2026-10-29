@@ -155,6 +155,7 @@
     return Boolean(data);
   }
   function isAdmin() { return currentProfile?.role === "admin"; }
+  function isGeneralAdmin() { return isAdmin() && currentProfile?.is_super_admin === true; }
 
 
   const ACCOUNT_PRESENCE_WINDOW_MS = 90 * 1000;
@@ -985,10 +986,11 @@
       : '<div class="product-detail-placeholder product-placeholder">' + cleaningBottleSvg() + '</div>';
     const canAdd = canSellProduct(p);
     showModal('<div class="modal-head"><div><div class="eyebrow">' + esc(p.cat) + '</div><h2>' + esc(p.name) + '</h2></div><button class="close" onclick="closeModal()">✕</button></div>' + photo + '<div class="product-detail-meta">' + availabilityBadgeHtml(p) + '</div><div id="productRatingSummaryDetail">' + renderProductRatingSummary(p.id) + '</div><p>' + esc(p.desc) + '</p><ul class="pack-items">' + p.items.map(i => '<li>' + esc(i) + '</li>').join('') + '</ul><div class="price-row">' + priceDisplayHtml(p) + '<button class="btn primary" ' + (canAdd ? 'onclick="addToCart(\'' + esc(p.id) + '\');closeModal()"' : 'disabled') + '>' + (p.availability_status === "out_of_stock" ? "Rupture de stock" : canAdd ? "Ajouter au panier" : "Prix à confirmer") + '</button></div><section id="productReviewsPanel" class="product-reviews-panel" data-product-id="' + esc(p.id) + '"><p class="review-loading">Chargement des avis…</p></section>');
-    void renderProductReviews(p.id);
+    if (!isGeneralAdmin()) void renderProductReviews(p.id);
   }
 
   function addToCart(id) {
+    if (isGeneralAdmin()) return toast("Le compte administrateur général n’utilise pas les fonctions d’achat client.", true);
     const p = getP(id); if (!p || !p.active) { toast("Cet article n’est plus publié.", true); return; } if (p.availability_status === "out_of_stock") { toast("Cet article est en rupture de stock.", true); return; } if (Number(p.price) <= 0) { toast("Le prix de cet article doit être confirmé avant la commande.", true); return; }
     const line = cart.find(i => i.id === id);
     if (line) line.qty = Math.min(99, line.qty + 1); else cart.push({ id, qty: 1 });
@@ -1000,6 +1002,7 @@
   function showModal(body) { $("modalRoot").innerHTML = `<div class="modal" onclick="if(event.target===this)closeModal()"><div class="modal-card">${body}</div></div>`; }
   function closeModal() { $("modalRoot").innerHTML = ""; }
   function renderCartModal() {
+    if (isGeneralAdmin()) return toast("Le panier client n’est pas disponible pour l’administrateur général.");
     if (!cart.length) { showModal(`<div class="modal-head"><h2>Ton panier</h2><button class="close" onclick="closeModal()">✕</button></div><div class="empty">Ton panier est vide.<br><br><a class="btn primary" href="#catalogue" onclick="closeModal()">Voir le catalogue</a></div>`); return; }
     const t = cartTotals();
     showModal(`<div class="modal-head"><div><div class="eyebrow">COMMANDE EN LIGNE</div><h2>Ton panier</h2></div><button class="close" onclick="closeModal()">✕</button></div><div class="cart-list">${cart.map(i => { const p = getP(i.id); if (!p) return ""; return `<div class="cart-item"><div class="cart-product-icon">${cleaningBottleSvg()}</div><div><strong>${esc(p.name)}</strong><div class="small-note">${money(getEffectivePrice(p))} / ${p.catalog_type === "product" ? "unité" : "pack"}</div></div><div class="qty"><button onclick="changeQty('${esc(p.id)}',-1)" aria-label="Retirer une unité">−</button><b>${i.qty}</b><button onclick="changeQty('${esc(p.id)}',1)" aria-label="Ajouter une unité">+</button></div></div>`; }).join("")}</div><div class="summary"><div class="summary-row"><span>Sous-total</span><strong>${money(t.subtotal)}</strong></div><div class="summary-row"><span>Livraison</span><strong>${money(t.delivery)}</strong></div><div class="summary-row total"><span>Total estimé</span><strong>${money(t.total)}</strong></div></div><button class="btn primary full" onclick="checkoutModal()">Passer la commande</button>`);
@@ -1017,6 +1020,7 @@
     return '<img class="budget-builder-thumb-img" src="' + esc(src) + '" alt="' + esc(p.name) + '" loading="lazy" onerror="this.style.display=\'none\'">';
   }
   function openBudgetPackBuilder() {
+    if (isGeneralAdmin()) return toast("Le composeur de pack est réservé aux clients.");
     const available = getBudgetBuilderProducts("all");
     if (!available.length) {
       showModal('<div class="modal-head"><div><div class="eyebrow">PACK PERSONNALISÉ</div><h2>Compose ton pack</h2></div><button class="close" onclick="closeModal()">✕</button></div><div class="empty">Aucun produit individuel n’est actuellement disponible pour composer un pack. Réessaie lorsque le stock sera mis à jour.</div>');
@@ -1122,6 +1126,7 @@
     renderBudgetBuilderResults();
   }
   function addBudgetPackToCart() {
+    if (isGeneralAdmin()) return toast("Le panier client n’est pas disponible pour l’administrateur général.");
     const lines = budgetBuilderState.items.map(line => ({ ...line, product: getP(line.id) }));
     if (!lines.length || lines.some(line => !line.product || !canSellProduct(line.product))) return toast("La sélection contient un article indisponible. Génère une nouvelle proposition.", true);
     const total = lines.reduce((sum, line) => sum + getEffectivePrice(line.product) * line.qty, 0);
@@ -1135,6 +1140,7 @@
     toast("Ton pack personnalisé a été ajouté au panier.");
   }
   async function reorderOrder(orderId) {
+    if (isGeneralAdmin()) return toast("La recommandation de commandes est une fonction client.");
     if (!currentUser) return renderAuthForm("login", "Connecte-toi pour recommander les articles de cette commande.");
     const id = String(orderId || "").trim();
     if (!id) return toast("Référence de commande manquante.", true);
@@ -1615,8 +1621,48 @@
     }
   }
 
+  function showGeneralAdminHome() {
+    const profile = currentProfile || {};
+    const displayName = String(profile.full_name || currentUser?.email || "Administrateur général");
+    const initialsParts = displayName.trim().split(/[\s._-]+/).filter(Boolean);
+    const initials = (initialsParts.length > 1
+      ? initialsParts[0].charAt(0) + initialsParts[initialsParts.length - 1].charAt(0)
+      : (initialsParts[0] || "AG").slice(0, 2)).toUpperCase();
+    const email = String(currentUser?.email || profile.email || "");
+    showModal(
+      '<div class="modal-head general-admin-modal-head"><div><div class="eyebrow">ESPACE DE PILOTAGE</div><h2>Compte administrateur général</h2><p class="small-note">Ce compte est réservé à la gestion de SAMA-PACK, pas aux achats clients.</p></div><button class="close" onclick="closeModal()" aria-label="Fermer">✕</button></div>' +
+      '<section class="general-admin-identity"><div class="general-admin-avatar" aria-hidden="true">' + esc(initials) + '</div><div><span class="general-admin-role">ADMINISTRATEUR GÉNÉRAL</span><h3>' + esc(displayName) + '</h3><p>' + esc(email) + '</p><span class="general-admin-status">Accès de gestion actif</span></div></section>' +
+      '<section class="general-admin-control"><div><span class="general-admin-kicker">GESTION DE LA BOUTIQUE</span><h3>Administration SAMA-PACK</h3><p>Accède aux commandes, clients, produits, stocks, fournisseurs, devis, comptes administrateurs et paramètres depuis le panneau de gestion.</p></div><button class="btn primary full" type="button" onclick="closeModal();openAdmin()">Ouvrir le panneau de gestion</button></section>' +
+      '<section class="general-admin-control general-admin-security"><div><span class="general-admin-kicker">SÉCURITÉ</span><h3>Mot de passe</h3><p>Modifie le mot de passe de ce compte administrateur.</p></div><form id="generalAdminPasswordForm" class="checkout-grid">' +
+        '<label class="full password-field">Nouveau mot de passe<span class="password-input-wrap"><input class="input" id="generalAdminNewPassword" name="password" type="password" minlength="8" required placeholder="8 caractères minimum" autocomplete="new-password">' + passwordVisibilityToggleHtml("generalAdminNewPassword") + '</span></label>' +
+        '<label class="full password-field">Confirmer le mot de passe<span class="password-input-wrap"><input class="input" id="generalAdminConfirmPassword" name="password_confirmation" type="password" minlength="8" required placeholder="Confirme le nouveau mot de passe" autocomplete="new-password">' + passwordVisibilityToggleHtml("generalAdminConfirmPassword") + '</span></label>' +
+        '<button class="btn secondary full" type="submit">Mettre à jour le mot de passe</button></form></section>' +
+      '<button class="btn ghost full account-signout" type="button" onclick="signOut()">Se déconnecter</button>'
+    );
+    const accountModalCard = document.querySelector(".modal-card");
+    if (accountModalCard) accountModalCard.classList.add("general-admin-account-modal");
+    const form = $("generalAdminPasswordForm");
+    if (form) {
+      bindPasswordVisibilityToggles(form);
+      form.onsubmit = async event => {
+        event.preventDefault();
+        const fd = new FormData(form);
+        const password = String(fd.get("password") || "");
+        const confirmation = String(fd.get("password_confirmation") || "");
+        if (password.length < 8) return toast("Choisis au moins 8 caractères.", true);
+        if (password !== confirmation) return toast("Les deux mots de passe ne correspondent pas.", true);
+        setBusy(form, true, "Mise à jour…");
+        const { error } = await client.auth.updateUser({ password });
+        if (error) toast(errorMessage(error), true);
+        else { toast("Mot de passe administrateur mis à jour."); form.reset(); }
+        setBusy(form, false);
+      };
+    }
+  }
+
   async function showAccountHome() {
     if (!currentUser) { renderAuthForm("login"); return; }
+    if (isGeneralAdmin()) { showGeneralAdminHome(); return; }
     const p = currentProfile || await getProfile();
     let profileAvatarUrl = "";
     if (p?.avatar_path) {
@@ -1815,6 +1861,7 @@
     if (isAdmin()) { updateCategoryFilter(); renderProducts(); }
   }
   function updateAccountButtons() {
+    document.body.classList.toggle("general-admin-mode", isGeneralAdmin());
     const accountBtn = $("accountBtn");
     if (accountBtn) {
       if (!currentUser) {
@@ -1930,6 +1977,7 @@
   }
 
   function checkoutModal() {
+    if (isGeneralAdmin()) return toast("La commande en ligne est réservée aux comptes clients.");
     if (!cart.length) return toast("Ton panier est vide.", true);
     const unavailableLines = cart.filter(line => { const p = getP(line.id); return !canSellProduct(p); });
     if (unavailableLines.length) return toast("Retire les articles en rupture ou sans prix confirmé du panier avant de commander.", true);
@@ -2234,6 +2282,7 @@
     return result.data;
   }
   async function openB2BWorkspace() {
+    if (isGeneralAdmin()) return toast("L’espace client professionnel n’est pas disponible pour l’administrateur général.");
     if (!currentUser) {
       renderAuthForm("login", "Connecte-toi ou crée un compte pour enregistrer ton entreprise, demander des devis et retrouver ses commandes.");
       return;
@@ -2395,6 +2444,7 @@
   }
 
   function openQuoteModal() {
+    if (isGeneralAdmin()) return toast("La demande de devis client est réservée aux clients professionnels.");
     showModal(`<div class="modal-head"><div><div class="eyebrow">B2B</div><h2>Demander un devis</h2></div><button class="close" onclick="closeModal()">✕</button></div><form id="quoteForm" class="checkout-grid"><input class="input" name="company" required maxlength="150" placeholder="Entreprise / structure"><input class="input" name="phone" required maxlength="30" placeholder="Téléphone"><input class="input full" name="need" required maxlength="250" placeholder="Besoin (ex. 20 packs professionnels par mois)"><input class="input full" name="email" type="email" placeholder="E-mail (facultatif)"><textarea class="input full" name="message" maxlength="2000" placeholder="Précisions"></textarea><button class="btn primary full" type="submit">Envoyer la demande de devis</button></form>`);
     const form = $("quoteForm"); form.onsubmit = async e => {
       e.preventDefault(); setBusy(form, true, "Envoi…"); const f = new FormData(form);
