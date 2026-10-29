@@ -2698,7 +2698,21 @@
     }
     $("adminPanel").classList.remove("hidden"); await showAdminView("dashboard");
   }
-  function closeAdmin() { $("adminPanel").classList.add("hidden"); stopDashboardPresencePolling(); }
+  function setAdminMobileMenuOpen(open) {
+    const sidebar = $("adminSidebar");
+    const toggle = $("adminMenuToggle");
+    if (!sidebar || !toggle) return;
+    const isMobile = window.matchMedia("(max-width: 900px)").matches;
+    const expanded = isMobile && Boolean(open);
+    sidebar.classList.toggle("is-open", expanded);
+    toggle.setAttribute("aria-expanded", expanded ? "true" : "false");
+    toggle.setAttribute("aria-label", expanded ? "Fermer le menu de gestion" : "Ouvrir le menu de gestion");
+  }
+  function closeAdmin() {
+    setAdminMobileMenuOpen(false);
+    $("adminPanel").classList.add("hidden");
+    stopDashboardPresencePolling();
+  }
   function statusLabel(status) { return ({new:"Reçue",confirmed:"Confirmée",processing:"En préparation",prepared:"Préparée",out_for_delivery:"En cours de livraison",delivered:"Livrée",cancelled:"Annulée",awaiting_payment:"Paiement intégral en attente",awaiting_delivery_payment:"Frais de livraison à payer",won:"Gagné",lost:"Perdu"})[status] || status || "—"; }
   function paymentStatusLabel(status) { return ({unpaid:"Non payé",pending:"Paiement en attente",partially_paid:"Partiellement payé",paid:"Payé",failed:"Échec du paiement",refund_review:"Paiement à vérifier / rembourser"})[status] || status || "Non renseigné"; }
   function actionLabel(action) { return ({pack_created:"Pack créé",pack_updated:"Pack modifié",pack_deleted:"Pack supprimé",order_status_changed:"Statut de commande modifié",order_placed:"Commande passée",admin_bootstrap:"Premier administrateur configuré",admin_invited:"Administrateur invité",admin_removed:"Droits administrateur retirés",settings_updated:"Paramètres modifiés",stock_created:"Stock créé",stock_updated:"Stock modifié",supplier_created:"Fournisseur ajouté",supplier_updated:"Fournisseur modifié",supplier_deleted:"Fournisseur supprimé",expense_created:"Dépense ajoutée",expense_updated:"Dépense modifiée",expense_deleted:"Dépense supprimée",quote_created:"Demande de devis reçue",quote_updated:"Devis modifié",quote_deleted:"Devis supprimé"})[action] || action || "Action"; }
@@ -3809,7 +3823,15 @@
     if ($("adminGlobalSearch")) $("adminGlobalSearch").addEventListener("input", applyAdminResultSearch);
     if ($("accountBtn")) $("accountBtn").onclick = openAccountModal;
     if ($("notificationBtn")) $("notificationBtn").onclick = loadAndShowNotifications;
-    document.querySelectorAll(".side-btn").forEach(b => b.addEventListener("click",() => showAdminView(b.dataset.view)));
+    const adminMenuToggle = $("adminMenuToggle");
+    if (adminMenuToggle) adminMenuToggle.onclick = () => setAdminMobileMenuOpen(!$("adminSidebar")?.classList.contains("is-open"));
+    window.addEventListener("resize", () => {
+      if (!window.matchMedia("(max-width: 900px)").matches) setAdminMobileMenuOpen(false);
+    });
+    document.querySelectorAll(".side-btn").forEach(b => b.addEventListener("click", () => {
+      setAdminMobileMenuOpen(false);
+      showAdminView(b.dataset.view);
+    }));
     updateCategoryFilter(); renderTop(); renderProducts(); renderPromoCarousel(); startPromoCarousel(); updateCartCount(); updateContact();
   }
 
