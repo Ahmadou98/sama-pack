@@ -3147,9 +3147,78 @@
     if (error) return toast(errorMessage(error), true);
     toast(active ? "Pack publié dans le catalogue." : "Pack masqué du catalogue."); await loadPublicData(); await showAdminView("packs");
   }
+  const ASSOCIATE_PERMISSION_OPTIONS = [
+    ["dashboard.view", "Tableau de bord", "Consulter les indicateurs liés aux dossiers attribués."],
+    ["orders.view", "Commandes attribuées", "Consulter les commandes associées à ce compte."],
+    ["orders.update_status", "Étapes de commande", "Mettre à jour le statut des commandes attribuées."],
+    ["customers.view", "Fiches clients attribuées", "Consulter les fiches liées à sa clientèle."],
+    ["prospects.view", "Voir ses prospects", "Consulter les prospects créés par ce compte."],
+    ["prospects.create", "Créer des prospects", "Ajouter de nouveaux prospects à son portefeuille."],
+    ["prospects.update", "Modifier ses prospects", "Modifier les fiches prospects dont il est responsable."],
+    ["prospects.delete", "Supprimer ses prospects", "Supprimer uniquement ses propres prospects."],
+    ["quotes.view", "Devis attribués", "Consulter les devis attribués à ce compte."],
+    ["quotes.update_status", "Statut des devis", "Mettre à jour le suivi de ses devis."],
+    ["sales_codes.view", "Code commercial personnel", "Consulter son propre code et ses résultats attribués."],
+    ["sales_codes.manage_own", "Gérer son code personnel", "Créer ou suspendre son code, sans gérer ceux des autres."],
+    ["catalog.view", "Consultation du catalogue", "Voir les articles publiés sans coûts d'achat ni publication."],
+    ["stock.view", "Consulter le stock", "Voir les quantités et seuils de réapprovisionnement."],
+    ["stock.update", "Modifier les quantités", "Mettre à jour les quantités et disponibilités, sans toucher aux prix."],
+    ["expenses.submit", "Soumettre des dépenses", "Déclarer des dépenses en attente de validation par le propriétaire."]
+  ];
+
+  async function showAdminPermissionsEditor(id) {
+    if (!isGeneralAdmin()) return toast("Seul le propriétaire peut modifier les permissions.", true);
+    const result = await client.from("profiles")
+      .select("id,full_name,email,role,is_super_admin,admin_permissions")
+      .eq("id", id).eq("role", "admin").maybeSingle();
+    if (result.error || !result.data || result.data.is_super_admin) return toast("Compte administrateur introuvable ou protégé.", true);
+    const target = result.data;
+    const current = target.admin_permissions || {};
+    const fields = ASSOCIATE_PERMISSION_OPTIONS.map(function(item) {
+      const key = item[0], label = item[1], description = item[2];
+      return '<label class="permission-option"><span class="permission-option-copy"><strong>' + esc(label) +
+        '</strong><small>' + esc(description) + '</small></span><input type="checkbox" name="permission" value="' +
+        esc(key) + '"' + (current[key] === true ? ' checked' : '') + '></label>';
+    }).join("");
+    showModal(
+      '<div class="modal-head"><div><div class="eyebrow">GESTION DES ACCÈS</div><h2>Permissions de ' +
+      esc(target.full_name || target.email || "l’administrateur") +
+      '</h2><p class="small-note">Les paramètres globaux, les coûts fournisseurs, la rentabilité complète, le journal d’audit et les autres comptes restent réservés au propriétaire.</p></div>' +
+      '<button class="close" type="button" onclick="closeModal()" aria-label="Fermer">✕</button></div>' +
+      '<form id="adminPermissionsForm"><div class="permission-option-list">' + fields +
+      '</div><div class="form-actions"><button class="btn primary" type="submit">Enregistrer les permissions</button>' +
+      '<button class="btn ghost" type="button" onclick="closeModal()">Annuler</button></div></form>'
+    );
+    const form = $("adminPermissionsForm");
+    if (!form) return;
+    form.onsubmit = async function(event) {
+      event.preventDefault();
+      setBusy(form, true, "Enregistrement…");
+      const permissions = {};
+      form.querySelectorAll('input[name="permission"]').forEach(function(input) {
+        permissions[input.value] = input.checked;
+      });
+      try {
+        const result = await client.rpc("sama_update_admin_permissions", {
+          p_target_user_id: id,
+          p_permissions: permissions
+        });
+        if (result.error || result.data?.ok !== true) throw result.error || new Error(result.data?.message || "Les permissions n’ont pas pu être enregistrées.");
+        closeModal();
+        toast("Permissions de l’administrateur mises à jour.");
+        await showAdminView("admins");
+      } catch (error) {
+        toast(errorMessage(error), true);
+      } finally {
+        if (form.isConnected) setBusy(form, false);
+      }
+    };
+  }
+  window.showAdminPermissionsEditor = showAdminPermissionsEditor;
+
   async function adminAccounts() {
     const { data, error } = await client.from("profiles")
-      .select("id,full_name,phone,email,role,is_super_admin,invited_by,created_at")
+      .select("id,full_name,phone,email,role,is_super_admin,admin_permissions,invited_by,created_at")
       .eq("role", "admin").order("created_at", { ascending: true });
     if (error) throw error;
     const admins = data || [];
@@ -3167,7 +3236,7 @@
     const tableHtml = admins.length ? `<div class="table-wrap"><table class="table"><thead><tr><th>Administrateur</th><th>Compte</th><th>Niveau d’accès</th><th>Invité par</th><th>Depuis</th>${isGeneralAdmin ? "<th>Actions</th>" : ""}</tr></thead><tbody>${admins.map(a => {
       const general = a.is_super_admin === true;
       const canRemove = isGeneralAdmin && !general && a.id !== currentUser?.id;
-      return `<tr><td><strong>${esc(a.full_name || "Sans nom")}</strong><br><span class="small-note">${general ? "Propriétaire de l’espace" : "Compte administrateur"}</span></td><td>${esc(a.email || "—")}<br><span class="small-note">${esc(a.phone || "")}</span></td><td><span class="status ${general ? "delivered" : "processing"}">${general ? "Administrateur général" : "Administrateur"}</span></td><td>${general ? "—" : esc(inviterLabels[a.invited_by] || (a.invited_by ? "Administrateur général" : "Ancien compte"))}</td><td>${esc(fmtDate(a.created_at))}</td>${isGeneralAdmin ? `<td>${canRemove ? `<button class="btn small danger" onclick="removeAdmin('${esc(a.id)}')">Retirer les droits</button>` : `<span class="small-note">${general ? "Compte protégé" : "Ton compte"}</span>`}</td>` : ""}</tr>`;
+      return `<tr><td><strong>${esc(a.full_name || "Sans nom")}</strong><br><span class="small-note">${general ? "Propriétaire de l’espace" : "Compte administrateur"}</span></td><td>${esc(a.email || "—")}<br><span class="small-note">${esc(a.phone || "")}</span></td><td><span class="status ${general ? "delivered" : "processing"}">${general ? "Administrateur général" : "Administrateur"}</span></td><td>${general ? "—" : esc(inviterLabels[a.invited_by] || (a.invited_by ? "Administrateur général" : "Ancien compte"))}</td><td>${esc(fmtDate(a.created_at))}</td>${isGeneralAdmin ? `<td>${canRemove ? `<button class="btn small secondary" onclick="showAdminPermissionsEditor('${esc(a.id)}')">Permissions</button><button class="btn small danger" onclick="removeAdmin('${esc(a.id)}')">Retirer les droits</button>` : `<span class="small-note">${general ? "Compte protégé" : "Ton compte"}</span>`}</td>` : ""}</tr>`;
     }).join("")}</tbody></table></div>` : '<div class="empty">Aucun administrateur n’est enregistré.</div>';
     return `${invitePanel}<div class="panel admin-accounts-list"><div class="dashboard-panel-heading"><div><div class="eyebrow">ACCÈS AU BACK-OFFICE</div><h3>Administrateurs (${admins.length})</h3></div><span class="small-note">${isGeneralAdmin ? "Tu es administrateur général." : "Consultation uniquement."}</span></div>${tableHtml}<p class="small-note">« Retirer les droits » transforme le compte en compte client et le retire de cette liste. L’historique des commandes et des actions est conservé.</p></div>`;
   }
