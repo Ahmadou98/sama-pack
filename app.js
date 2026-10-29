@@ -1263,9 +1263,21 @@
     toast(unavailable.length ? added + " article(s) ajouté(s). Certains articles ne sont plus disponibles." : "Commande " + id + " reconstituée dans ton panier.");
   }
 
-  function openAccountModal() {
-    if (currentUser) { showAccountHome(); return; }
-    renderAuthForm("login");
+  async function openAccountModal() {
+    if (!currentUser) { renderAuthForm("login"); return; }
+
+    // Afficher immédiatement une fenêtre : l'espace compte ne doit pas sembler inactif
+    // pendant le chargement des données du profil commercial ou client.
+    showModal('<div class="modal-head"><div><div class="eyebrow">ESPACE COMPTE</div><h2>Mon compte</h2></div><button class="close" onclick="closeModal()" aria-label="Fermer">✕</button></div><div class="loading-panel"><p>Chargement de ton espace compte…</p></div>');
+    try {
+      await showAccountHome();
+    } catch (error) {
+      console.error("Impossible d’ouvrir l’espace compte.", error);
+      showModal('<div class="modal-head"><div><div class="eyebrow">ESPACE COMPTE</div><h2>Mon compte</h2></div><button class="close" onclick="closeModal()" aria-label="Fermer">✕</button></div><div class="inline-message">Le compte n’a pas pu être chargé. Réessaie.</div><div class="form-actions"><button class="btn primary" type="button" id="retryOpenAccount">Réessayer</button><button class="btn ghost" type="button" onclick="closeModal()">Fermer</button></div>');
+      const retryButton = $("retryOpenAccount");
+      if (retryButton) retryButton.onclick = openAccountModal;
+      toast("Impossible de charger Mon compte. Réessaie.", true);
+    }
   }
   function passwordVisibilityToggleHtml(inputId) {
     return '<button type="button" class="password-visibility-toggle" data-password-toggle="' + inputId + '" aria-controls="' + inputId + '" aria-label="Afficher le mot de passe" aria-pressed="false">' +
@@ -1878,8 +1890,11 @@
     currentBusinessAccount = businessResult.error ? null : (businessResult.data || null);
     const { data: activeSalesCode } = await client.from("sales_referral_codes").select("code,label").eq("owner_user_id", currentUser.id).eq("active", true).maybeSingle();
     const salesLinkHtml = activeSalesCode?.code ? '<div class="panel account-referral-launch"><div><strong>Ton code commercial : </strong><code>' + esc(activeSalesCode.code) + '</code><p class="small-note">Partage ton lien pour rattacher les commandes et devis que tu apportes à ton activité.</p></div><button class="btn secondary" onclick="copySalesLink(\'' + esc(activeSalesCode.code) + '\')">Copier mon lien</button></div>' : "";
-    const dueResult = await client.rpc("sama_notify_due_replenishment_reminders");
-    if (dueResult.error) console.warn("Due replenishment reminder check failed", dueResult.error);
+    // Le rafraîchissement des rappels tourne en arrière-plan : une erreur ou un délai
+    // sur cette fonction ne doit pas empêcher l'affichage de Mon compte.
+    client.rpc("sama_notify_due_replenishment_reminders")
+      .then(({ error }) => { if (error) console.warn("Due replenishment reminder check failed", error); })
+      .catch(error => console.warn("Due replenishment reminder check failed", error));
     await loadNotifications();
     const { data: rows, error } = await client.from("orders").select("id,created_at,status,total,subtotal,delivery,customer_name,customer_phone,delivery_address,delivery_zone,slot,payment_choice,payment_status,amount_paid").eq("user_id", currentUser.id).order("created_at", { ascending: false }).limit(15);
     const orders = error ? [] : (rows || []);
