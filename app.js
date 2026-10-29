@@ -3190,7 +3190,9 @@
       suppliers = supplierResult.data || [];
       stockCosts = new Map((costResult.data || []).map(row => [row.product_id, Number(row.unit_cost || 0)]));
     }
-    const rows = stockResult.data || [];
+    const rows = (stockResult.data || []).map(row => isGeneralAdmin()
+      ? { ...row, unit_cost: Number(stockCosts.get(row.product_id) || 0) }
+      : row);
     stockRows = rows;
     products = (productResult.data || []).map(normalizeProduct);
     const supplierById = new Map(suppliers.map(s => [s.id,s]));
@@ -3204,7 +3206,7 @@
         : esc(s.supplier || "—");
       const unitCost = Number(stockCosts.get(p.id) || 0);
       const stockCostCell = isGeneralAdmin()
-        ? '<td>' + money(unitCost) + '<br><span class="small-note">Valeur : ' + money(Number(s.quantity || 0) * unitCost) + '</span></td>'
+        ? '<td><input class="input stock-field" type="number" min="0" step="0.01" aria-label="Coût unitaire du stock" data-stock-id="' + esc(p.id) + '" data-stock-key="unit_cost" value="' + unitCost + '"><br><span class="small-note">Valeur : ' + money(Number(s.quantity || 0) * unitCost) + '</span></td>'
         : "";
       const searchText = [p.public_ref,p.id,p.name,p.category,link.supplier_name,link.supplier_ref,s.supplier].join(" ").toLowerCase();
       return '<tr data-stock-search-row data-search="' + esc(searchText) + '">' +
@@ -3572,7 +3574,7 @@
         if (!isGeneralAdmin() && !hasAdminPermission("stock.update")) { toast("Tu peux consulter le stock, mais pas le modifier.", true); return showAdminView("stock"); }
         if (key !== "supplier") { val = Number(val); if (!Number.isFinite(val) || val < 0) { toast("Valeur numérique invalide.",true); return showAdminView("stock"); } }
         const existing = stockRows.find(x=>x.product_id===productId);
-        const row = { product_id: productId, quantity: Number(existing?.quantity||0), min_quantity: Number(existing?.min_quantity||0), supplier: existing?.supplier||"" };
+        const row = { product_id: productId, quantity: Number(existing?.quantity||0), min_quantity: Number(existing?.min_quantity||0), supplier: existing?.supplier||"", ...(isGeneralAdmin() ? { unit_cost: Number(existing?.unit_cost||0) } : {}) };
         row[key] = val;
         const { error } = await client.from("stock").upsert(row,{onConflict:"product_id"});
         if (error) toast(errorMessage(error),true); else { const idx = stockRows.findIndex(x=>x.product_id===productId); if (idx>=0) stockRows[idx]=row; else stockRows.push(row);
