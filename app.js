@@ -2540,7 +2540,7 @@
   async function adminSalesCodes() {
     const results=await Promise.all([
       client.from("sales_referral_codes").select("*").order("created_at",{ascending:false}),
-      client.from("profiles").select("id,full_name,email,role").order("created_at",{ascending:true}),
+      client.from("profiles").select("id,full_name,email,role").eq("role","admin").order("created_at",{ascending:true}),
       client.from("orders").select("id,total,status,sales_referral_code,sales_referrer_user_id"),
       client.from("quotes").select("id,status,sales_referral_code,sales_referrer_user_id")
     ]);
