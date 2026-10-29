@@ -144,7 +144,7 @@
 
   async function getProfile(user = currentUser) {
     if (!client || !user) return null;
-    const { data, error } = await client.from("profiles").select("id,full_name,phone,phone_secondary,delivery_region,delivery_city,delivery_commune,delivery_neighborhood,delivery_address,delivery_landmark,delivery_instructions,email,role,is_super_admin,invited_by,created_at,avatar_path,marketing_opt_in").eq("id", user.id).maybeSingle();
+    const { data, error } = await client.from("profiles").select("id,full_name,phone,phone_secondary,delivery_region,delivery_city,delivery_commune,delivery_neighborhood,delivery_address,delivery_landmark,delivery_instructions,email,role,is_super_admin,admin_permissions,invited_by,created_at,avatar_path,marketing_opt_in").eq("id", user.id).maybeSingle();
     if (error) { console.warn("Profile unavailable", error); return null; }
     return data;
   }
@@ -156,6 +156,21 @@
   }
   function isAdmin() { return currentProfile?.role === "admin"; }
   function isGeneralAdmin() { return isAdmin() && currentProfile?.is_super_admin === true; }
+  function hasAdminPermission(permission) { return isGeneralAdmin() || (isAdmin() && currentProfile?.admin_permissions?.[permission] === true); }
+  const ADMIN_VIEW_PERMISSION = {
+    dashboard: "dashboard.view", orders: "orders.view", customers: "customers.view",
+    prospects: "prospects.view", quotes: "quotes.view", sales_codes: "sales_codes.view",
+    packs: "catalog.view", products: "catalog.view", catalogs: "catalog.view",
+    stock: "stock.view", expenses: "expenses.submit"
+  };
+  function canViewAdminView(view) {
+    if (isGeneralAdmin()) return true;
+    const permission = ADMIN_VIEW_PERMISSION[view];
+    return Boolean(permission && hasAdminPermission(permission));
+  }
+  function adminViewDeniedMessage() {
+    return "Ton compte ne dispose pas de la permission nécessaire pour ouvrir ce module.";
+  }
 
 
   const ACCOUNT_PRESENCE_WINDOW_MS = 90 * 1000;
@@ -2527,7 +2542,7 @@
     return '<div class="panel"><div class="eyebrow">ATTRIBUTION DES VENTES</div><h3>Créer un code commercial</h3><p class="small-note">Partage un lien comme <code>https://sama-pack.store/?ref=ALMINE</code>. Le code est vérifié côté serveur lors de la commande ou du devis.</p><form id="salesCodeForm" class="admin-form"><label>Membre de l’équipe<select class="input" name="owner_user_id" required>'+profileOptions+'</select></label><label>Code unique<input class="input" name="code" required minlength="3" maxlength="30" pattern="[A-Za-z0-9_-]{3,30}" placeholder="ALMINE"></label><label class="full">Libellé / campagne<input class="input" name="label" maxlength="120" placeholder="Prospection entreprises / membre"></label><button class="btn primary full" type="submit">Créer le code</button></form></div><div class="panel"><div class="admin-panel-head"><h3>Performance des codes ('+codes.length+')</h3><span class="small-note">Le CA exclut les commandes annulées ou en attente de paiement.</span></div>'+(rows?'<div class="table-wrap"><table class="table"><thead><tr><th>Membre / code</th><th>Commandes</th><th>CA attribué</th><th>Devis</th><th>État</th><th>Actions</th></tr></thead><tbody>'+rows+'</tbody></table></div>':'<div class="empty">Aucun code commercial. Crée un code par membre.</div>')+'</div>';
   }
   async function adminProfitability() {
-    const {data,error}=await client.from("order_profitability").select("*").order("created_at",{ascending:false}).limit(250);if(error)throw error;
+    if (!isGeneralAdmin()) throw new Error("La rentabilité est réservée au propriétaire."); const {data,error}=await client.rpc("sama_get_order_profitability");if(error)throw error;
     const rows=data||[],included=rows.filter(function(row){return !["cancelled","awaiting_payment","awaiting_delivery_payment"].includes(row.status);});
     const revenue=included.reduce(function(sum,row){return sum+Number(row.revenue||0);},0),productCost=included.reduce(function(sum,row){return sum+Number(row.product_cost||0);},0),
       fees=included.reduce(function(sum,row){return sum+Number(row.estimated_payment_fee||0);},0),deliveryCosts=included.reduce(function(sum,row){return sum+Number(row.delivery_cost_actual||0);},0),
@@ -2621,11 +2636,17 @@
   async function showAdminView(view) {
     stopDashboardPresencePolling();
     if (!isAdmin()) { closeAdmin(); return toast("Accès administrateur requis.", true); }
+    if (!canViewAdminView(view)) return toast(adminViewDeniedMessage(), true);
     currentAdminView = view; editingProductId = (view === "packs" || view === "products") ? editingProductId : null;
     const navSearch = $("adminNavSearch"); if (navSearch) navSearch.value = "";
     document.querySelectorAll(".admin-nav-group").forEach(group => group.classList.remove("admin-nav-group-empty"));
     const navNoResults = $("adminNavNoResults"); if (navNoResults) navNoResults.classList.add("hidden");
-    document.querySelectorAll(".side-btn").forEach(b => { b.classList.remove("admin-nav-hidden"); b.classList.toggle("active", b.dataset.view === view || (view === "products" && b.dataset.view === "packs")); });
+    document.querySelectorAll(".side-btn").forEach(b => {
+      const allowed = canViewAdminView(b.dataset.view);
+      b.classList.toggle("hidden", !allowed);
+      b.classList.remove("admin-nav-hidden");
+      b.classList.toggle("active", allowed && (b.dataset.view === view || (view === "products" && b.dataset.view === "packs")));
+    });
     const globalSearch = $("adminGlobalSearch"); if (globalSearch) globalSearch.value = "";
     updateAdminContext();
     const titles = {dashboard:"Tableau de bord",orders:"Commandes",customers:"Clients",stock:"Stock",products:"Packs",packs:"Packs",catalogs:"Produits & outils",prospects:"Prospection",admins:"Comptes administrateurs",activity:"Journal des actions",suppliers:"Fournisseurs",expenses:"Dépenses",quotes:"Devis professionnels",settings:"Paramètres",profitability:"Rentabilité",sales_codes:"Codes commerciaux",marketing:"Campagnes e-mail"};
@@ -2713,7 +2734,7 @@
     let activeAccounts = null;
     try { activeAccounts = await countActiveAccounts(); } catch (error) { console.warn("Comptes actifs indisponibles", error); }
     const [orders, stock, expenses, quotes, productRows] = await Promise.all([
-      readRows("orders"), readRows("stock"), readRows("expenses"), readRows("quotes"), readRows("products")
+      readRows("orders"), readRows("stock", "product_id,quantity,min_quantity,supplier,updated_at"), readRows("expenses"), readRows("quotes"), readRows("products")
     ]);
     const sortedOrders = [...orders].sort((a,b) => new Date(b.created_at) - new Date(a.created_at));
     cachedOrders = sortedOrders; stockRows = stock; cachedExpenses = expenses; cachedQuotes = quotes;
@@ -2728,7 +2749,14 @@
     const pendingOrders = orders.filter(o => ["new","processing"].includes(o.status)).length;
     const deliveredOrders = orders.filter(o => o.status === "delivered");
     const averageDelivered = deliveredOrders.length ? deliveredOrders.reduce((sum,o) => sum + Number(o.total || 0), 0) / deliveredOrders.length : 0;
-    const stockValue = stock.reduce((sum,row) => sum + Number(row.quantity || 0) * Number(row.unit_cost || 0), 0);
+    let stockValue = 0;
+    if (isGeneralAdmin()) {
+      const costResult = await client.from("product_costs").select("product_id,supplier_price");
+      if (!costResult.error) {
+        const costs = new Map((costResult.data || []).map(row => [row.product_id, Number(row.supplier_price || 0)]));
+        stockValue = stock.reduce((sum,row) => sum + Number(row.quantity || 0) * Number(costs.get(row.product_id) || 0), 0);
+      }
+    }
     const lowStockRows = stock.filter(row => Number(row.min_quantity || 0) > 0 && Number(row.quantity || 0) <= Number(row.min_quantity || 0));
     const newQuotes = quotes.filter(q => q.status === "new").length;
     const expenseTotal = expenses.reduce((sum,row) => sum + Number(row.amount || 0), 0);
