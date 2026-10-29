@@ -2523,12 +2523,12 @@
     const row=cachedOrders.find(o=>o.id===id);if(row)row.delivery_cost_actual=amount;toast("Coût réel de livraison enregistré.");
   }
   async function toggleSalesCode(id, active) {
-    if(!isAdmin())return toast("Accès administrateur requis.",true);
+    if(!hasAdminPermission("sales_codes.manage_own"))return toast("Cette action n’est pas autorisée.",true);
     const {error}=await client.from("sales_referral_codes").update({active:Boolean(active),updated_at:new Date().toISOString()}).eq("id",id);
     if(error)return toast(errorMessage(error),true);toast(active?"Code commercial activé.":"Code commercial suspendu.");await showAdminView("sales_codes");
   }
   async function deleteSalesCode(id) {
-    if(!isAdmin())return toast("Accès administrateur requis.",true);if(!window.confirm("Supprimer ce code commercial ? Les ventes déjà attribuées restent historisées."))return;
+    if(!isGeneralAdmin())return toast("Seul le propriétaire peut supprimer un code commercial.",true);if(!window.confirm("Supprimer ce code commercial ? Les ventes déjà attribuées restent historisées."))return;
     const {error}=await client.from("sales_referral_codes").delete().eq("id",id);if(error)return toast(errorMessage(error),true);toast("Code commercial supprimé.");await showAdminView("sales_codes");
   }
   async function adminSalesCodes() {
@@ -2540,14 +2540,21 @@
     ]);
     results.forEach(function(r){if(r.error)throw r.error;});
     const codes=results[0].data||[],people=results[1].data||[],orders=results[2].data||[],quotes=results[3].data||[],personById=new Map(people.map(function(p){return [p.id,p];}));
-    const profileOptions=people.map(function(p){return '<option value="'+esc(p.id)+'">'+esc(p.full_name||p.email||p.id)+' ('+esc(p.role||"client")+')</option>';}).join("");
+    const profileOptions=people.filter(function(p){return isGeneralAdmin() || p.id===currentUser.id;}).map(function(p){return '<option value="'+esc(p.id)+'">'+esc(p.full_name||p.email||p.id)+' ('+esc(p.role||"client")+')</option>';}).join("");
     const rows=codes.map(function(code){
       const p=personById.get(code.owner_user_id)||{},attributed=orders.filter(function(o){return o.sales_referrer_user_id===code.owner_user_id||o.sales_referral_code===code.code;});
       const revenue=attributed.filter(function(o){return !["cancelled","awaiting_payment","awaiting_delivery_payment"].includes(o.status);}).reduce(function(sum,o){return sum+Number(o.total||0);},0);
       const quoteCount=quotes.filter(function(q){return q.sales_referrer_user_id===code.owner_user_id||q.sales_referral_code===code.code;}).length;
-      return '<tr><td><strong>'+esc(p.full_name||p.email||"Membre")+'</strong><br><code>'+esc(code.code)+'</code><br><span class="small-note">'+esc(code.label||"")+'</span></td><td>'+attributed.length+'</td><td>'+money(revenue)+'</td><td>'+quoteCount+'</td><td>'+(code.active?'<span class="status delivered">Actif</span>':'<span class="status cancelled">Suspendu</span>')+'</td><td><div class="account-order-actions"><button class="btn small ghost" onclick="toggleSalesCode(\''+esc(code.id)+'\','+(!code.active)+')">'+(code.active?"Suspendre":"Réactiver")+'</button><button class="btn small danger" onclick="deleteSalesCode(\''+esc(code.id)+'\')">Supprimer</button></div></td></tr>';
+      const controls=(isGeneralAdmin()||hasAdminPermission("sales_codes.manage_own"))
+        ? '<div class="account-order-actions"><button class="btn small ghost" onclick="toggleSalesCode(\''+esc(code.id)+'\','+(!code.active)+')">'+(code.active?"Suspendre":"Réactiver")+'</button>'+(isGeneralAdmin()?'<button class="btn small danger" onclick="deleteSalesCode(\''+esc(code.id)+'\')">Supprimer</button>':'')+'</div>'
+        : '<span class="small-note">Lecture seule</span>';
+      return '<tr><td><strong>'+esc(p.full_name||p.email||"Membre")+'</strong><br><code>'+esc(code.code)+'</code><br><span class="small-note">'+esc(code.label||"")+'</span></td><td>'+attributed.length+'</td><td>'+money(revenue)+'</td><td>'+quoteCount+'</td><td>'+(code.active?'<span class="status delivered">Actif</span>':'<span class="status cancelled">Suspendu</span>')+'</td><td>'+controls+'</td></tr>';
     }).join("");
-    return '<div class="panel"><div class="eyebrow">ATTRIBUTION DES VENTES</div><h3>Créer un code commercial</h3><p class="small-note">Partage un lien comme <code>https://sama-pack.store/?ref=ALMINE</code>. Le code est vérifié côté serveur lors de la commande ou du devis.</p><form id="salesCodeForm" class="admin-form"><label>Membre de l’équipe<select class="input" name="owner_user_id" required>'+profileOptions+'</select></label><label>Code unique<input class="input" name="code" required minlength="3" maxlength="30" pattern="[A-Za-z0-9_-]{3,30}" placeholder="ALMINE"></label><label class="full">Libellé / campagne<input class="input" name="label" maxlength="120" placeholder="Prospection entreprises / membre"></label><button class="btn primary full" type="submit">Créer le code</button></form></div><div class="panel"><div class="admin-panel-head"><h3>Performance des codes ('+codes.length+')</h3><span class="small-note">Le CA exclut les commandes annulées ou en attente de paiement.</span></div>'+(rows?'<div class="table-wrap"><table class="table"><thead><tr><th>Membre / code</th><th>Commandes</th><th>CA attribué</th><th>Devis</th><th>État</th><th>Actions</th></tr></thead><tbody>'+rows+'</tbody></table></div>':'<div class="empty">Aucun code commercial. Crée un code par membre.</div>')+'</div>';
+    const canCreateCode = isGeneralAdmin() || hasAdminPermission("sales_codes.manage_own");
+    const createForm = canCreateCode
+      ? '<div class="panel"><div class="eyebrow">ATTRIBUTION DES VENTES</div><h3>'+(isGeneralAdmin()?"Créer un code commercial":"Mon code commercial")+'</h3><p class="small-note">Partage un lien comme <code>https://sama-pack.store/?ref=ALMINE</code>. Le code est vérifié côté serveur lors de la commande ou du devis.</p><form id="salesCodeForm" class="admin-form"><label>'+(isGeneralAdmin()?"Membre de l’équipe":"Compte associé")+'<select class="input" name="owner_user_id" required>'+profileOptions+'</select></label><label>Code unique<input class="input" name="code" required minlength="3" maxlength="30" pattern="[A-Za-z0-9_-]{3,30}" placeholder="ALMINE"></label><label class="full">Libellé / campagne<input class="input" name="label" maxlength="120" placeholder="Prospection entreprises / membre"></label><button class="btn primary full" type="submit">Créer le code</button></form></div>'
+      : "";
+    return createForm+'<div class="panel"><div class="admin-panel-head"><h3>Performance des codes ('+codes.length+')</h3><span class="small-note">Les résultats affichés correspondent aux dossiers auxquels ton compte a accès.</span></div>'+(codes.length?'<div class="table-wrap"><table class="table"><thead><tr><th>Membre / code</th><th>Commandes attribuées</th><th>CA attribué</th><th>Devis</th><th>État</th><th>Actions</th></tr></thead><tbody>'+rows+'</tbody></table></div>':'<div class="empty">Aucun code commercial. Crée un code pour commencer.</div>')+'</div>';
   }
   async function adminProfitability() {
     if (!isGeneralAdmin()) throw new Error("La rentabilité est réservée au propriétaire."); const {data,error}=await client.rpc("sama_get_order_profitability");if(error)throw error;
@@ -3507,6 +3514,7 @@
           const product = getP(productId); if (product) product.availability_status = val;
           toast("Disponibilité mise à jour."); await loadPublicData(); return showAdminView("stock");
         }
+        if (!isGeneralAdmin() && !hasAdminPermission("stock.update")) { toast("Tu peux consulter le stock, mais pas le modifier.", true); return showAdminView("stock"); }
         if (key !== "supplier") { val = Number(val); if (!Number.isFinite(val) || val < 0) { toast("Valeur numérique invalide.",true); return showAdminView("stock"); } }
         const existing = stockRows.find(x=>x.product_id===productId);
         const row = { product_id: productId, quantity: Number(existing?.quantity||0), min_quantity: Number(existing?.min_quantity||0), supplier: existing?.supplier||"" };
@@ -3531,7 +3539,7 @@
       const form = $("settingsForm");
       if (form) form.onsubmit = async e => {
         e.preventDefault();
-        if (!isAdmin()) return toast("Accès refusé.", true);
+        if (!isGeneralAdmin()) return toast("Seul le propriétaire peut modifier les paramètres de la plateforme.", true);
         setBusy(form, true, "Enregistrement…");
         const f = new FormData(form);
         const file = f.get("homepage_background_file");
@@ -3573,7 +3581,7 @@
       const form = $("salesCodeForm");
       if (form) form.onsubmit = async event => {
         event.preventDefault();
-        if (!isAdmin()) return toast("Accès administrateur requis.", true);
+        if (!hasAdminPermission("sales_codes.manage_own")) return toast("Tu ne peux pas créer de code commercial avec les permissions actuelles.", true);
         const fd = new FormData(form);
         const code = String(fd.get("code") || "").trim().toUpperCase();
         if (!/^[A-Z0-9][A-Z0-9_-]{2,29}$/.test(code)) return toast("Le code doit contenir 3 à 30 caractères : lettres, chiffres, tiret ou souligné.", true);
