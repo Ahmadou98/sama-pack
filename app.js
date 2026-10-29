@@ -2755,7 +2755,11 @@
     let activeAccounts = null;
     try { activeAccounts = await countActiveAccounts(); } catch (error) { console.warn("Comptes actifs indisponibles", error); }
     const [orders, stock, expenses, quotes, productRows] = await Promise.all([
-      readRows("orders"), readRows("stock", "product_id,quantity,min_quantity,supplier,updated_at"), readRows("expenses"), readRows("quotes"), readRows("products")
+      hasAdminPermission("orders.view") ? readRows("orders") : Promise.resolve([]),
+      hasAdminPermission("stock.view") ? readRows("stock", "product_id,quantity,min_quantity,supplier,updated_at") : Promise.resolve([]),
+      (isGeneralAdmin() || hasAdminPermission("expenses.submit")) ? readRows("expenses") : Promise.resolve([]),
+      hasAdminPermission("quotes.view") ? readRows("quotes") : Promise.resolve([]),
+      readRows("products")
     ]);
     const sortedOrders = [...orders].sort((a,b) => new Date(b.created_at) - new Date(a.created_at));
     cachedOrders = sortedOrders; stockRows = stock; cachedExpenses = expenses; cachedQuotes = quotes;
