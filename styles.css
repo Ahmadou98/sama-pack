@@ -2432,3 +2432,89 @@ tr[hidden]{display:none!important}
 @media (prefers-reduced-motion: reduce) {
   .account-menu-toggle > span, .profile-avatar, .profile-details { transition: none; animation: none; }
 }
+
+
+/* Espace compte stable : seules les zones internes défilent */
+.account-menu-toggle { display: none; }
+.account-modal-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: min(80vh, 740px);
+  min-height: min(520px, 80vh);
+  max-height: 80vh;
+  overflow: hidden;
+}
+.account-modal-header {
+  flex: 0 0 auto;
+  min-height: 58px;
+  align-items: center;
+  margin-bottom: 14px;
+}
+.account-workspace {
+  position: relative;
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+.account-workspace > .account-tabs {
+  flex: 0 0 auto;
+}
+.account-workspace > .account-tab-panel:not(.hidden) {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  padding: 1px 4px 8px 1px;
+}
+.account-tabs.account-menu-open { display: flex; }
+@media (max-width: 600px) {
+  .account-menu-toggle { display: grid; }
+  .account-modal-card {
+    width: 100%;
+    height: min(84dvh, 760px);
+    min-height: min(480px, 84dvh);
+    max-height: 84dvh;
+    padding: 13px;
+    border-radius: 18px;
+  }
+  .account-modal-header {
+    min-height: 46px;
+    margin-bottom: 12px;
+    gap: 10px;
+  }
+  .account-header-actions { gap: 7px; }
+  .account-workspace { overflow: visible; }
+  .account-workspace > .account-tabs.account-menu-open {
+    position: absolute;
+    top: 0;
+    right: 0;
+    z-index: 20;
+    display: grid;
+    width: min(280px, 100%);
+    max-height: min(54dvh, 360px);
+    margin: 0;
+    padding: 8px;
+    overflow-y: auto;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    background: #fff;
+    box-shadow: 0 14px 36px rgba(15,23,42,.18);
+  }
+  .account-tabs.account-menu-open .account-tab {
+    width: 100%;
+    min-height: 42px;
+    justify-content: flex-start;
+    padding: 10px 12px;
+    text-align: left;
+  }
+  .account-workspace > .account-tab-panel:not(.hidden) {
+    padding-right: 2px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .account-tab-panel { animation: none; }
+}
