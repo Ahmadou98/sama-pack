@@ -2518,3 +2518,41 @@ tr[hidden]{display:none!important}
 @media (prefers-reduced-motion: reduce) {
   .account-tab-panel { animation: none; }
 }
+
+
+/* Champs de mot de passe avec contrôle de visibilité accessible */
+.password-field { display: grid; gap: 6px; min-width: 0; }
+.password-input-wrap { position: relative; display: block; width: 100%; min-width: 0; }
+.password-input-wrap > .input { width: 100%; padding-right: 46px !important; }
+.password-visibility-toggle {
+  position: absolute;
+  top: 50%;
+  right: 7px;
+  transform: translateY(-50%);
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #64748b;
+  cursor: pointer;
+}
+.password-visibility-toggle:hover { background: #f1f5f9; color: #166534; }
+.password-visibility-toggle:focus-visible { outline: 2px solid #22c55e; outline-offset: 1px; }
+.password-visibility-toggle svg {
+  width: 19px;
+  height: 19px;
+  display: block;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.password-field .input { margin: 0; }
+@media (max-width: 600px) {
+  .password-visibility-toggle { width: 32px; height: 32px; right: 5px; }
+}
