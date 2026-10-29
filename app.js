@@ -2826,49 +2826,117 @@
     await showAdminView("orders");
   }
   async function adminCustomers() {
-    const rows = await readRows("customers");
-    cachedCustomers = rows;
-    const userIds = [...new Set(rows.map(row => row.user_id).filter(Boolean))];
-    let profileRows = [];
-    if (userIds.length) {
+    const customerRows = await readRows("customers");
+    cachedCustomers = customerRows;
+
+    const profileRows = [];
+    const pageSize = 500;
+    for (let offset = 0; ; offset += pageSize) {
       const { data, error } = await client.from("profiles")
-        .select("id,full_name,email,phone,phone_secondary,delivery_region,delivery_city,delivery_commune,delivery_neighborhood,delivery_address,marketing_opt_in,created_at")
-        .in("id", userIds);
+        .select("id,full_name,email,phone,phone_secondary,delivery_region,delivery_city,delivery_commune,delivery_neighborhood,delivery_address,marketing_opt_in,role,created_at")
+        .eq("role", "customer").order("created_at", { ascending: false }).range(offset, offset + pageSize - 1);
       if (error) throw error;
-      profileRows = data || [];
+      profileRows.push(...(data || []));
+      if (!data || data.length < pageSize) break;
     }
+
     const profilesById = new Map(profileRows.map(row => [row.id, row]));
-    const enriched = rows.map(customer => ({ ...customer, profile: profilesById.get(customer.user_id) || null }));
-    const subscribedCount = enriched.filter(customer => customer.profile?.marketing_opt_in === true).length;
+    const profilesByPhone = new Map();
+    profileRows.forEach(profile => {
+      const key = normalizeCustomerWhatsapp(profile.phone);
+      if (!key) return;
+      if (!profilesByPhone.has(key)) profilesByPhone.set(key, []);
+      profilesByPhone.get(key).push(profile);
+    });
+    const matchedProfileIds = new Set();
+    const enriched = customerRows.map(customer => {
+      let profile = customer.user_id ? profilesById.get(customer.user_id) || null : null;
+      if (!profile) {
+        const matches = profilesByPhone.get(normalizeCustomerWhatsapp(customer.phone)) || [];
+        if (matches.length === 1) profile = matches[0];
+      }
+      if (profile) matchedProfileIds.add(profile.id);
+      return { ...customer, profile, list_id: String(customer.id) };
+    });
+    profileRows.forEach(profile => {
+      if (!matchedProfileIds.has(profile.id)) {
+        enriched.push({
+          id: "profile:" + profile.id,
+          list_id: "profile:" + profile.id,
+          name: profile.full_name || "Client SAMA-PACK",
+          phone: profile.phone || "",
+          address: profile.delivery_address || "",
+          zone: [profile.delivery_region, profile.delivery_city, profile.delivery_commune, profile.delivery_neighborhood].filter(Boolean).join(", "),
+          orders_count: 0,
+          last_order_at: null,
+          created_at: profile.created_at,
+          updated_at: profile.created_at,
+          user_id: profile.id,
+          profile,
+        });
+      }
+    });
+
+    const subscribedCount = profileRows.filter(profile => profile.marketing_opt_in === true).length;
     const tableHtml = enriched.length ? '<div class="table-wrap"><table class="table"><thead><tr><th>Client</th><th>Contact</th><th>Zone</th><th>Commandes</th><th>Dernière commande</th><th>E-mails commerciaux</th><th>Fiche</th></tr></thead><tbody>' +
-      enriched.slice().sort((a,b) => new Date(b.last_order_at || 0) - new Date(a.last_order_at || 0)).map(customer => {
+      enriched.slice().sort((a,b) => new Date(b.last_order_at || b.created_at || 0) - new Date(a.last_order_at || a.created_at || 0)).map(customer => {
         const profile = customer.profile || {};
         const name = profile.full_name || customer.name || "Client";
-        return '<tr><td><strong>' + esc(name) + '</strong><br><span class="small-note">' + esc(profile.email || "E-mail non renseigné") + '</span></td>' +
+        const email = profile.email || "";
+        const subscribed = profile.marketing_opt_in === true;
+        return '<tr><td><strong>' + esc(name) + '</strong><br><span class="small-note">' + esc(email || "E-mail non renseigné") + '</span></td>' +
           '<td>' + esc(profile.phone || customer.phone || "—") + (profile.phone_secondary ? '<br><span class="small-note">Secondaire : ' + esc(profile.phone_secondary) + '</span>' : '') + '</td>' +
           '<td>' + esc([profile.delivery_commune, profile.delivery_neighborhood].filter(Boolean).join(" · ") || customer.zone || "—") + '</td>' +
           '<td>' + Number(customer.orders_count || 0) + '</td><td>' + esc(fmtDate(customer.last_order_at)) + '</td>' +
-          '<td><span class="status ' + (profile.marketing_opt_in ? 'delivered' : 'cancelled') + '">' + (profile.marketing_opt_in ? 'Abonné' : 'Non abonné') + '</span></td>' +
-          '<td><button class="btn small secondary" type="button" onclick="showCustomerProfile(\'' + esc(customer.id) + '\')">Fiche client</button></td></tr>';
-      }).join("") + '</tbody></table></div>' : '<div class="empty">Les clients apparaîtront après leurs premières commandes.</div>';
-    return '<div class="panel admin-customers-intro"><div class="admin-panel-head"><h3>Fiches clients (' + rows.length + ')</h3><span class="small-note">' + subscribedCount + ' client(s) autorisent les e-mails commerciaux.</span></div><p class="small-note">Ouvre une fiche pour consulter les coordonnées enregistrées, les commandes, les paiements, les devis et les rappels, puis contacter le client directement sur WhatsApp.</p>' + tableHtml + '</div>';
+          '<td><span class="status ' + (subscribed ? 'delivered' : 'cancelled') + '">' + (subscribed ? 'Abonné' : 'Non abonné') + '</span></td>' +
+          '<td><button class="btn small secondary" type="button" onclick="showCustomerProfile(\'' + esc(customer.list_id) + '\')">Fiche client</button></td></tr>';
+      }).join("") + '</tbody></table></div>' : '<div class="empty">Aucun client enregistré pour le moment.</div>';
+    return '<div class="panel admin-customers-intro"><div class="admin-panel-head"><h3>Clients et fiches clients (' + enriched.length + ')</h3><span class="small-note">' + subscribedCount + ' compte(s) autorisent les e-mails commerciaux.</span></div><p class="small-note">Les comptes clients inscrits et les clients historiques sont listés. Ouvre une fiche pour consulter les coordonnées, les commandes, les paiements, les devis et les rappels, puis contacter le client sur WhatsApp.</p>' + tableHtml + '</div>';
   }
 
   async function showCustomerProfile(customerId) {
     if (!isAdmin()) return toast("Accès réservé aux administrateurs.", true);
     if (!customerId) return toast("Référence client manquante.", true);
-    const { data: customer, error: customerError } = await client.from("customers")
-      .select("id,name,phone,address,zone,orders_count,last_order_at,created_at,updated_at,user_id")
-      .eq("id", customerId).maybeSingle();
-    if (customerError || !customer) return toast(errorMessage(customerError || new Error("Client introuvable.")), true);
+    const profileReference = String(customerId).startsWith("profile:");
+    const requestedProfileId = profileReference ? String(customerId).slice("profile:".length) : null;
+    let customer = null;
+    let profile = null;
+    if (profileReference) {
+      const result = await client.from("profiles")
+        .select("id,full_name,email,phone,phone_secondary,delivery_region,delivery_city,delivery_commune,delivery_neighborhood,delivery_address,delivery_landmark,delivery_instructions,role,created_at,avatar_path,marketing_opt_in")
+        .eq("id", requestedProfileId).eq("role", "customer").maybeSingle();
+      if (result.error || !result.data) return toast(errorMessage(result.error || new Error("Client introuvable.")), true);
+      profile = result.data;
+      customer = {
+        id: "profile:" + profile.id,
+        user_id: profile.id,
+        name: profile.full_name || "Client SAMA-PACK",
+        phone: profile.phone || "",
+        address: profile.delivery_address || "",
+        zone: [profile.delivery_region, profile.delivery_city, profile.delivery_commune, profile.delivery_neighborhood].filter(Boolean).join(", "),
+        orders_count: 0,
+        last_order_at: null,
+        created_at: profile.created_at,
+        updated_at: profile.created_at,
+      };
+    } else {
+      const { data, error } = await client.from("customers")
+        .select("id,name,phone,address,zone,orders_count,last_order_at,created_at,updated_at,user_id")
+        .eq("id", customerId).maybeSingle();
+      if (error || !data) return toast(errorMessage(error || new Error("Client introuvable.")), true);
+      customer = data;
+    }
 
     const orderColumns = "id,customer_id,user_id,created_at,status,slot,payment,subtotal,delivery,total,customer_name,customer_phone,delivery_address,delivery_zone,payment_choice,payment_status,amount_paid,updated_at,delivery_cost_actual";
-    const primaryOrderResult = await client.from("orders").select(orderColumns)
-      .eq("customer_id", customerId).order("created_at", { ascending: false }).limit(100);
+    let orderQuery = client.from("orders").select(orderColumns);
+    orderQuery = profileReference
+      ? orderQuery.eq("user_id", requestedProfileId)
+      : orderQuery.eq("customer_id", customerId);
+    const primaryOrderResult = await orderQuery.order("created_at", { ascending: false }).limit(100);
     if (primaryOrderResult.error) return toast(errorMessage(primaryOrderResult.error), true);
-    const profileId = customer.user_id || (primaryOrderResult.data || []).find(order => order.user_id)?.user_id || null;
+    const profileId = requestedProfileId || customer.user_id || (primaryOrderResult.data || []).find(order => order.user_id)?.user_id || null;
 
-    let profile = null, quotes = [], subscriptions = [], reviews = [], userOrders = [];
+    let quotes = [], subscriptions = [], reviews = [], userOrders = [];
     if (profileId) {
       const [profileResult, linkedOrdersResult, quotesResult, subscriptionsResult, reviewsResult] = await Promise.all([
         client.from("profiles").select("id,full_name,email,phone,phone_secondary,delivery_region,delivery_city,delivery_commune,delivery_neighborhood,delivery_address,delivery_landmark,delivery_instructions,role,created_at,avatar_path,marketing_opt_in").eq("id", profileId).maybeSingle(),
