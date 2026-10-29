@@ -2157,62 +2157,172 @@
 
 
   function b2bProductOptions(selectedId) {
-    return replenishmentProducts().map(function(p){return '<option value="'+esc(p.id)+'" '+(String(p.id)===String(selectedId||"")?"selected":"")+'>'+esc(p.name)+' — '+money(getEffectivePrice(p))+'</option>';}).join("")||'<option value="">Aucun article disponible</option>';
+    const available = replenishmentProducts();
+    if (!available.length) return '<option value="" selected disabled>Aucun article disponible</option>';
+    return '<option value="" disabled ' + (selectedId ? '' : 'selected') + '>Choisir un produit ou un pack</option>' +
+      available.map(function (p) {
+        return '<option value="' + esc(p.id) + '" ' + (String(p.id) === String(selectedId || "") ? "selected" : "") + '>' + esc(p.name) + ' — ' + money(getEffectivePrice(p)) + '</option>';
+      }).join("");
   }
   function b2bProductLineHtml(value) {
-    const p=value||{};
-    return '<div class="b2b-product-line"><label><span>Produit / pack</span><select class="input" name="b2b_product_id" required>'+b2bProductOptions(p.product_id||replenishmentProducts()[0]?.id||"")+'</select></label><label class="b2b-product-quantity"><span>Quantité</span><input class="input" name="b2b_quantity" type="number" min="1" max="99" value="'+Math.max(1,Math.min(99,Number(p.quantity)||1))+'" required></label><button type="button" class="btn small ghost" onclick="removeB2BLine(this)" aria-label="Retirer cette ligne">✕</button></div>';
+    const p = value || {};
+    const quantity = p.quantity == null || p.quantity === "" ? "" : Math.max(1, Math.min(99, Number(p.quantity) || 1));
+    return '<div class="b2b-product-line"><label><span>Produit / pack</span><select class="input" name="b2b_product_id" required>' + b2bProductOptions(p.product_id || "") + '</select></label><label class="b2b-product-quantity"><span>Quantité</span><input class="input" name="b2b_quantity" type="number" min="1" max="99" value="' + quantity + '" placeholder="Ex. 12" required></label><button type="button" class="btn small ghost b2b-remove-line" onclick="removeB2BLine(this)" aria-label="Retirer cette ligne" title="Retirer cet article">✕</button></div>';
   }
-  function addB2BLine() { const host=$("b2bProductLines");if(!host)return;if(host.querySelectorAll(".b2b-product-line").length>=20)return toast("Maximum 20 références par demande.",true);host.insertAdjacentHTML("beforeend",b2bProductLineHtml({})); }
+  function b2bEmptySelectionHtml() {
+    return '<div class="b2b-empty-selection"><span class="b2b-empty-selection-icon" aria-hidden="true">＋</span><strong>Aucun article ajouté</strong><p>Choisis toi-même les produits ou packs et les quantités dont ton entreprise a besoin.</p><span class="small-note">Aucune référence n’est présélectionnée.</span></div>';
+  }
+  function addB2BLine() {
+    const host = $("b2bProductLines");
+    if (!host) return;
+    if (host.querySelectorAll(".b2b-product-line").length >= 20) return toast("Maximum 20 références par demande.", true);
+    host.querySelector(".b2b-empty-selection")?.remove();
+    host.insertAdjacentHTML("beforeend", b2bProductLineHtml({}));
+    const rows = host.querySelectorAll(".b2b-product-line");
+    rows[rows.length - 1]?.querySelector('[name="b2b_product_id"]')?.focus();
+  }
   function removeB2BLine(button) {
-    const row=button?.closest(".b2b-product-line"),host=$("b2bProductLines");if(!row||!host)return;
-    if(host.querySelectorAll(".b2b-product-line").length<=1){const select=row.querySelector('[name="b2b_product_id"]'),qty=row.querySelector('[name="b2b_quantity"]');if(select)select.selectedIndex=0;if(qty)qty.value="1";return;}row.remove();
+    const row = button?.closest(".b2b-product-line");
+    const host = $("b2bProductLines");
+    if (!row || !host) return;
+    row.remove();
+    if (!host.querySelector(".b2b-product-line")) host.innerHTML = b2bEmptySelectionHtml();
   }
   function readB2BLines() {
-    const host=$("b2bProductLines");if(!host)throw new Error("Sélection d’articles indisponible.");const lines=[];
-    for(const row of host.querySelectorAll(".b2b-product-line")){
-      const id=String(row.querySelector('[name="b2b_product_id"]')?.value||""),quantity=Number(row.querySelector('[name="b2b_quantity"]')?.value);
-      if(!id)continue;const product=getP(id);
-      if(!product||!canSellProduct(product))throw new Error("Un article choisi n’est plus disponible. Actualise la liste.");
-      if(!Number.isInteger(quantity)||quantity<1||quantity>99)throw new Error("Chaque quantité doit être comprise entre 1 et 99.");
-      const duplicate=lines.find(item=>item.product_id===product.id);
-      if(duplicate)duplicate.quantity=Math.min(99,duplicate.quantity+quantity);else lines.push({product_id:product.id,product_name:product.name,quantity:quantity,unit_price:getEffectivePrice(product)});
+    const host = $("b2bProductLines");
+    if (!host) throw new Error("Sélection d’articles indisponible.");
+    const lines = [];
+    for (const row of host.querySelectorAll(".b2b-product-line")) {
+      const id = String(row.querySelector('[name="b2b_product_id"]')?.value || "");
+      const rawQuantity = String(row.querySelector('[name="b2b_quantity"]')?.value || "").trim();
+      if (!id && !rawQuantity) continue;
+      if (!id) throw new Error("Choisis un produit ou un pack pour chaque ligne renseignée.");
+      const quantity = Number(rawQuantity);
+      const product = getP(id);
+      if (!product || !canSellProduct(product)) throw new Error("Un article choisi n’est plus disponible. Actualise la liste.");
+      if (!Number.isInteger(quantity) || quantity < 1 || quantity > 99) throw new Error("Chaque quantité doit être comprise entre 1 et 99.");
+      const duplicate = lines.find(item => item.product_id === product.id);
+      if (duplicate) duplicate.quantity = Math.min(99, duplicate.quantity + quantity);
+      else lines.push({ product_id: product.id, product_name: product.name, quantity, unit_price: getEffectivePrice(product) });
     }
-    if(!lines.length)throw new Error("Sélectionne au moins un produit ou pack.");return lines;
+    if (!lines.length) throw new Error("Ajoute toi-même au moins un produit ou pack avant de continuer.");
+    return lines;
   }
   async function saveB2BProfileFromForm() {
-    if(!currentUser)throw new Error("Connecte-toi pour enregistrer ton entreprise.");const form=$("b2bWorkspaceForm");if(!form)throw new Error("Formulaire professionnel indisponible.");
-    const fd=new FormData(form),payload={owner_user_id:currentUser.id,company_name:String(fd.get("company_name")||"").trim(),sector:String(fd.get("sector")||"Autre").trim(),contact_name:String(fd.get("contact_name")||"").trim(),phone:String(fd.get("phone")||"").trim(),email:String(fd.get("email")||"").trim(),address:String(fd.get("address")||"").trim(),delivery_zone:String(fd.get("delivery_zone")||"").trim(),updated_at:new Date().toISOString()};
-    if(payload.company_name.length<2||payload.contact_name.length<2||payload.phone.replace(/\D/g,"").length<8)throw new Error("Renseigne l’entreprise, le contact et un téléphone valide.");
-    const result=await client.from("business_accounts").upsert(payload,{onConflict:"owner_user_id"}).select("*").single();if(result.error)throw result.error;currentBusinessAccount=result.data;return result.data;
+    if (!currentUser) throw new Error("Connecte-toi pour enregistrer ton entreprise.");
+    const form = $("b2bWorkspaceForm");
+    if (!form) throw new Error("Formulaire professionnel indisponible.");
+    const fd = new FormData(form);
+    const payload = {
+      owner_user_id: currentUser.id,
+      company_name: String(fd.get("company_name") || "").trim(),
+      sector: String(fd.get("sector") || "").trim(),
+      contact_name: String(fd.get("contact_name") || "").trim(),
+      phone: String(fd.get("phone") || "").trim(),
+      email: String(fd.get("email") || "").trim(),
+      address: String(fd.get("address") || "").trim(),
+      delivery_zone: String(fd.get("delivery_zone") || "").trim(),
+      updated_at: new Date().toISOString()
+    };
+    if (payload.company_name.length < 2 || payload.contact_name.length < 2 || payload.phone.replace(/\D/g, "").length < 8) {
+      throw new Error("Renseigne l’entreprise, le contact et un téléphone valide.");
+    }
+    if (!payload.sector) throw new Error("Choisis le secteur d’activité de ton entreprise.");
+    const result = await client.from("business_accounts").upsert(payload, { onConflict: "owner_user_id" }).select("*").single();
+    if (result.error) throw result.error;
+    currentBusinessAccount = result.data;
+    return result.data;
   }
   async function openB2BWorkspace() {
-    if(!currentUser){renderAuthForm("login","Connecte-toi ou crée un compte pour enregistrer ton entreprise, demander des devis et retrouver ses commandes.");return;}
-    const accountResult=await client.from("business_accounts").select("*").eq("owner_user_id",currentUser.id).maybeSingle();
-    if(accountResult.error)return toast("Espace professionnel indisponible : "+errorMessage(accountResult.error),true);
-    currentBusinessAccount=accountResult.data||null;const account=currentBusinessAccount||{};
-    const [quoteResult,orderResult]=await Promise.all([
-      client.from("quotes").select("id,created_at,company,need,message,status").eq("user_id",currentUser.id).order("created_at",{ascending:false}).limit(10),
-      account.id?client.from("orders").select("id,created_at,status,total,amount_paid").eq("user_id",currentUser.id).eq("business_account_id",account.id).order("created_at",{ascending:false}).limit(10):Promise.resolve({data:[],error:null})
+    if (!currentUser) {
+      renderAuthForm("login", "Connecte-toi ou crée un compte pour enregistrer ton entreprise, demander des devis et retrouver ses commandes.");
+      return;
+    }
+    const accountResult = await client.from("business_accounts").select("*").eq("owner_user_id", currentUser.id).maybeSingle();
+    if (accountResult.error) return toast("Espace professionnel indisponible : " + errorMessage(accountResult.error), true);
+    currentBusinessAccount = accountResult.data || null;
+    const account = currentBusinessAccount || {};
+    const [quoteResult, orderResult] = await Promise.all([
+      client.from("quotes").select("id,created_at,company,need,message,status").eq("user_id", currentUser.id).order("created_at", { ascending: false }).limit(10),
+      account.id
+        ? client.from("orders").select("id,created_at,status,total,amount_paid").eq("user_id", currentUser.id).eq("business_account_id", account.id).order("created_at", { ascending: false }).limit(10)
+        : Promise.resolve({ data: [], error: null })
     ]);
-    const quotes=quoteResult.error?[]:(quoteResult.data||[]),orders=orderResult.error?[]:(orderResult.data||[]);
-    const quoteHtml=quotes.length?'<div class="table-wrap"><table class="table"><thead><tr><th>Devis</th><th>Date</th><th>Besoin</th><th>Statut</th></tr></thead><tbody>'+quotes.map(function(q){return '<tr><td>'+esc(q.id)+'</td><td>'+esc(fmtDate(q.created_at))+'</td><td>'+esc(q.need)+'<br><span class="small-note">'+esc(q.message||"")+'</span></td><td>'+esc(statusLabel(q.status))+'</td></tr>';}).join("")+'</tbody></table></div>':'<div class="empty compact-empty">Tes demandes de devis apparaîtront ici.</div>';
-    const orderHtml=orders.length?'<div class="table-wrap"><table class="table"><thead><tr><th>Commande</th><th>Date</th><th>Total</th><th>Payé</th><th>Statut</th><th></th></tr></thead><tbody>'+orders.map(function(o){return '<tr><td>'+esc(o.id)+'</td><td>'+esc(fmtDate(o.created_at))+'</td><td>'+money(o.total)+'</td><td>'+money(o.amount_paid||0)+'</td><td>'+esc(statusLabel(o.status))+'</td><td><button class="btn small ghost" onclick="reorderOrder(\''+esc(o.id)+'\')">Recommander</button></td></tr>';}).join("")+'</tbody></table></div>':'<div class="empty compact-empty">Les commandes passées depuis cet espace apparaîtront ici.</div>';
-    showModal('<div class="modal-head"><div><div class="eyebrow">CLIENTS PROFESSIONNELS</div><h2>Espace professionnel</h2><p class="small-note">Bureaux, restaurants, hôtels, commerces et équipes de nettoyage.</p></div><button class="close" onclick="closeModal()">✕</button></div>'+
-      '<form id="b2bWorkspaceForm" class="b2b-workspace-form"><div class="b2b-section-title"><h3>Profil de l’entreprise</h3><span class="small-note">'+(account.id?"Profil enregistré":"À enregistrer pour commencer")+'</span></div>'+
-      '<label><span>Nom de l’entreprise</span><input class="input" name="company_name" required minlength="2" maxlength="180" value="'+esc(account.company_name||"")+'" placeholder="Entreprise / structure"></label>'+
-      '<div class="b2b-two-columns"><label><span>Secteur</span><select class="input" name="sector">'+["Bureau","Restaurant","Hôtel","Commerce","Nettoyage professionnel","École / association","Autre"].map(function(x){return '<option '+((account.sector||"Autre")===x?"selected":"")+'>'+x+'</option>';}).join("")+'</select></label><label><span>Personne de contact</span><input class="input" name="contact_name" required minlength="2" maxlength="120" value="'+esc(account.contact_name||currentProfile?.full_name||"")+'"></label></div>'+
-      '<div class="b2b-two-columns"><label><span>Téléphone</span><input class="input" name="phone" required minlength="8" maxlength="30" value="'+esc(account.phone||currentProfile?.phone||"")+'" placeholder="Téléphone professionnel"></label><label><span>E-mail</span><input class="input" name="email" type="email" maxlength="254" value="'+esc(account.email||currentUser.email||"")+'"></label></div>'+
-      '<label><span>Adresse de livraison</span><input class="input" name="address" maxlength="300" value="'+esc(account.address||"")+'"></label><label><span>Zone / quartier</span><input class="input" name="delivery_zone" maxlength="120" value="'+esc(account.delivery_zone||"")+'"></label>'+
-      '<button class="btn secondary full" type="submit">Enregistrer le profil professionnel</button>'+
-      '<div class="b2b-section-title"><div><h3>Produits, packs et quantités</h3><p class="small-note">Les prix sont indicatifs et seront revérifiés avant la commande.</p></div><button class="btn small ghost" type="button" onclick="addB2BLine()">+ Article</button></div>'+
-      '<div id="b2bProductLines">'+[1,2,3].map(function(){return b2bProductLineHtml({});}).join("")+'</div>'+
-      '<label><span>Précisions pour un devis (facultatif)</span><textarea class="input" name="message" maxlength="1800" placeholder="Fréquence, conditionnement, livraison, besoins particuliers…"></textarea></label>'+
-      '<div class="b2b-action-row"><button class="btn primary" type="button" onclick="submitB2BQuantityOrder()">Ajouter au panier</button><button class="btn secondary" type="button" onclick="submitB2BQuote()">Demander un devis détaillé</button></div></form>'+
-      '<div class="panel b2b-history-panel"><div class="b2b-section-title"><h3>Commandes précédentes</h3><span class="small-note">10 dernières</span></div>'+orderHtml+'</div>'+
-      '<div class="panel b2b-history-panel"><div class="b2b-section-title"><h3>Demandes de devis</h3><span class="small-note">10 dernières</span></div>'+quoteHtml+'</div>'+
-      '<div class="panel b2b-history-panel"><h3>Réapprovisionnement récurrent</h3><p class="small-note">Programme des rappels pour tes références et quantités habituelles.</p><button class="btn ghost" onclick="openSubscriptionEditor()">Programmer un rappel</button></div>');
-    const form=$("b2bWorkspaceForm");if(form)form.onsubmit=async function(event){event.preventDefault();try{const result=await saveB2BProfileFromForm();await client.from("profiles").update({full_name:result.contact_name,phone:result.phone}).eq("id",currentUser.id);currentProfile=Object.assign({},currentProfile||{},{full_name:result.contact_name,phone:result.phone});toast("Profil professionnel enregistré.");await openB2BWorkspace();}catch(error){toast(errorMessage(error),true);}};
+    const quotes = quoteResult.error ? [] : (quoteResult.data || []);
+    const orders = orderResult.error ? [] : (orderResult.data || []);
+    const quoteHtml = quotes.length
+      ? '<div class="b2b-history-list">' + quotes.map(function (q) {
+          const message = String(q.message || "");
+          const excerpt = message.length > 160 ? message.slice(0, 157) + "…" : message;
+          return '<article class="b2b-history-item"><div class="b2b-history-item-top"><div><span class="b2b-history-ref">DEMANDE DE DEVIS</span><strong>' + esc(q.need || q.id) + '</strong></div><span class="b2b-status">' + esc(statusLabel(q.status)) + '</span></div><p>' + esc(excerpt || "Aucune précision complémentaire.") + '</p><div class="b2b-history-meta"><span>' + esc(q.id) + '</span><span>' + esc(fmtDate(q.created_at)) + '</span></div></article>';
+        }).join("") + '</div>'
+      : '<div class="b2b-empty-history"><strong>Aucune demande de devis</strong><p>Tes demandes envoyées seront visibles ici.</p></div>';
+    const orderHtml = orders.length
+      ? '<div class="b2b-history-list">' + orders.map(function (o) {
+          return '<article class="b2b-history-item"><div class="b2b-history-item-top"><div><span class="b2b-history-ref">COMMANDE</span><strong>' + esc(o.id) + '</strong></div><span class="b2b-status">' + esc(statusLabel(o.status)) + '</span></div><div class="b2b-order-money"><div><span>Total</span><strong>' + money(o.total) + '</strong></div><div><span>Déjà payé</span><strong>' + money(o.amount_paid || 0) + '</strong></div></div><div class="b2b-history-meta"><span>' + esc(fmtDate(o.created_at)) + '</span><button class="btn small ghost" onclick="reorderOrder(\'' + esc(o.id) + '\')">Recommander cette commande</button></div></article>';
+        }).join("") + '</div>'
+      : '<div class="b2b-empty-history"><strong>Aucune commande professionnelle</strong><p>Les commandes passées depuis cet espace apparaîtront ici.</p></div>';
+    const sectors = ["Bureau", "Restaurant", "Hôtel", "Commerce", "Nettoyage professionnel", "École / association", "Autre"];
+    const sectorOptions = sectors.map(function (x) {
+      return '<option value="' + esc(x) + '" ' + (account.sector === x ? "selected" : "") + '>' + esc(x) + '</option>';
+    }).join("");
+    showModal(
+      '<div class="modal-head b2b-modal-head"><div><div class="eyebrow">ESPACE PROFESSIONNEL · B2B</div><h2>Espace professionnel</h2><p class="small-note">Un espace de travail pour gérer les achats de ton entreprise.</p></div><button class="close" onclick="closeModal()" aria-label="Fermer l’espace professionnel">✕</button></div>' +
+      '<div class="b2b-workspace-intro"><div><span class="b2b-intro-kicker">COMMANDES & DEVIS</span><h3>Garde la main sur tes achats.</h3><p>Choisis librement tes références et tes quantités. Aucune sélection automatique n’est faite à ta place.</p></div><div class="b2b-intro-mark" aria-hidden="true">B2B</div></div>' +
+      '<div class="b2b-overview-grid">' +
+        '<div class="b2b-overview-card"><span class="b2b-overview-icon" aria-hidden="true">▤</span><div><strong>' + orders.length + '</strong><span>Commandes récentes</span></div></div>' +
+        '<div class="b2b-overview-card"><span class="b2b-overview-icon" aria-hidden="true">▧</span><div><strong>' + quotes.length + '</strong><span>Devis récents</span></div></div>' +
+        '<div class="b2b-overview-card"><span class="b2b-overview-icon" aria-hidden="true">✓</span><div><strong>' + (account.id ? 'Enregistré' : 'À renseigner') + '</strong><span>Profil entreprise</span></div></div>' +
+      '</div>' +
+      '<form id="b2bWorkspaceForm" class="b2b-workspace-form">' +
+        '<section class="b2b-form-section">' +
+          '<div class="b2b-section-title"><div><span class="b2b-section-kicker">ÉTAPE 1</span><h3>Profil de l’entreprise</h3><p class="small-note">Ces informations seront reprises dans les demandes professionnelles.</p></div><span class="b2b-section-badge ' + (account.id ? 'is-saved' : '') + '">' + (account.id ? 'Profil enregistré' : 'Nouveau profil') + '</span></div>' +
+          '<div class="b2b-form-grid">' +
+            '<label class="b2b-field-full"><span>Nom de l’entreprise ou de la structure</span><input class="input" name="company_name" required minlength="2" maxlength="180" value="' + esc(account.company_name || "") + '" placeholder="Nom de ta structure"></label>' +
+            '<label><span>Secteur d’activité</span><select class="input" name="sector" required><option value="" disabled ' + (account.sector ? '' : 'selected') + '>Choisir un secteur</option>' + sectorOptions + '</select></label>' +
+            '<label><span>Personne de contact</span><input class="input" name="contact_name" required minlength="2" maxlength="120" value="' + esc(account.contact_name || currentProfile?.full_name || "") + '" placeholder="Nom du contact"></label>' +
+            '<label><span>Téléphone professionnel</span><input class="input" name="phone" type="tel" required minlength="8" maxlength="30" value="' + esc(account.phone || currentProfile?.phone || "") + '" placeholder="Numéro à joindre"></label>' +
+            '<label><span>E-mail professionnel (facultatif)</span><input class="input" name="email" type="email" maxlength="254" value="' + esc(account.email || currentUser.email || "") + '" placeholder="contact@entreprise.sn"></label>' +
+            '<label class="b2b-field-full"><span>Adresse de livraison (facultatif)</span><input class="input" name="address" maxlength="300" value="' + esc(account.address || "") + '" placeholder="Adresse de l’entreprise ou du site"></label>' +
+            '<label class="b2b-field-full"><span>Zone ou quartier de livraison (facultatif)</span><input class="input" name="delivery_zone" maxlength="120" value="' + esc(account.delivery_zone || "") + '" placeholder="Ex. Dakar, Almadies"></label>' +
+          '</div>' +
+          '<div class="b2b-profile-save-row"><span class="small-note">Les champs obligatoires sont signalés dans le formulaire.</span><button class="btn secondary" type="submit">Enregistrer le profil</button></div>' +
+        '</section>' +
+        '<section class="b2b-form-section">' +
+          '<div class="b2b-section-title"><div><span class="b2b-section-kicker">ÉTAPE 2</span><h3>Mes articles et quantités</h3><p class="small-note">Sélectionne uniquement les références dont tu as besoin.</p></div><button class="btn small secondary" type="button" onclick="addB2BLine()">＋ Ajouter un article</button></div>' +
+          '<p class="b2b-selection-note"><span aria-hidden="true">ⓘ</span> Jusqu’à 20 références par demande. Rien n’est présélectionné ; la quantité est à saisir pour chaque ligne.</p>' +
+          '<div id="b2bProductLines">' + b2bEmptySelectionHtml() + '</div>' +
+        '</section>' +
+        '<section class="b2b-form-section">' +
+          '<div class="b2b-section-title"><div><span class="b2b-section-kicker">ÉTAPE 3</span><h3>Précisions (facultatif)</h3><p class="small-note">Ajoute des instructions utiles pour préparer le devis.</p></div></div>' +
+          '<label class="b2b-notes-field"><span>Message pour SAMA-PACK</span><textarea class="input" name="message" maxlength="1800" placeholder="Conditionnement, délai souhaité, instructions de livraison…"></textarea></label>' +
+          '<div class="b2b-action-row"><button class="btn primary" type="button" onclick="submitB2BQuantityOrder()">Ajouter au panier</button><button class="btn secondary" type="button" onclick="submitB2BQuote()">Demander un devis détaillé</button></div>' +
+        '</section>' +
+      '</form>' +
+      '<div class="b2b-history-grid">' +
+        '<section class="panel b2b-history-panel"><div class="b2b-section-title"><div><span class="b2b-section-kicker">SUIVI</span><h3>Commandes précédentes</h3><p class="small-note">Les 10 dernières commandes professionnelles.</p></div></div>' + orderHtml + '</section>' +
+        '<section class="panel b2b-history-panel"><div class="b2b-section-title"><div><span class="b2b-section-kicker">SUIVI</span><h3>Demandes de devis</h3><p class="small-note">Les 10 dernières demandes transmises.</p></div></div>' + quoteHtml + '</section>' +
+      '</div>'
+    );
+    const workspaceCard = document.querySelector(".modal-card");
+    if (workspaceCard) workspaceCard.classList.add("b2b-workspace-modal");
+    const form = $("b2bWorkspaceForm");
+    if (form) form.onsubmit = async function (event) {
+      event.preventDefault();
+      const submitButton = form.querySelector('button[type="submit"]');
+      if (submitButton) { submitButton.disabled = true; submitButton.textContent = "Enregistrement…"; }
+      try {
+        const result = await saveB2BProfileFromForm();
+        const profileUpdate = await client.from("profiles").update({ full_name: result.contact_name, phone: result.phone }).eq("id", currentUser.id);
+        if (profileUpdate.error) throw profileUpdate.error;
+        currentProfile = Object.assign({}, currentProfile || {}, { full_name: result.contact_name, phone: result.phone });
+        toast("Profil professionnel enregistré.");
+        await openB2BWorkspace();
+      } catch (error) {
+        toast(errorMessage(error), true);
+        if (submitButton) { submitButton.disabled = false; submitButton.textContent = "Enregistrer le profil"; }
+      }
+    };
   }
   async function submitB2BQuantityOrder() {
     try{const account=await saveB2BProfileFromForm(),lines=readB2BLines();for(const item of lines){const existing=cart.find(entry=>entry.id===item.product_id);if(existing)existing.qty=Math.min(99,existing.qty+item.quantity);else cart.push({id:item.product_id,qty:Math.min(99,item.quantity)});}currentBusinessAccount=account;saveCart();updateCartCount();closeModal();renderCartModal();toast("Articles professionnels ajoutés au panier. Vérifie les quantités avant de confirmer.");}catch(error){toast(errorMessage(error),true);}
