@@ -1,0 +1,18 @@
+# Keep repository and deployment tooling files out of public static assets
+.git/
+.git/**
+**/.git/**
+.wrangler/
+.wrangler/**
+**/.wrangler/**
+.assetsignore
+.gitignore
+wrangler.json
+wrangler.jsonc
+wrangler.toml
+.dev.vars
+.dev.vars.*
+.env
+.env.*
+**/.env
+**/.env.*
