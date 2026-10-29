@@ -1947,7 +1947,6 @@
             '<label class="full password-field">Nouveau mot de passe<span class="password-input-wrap"><input class="input" id="newAccountPassword" name="password" type="password" minlength="8" required placeholder="Nouveau mot de passe (8 caractères minimum)" autocomplete="new-password">' + passwordVisibilityToggleHtml("newAccountPassword") + '</span></label>' +
             '<label class="full password-field">Confirmer le mot de passe<span class="password-input-wrap"><input class="input" id="confirmAccountPassword" name="password_confirmation" type="password" minlength="8" required placeholder="Confirme le nouveau mot de passe" autocomplete="new-password">' + passwordVisibilityToggleHtml("confirmAccountPassword") + '</span></label>' +
             '<button class="btn primary full" type="submit">Enregistrer le mot de passe</button></form></div>' +
-          (!initialized ? '<div class="panel bootstrap-panel"><h3>Configurer le premier administrateur</h3><p>Cette option n’apparaît que tant qu’aucun administrateur n’est configuré. Utilise le code initial transmis par le propriétaire.</p><form id="bootstrapAdminForm" class="checkout-grid"><input class="input full" name="bootstrap_token" autocomplete="off" required placeholder="Code initial du propriétaire"><button class="btn primary full" type="submit">Devenir le premier administrateur</button></form></div>' : '') +
           '<button class="btn ghost full account-signout" onclick="signOut()">Se déconnecter</button>' +
         '</section>' +
       '</div>'
