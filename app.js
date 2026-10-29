@@ -735,7 +735,7 @@
         if (imageUpload.error) return toast(imageUpload.error, true);
         payload.image_paths = imageUpload.images;
         payload.image_path = payload.image_paths[0] || (replaceImages ? "" : payload.image_path);
-        if (payload.active && !payload.image_paths.length) return toast("Ajoute au moins une photo avant de publier cet article.", true);
+        if (payload.active && !payload.image_paths.length && !(editingCatalogItemId && current.active === true)) return toast("Ajoute au moins une photo avant de publier cet article.", true);
         let result;
         if (editingCatalogItemId) {
           result = await client.from("products").update(payload).eq("id", productId);
@@ -3638,7 +3638,7 @@
         if (imageUpload.error) { setBusy(form,false); return toast(imageUpload.error,true); }
         payload.image_paths = imageUpload.images;
         payload.image_path = payload.image_paths[0] || (replaceImages ? "" : payload.image_path);
-        if (payload.active && !payload.image_paths.length) { setBusy(form,false); return toast("Ajoute au moins une photo avant de publier ce pack.",true); }
+        if (payload.active && !payload.image_paths.length && !(editingProductId && getP(editingProductId)?.active === true)) { setBusy(form,false); return toast("Ajoute au moins une photo avant de publier ce pack.",true); }
         let result;
         if (editingProductId) result = await client.from("products").update(payload).eq("id",editingProductId);
         else result = await client.from("products").insert({id:productId,...payload});
