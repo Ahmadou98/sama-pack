@@ -626,6 +626,14 @@
       console.warn("Individual catalog load failed", error);
       return toast(errorMessage(error), true);
     }
+    if (!isGeneralAdmin()) {
+      const visible = (rows || []).filter(p => p.active === true);
+      host.innerHTML = '<div class="panel"><div class="admin-panel-head"><h3>Produits et outils publiés</h3><span class="small-note">Consultation uniquement. Coûts fournisseurs, marges et publications sont réservés au propriétaire.</span></div>' +
+        (visible.length ? '<div class="table-wrap"><table class="table"><thead><tr><th>Référence</th><th>Article</th><th>Type</th><th>Prix public</th><th>Disponibilité</th></tr></thead><tbody>' +
+          visible.map(function(p) { return '<tr><td>' + esc(p.public_ref || p.id) + '</td><td><strong>' + esc(p.name) + '</strong><br><span class="small-note">' + esc(p.category || "") + '</span></td><td>' + (p.catalog_type === "tool" ? "Outil" : "Produit") + '</td><td>' + money(p.price) + '</td><td>' + availabilityBadgeHtml(p) + '</td></tr>'; }).join("") +
+          '</tbody></table></div>' : '<div class="empty">Aucun produit ou outil publié.</div>') + '</div>';
+      return;
+    }
     const [costResult, linkResult, supplierResult] = await Promise.all([
       client.from("product_costs").select("product_id,supplier_price,margin_percent"),
       client.from("product_supplier_links").select("product_id,supplier_id,supplier_ref,carton_price,units_per_carton,source_url,research_note"),
@@ -3088,22 +3096,47 @@
   }
 
   async function adminStock() {
-    const [rows, productRows, linkResult, supplierResult] = await Promise.all([
-      readRows("stock"),
-      readRows("products"),
-      client.from("product_supplier_links").select("product_id,supplier_id,supplier_ref"),
-      client.from("suppliers").select("id,name").order("name", { ascending: true })
-    ]);
-    if (linkResult.error) throw linkResult.error;
-    if (supplierResult.error) throw supplierResult.error;
+    const stockResult = await client.from("stock").select("product_id,quantity,min_quantity,supplier,updated_at");
+    if (stockResult.error) throw stockResult.error;
+    const productResult = await client.from("products").select("id,public_ref,name,category,catalog_type,price,active,availability_status").order("name",{ascending:true});
+    if (productResult.error) throw productResult.error;
+    let links = [], suppliers = [];
+    if (isGeneralAdmin()) {
+      const [linkResult,supplierResult] = await Promise.all([
+        client.from("product_supplier_links").select("product_id,supplier_id,supplier_ref"),
+        client.from("suppliers").select("id,name").order("name",{ascending:true})
+      ]);
+      if (linkResult.error) throw linkResult.error;
+      if (supplierResult.error) throw supplierResult.error;
+      links = linkResult.data || [];
+      suppliers = supplierResult.data || [];
+    }
+    const rows = stockResult.data || [];
     stockRows = rows;
-    products = (productRows || []).map(normalizeProduct);
-    const suppliers = supplierResult.data || [];
-    const supplierById = new Map(suppliers.map(s => [s.id, s]));
-    const linkByProduct = new Map((linkResult.data || []).map(link => [link.product_id, { ...link, supplier_name: supplierById.get(link.supplier_id)?.name || "" }]));
-    const currentProducts = products.slice().sort((a,b) => String(a.name).localeCompare(String(b.name), "fr"));
-    return `<div class="panel"><div class="admin-panel-head"><h3>Stock, réception et réapprovisionnement</h3><span class="small-note">Recherche par référence SAMA-PACK, désignation ou fournisseur. Une quantité positive met l’article en disponibilité.</span></div><div class="table-wrap"><table class="table"><thead><tr><th>Référence / article</th><th>Fournisseur associé / réf.</th><th>Quantité</th><th>Seuil</th><th>Coût d’achat (stock)</th><th>Valeur stock</th><th>Disponibilité catalogue</th></tr></thead><tbody>${currentProducts.map(p=>{const s=rows.find(x=>x.product_id===p.id)||{quantity:0,min_quantity:0,unit_cost:0,supplier:""};const link=linkByProduct.get(p.id)||{};const searchText=[p.public_ref,p.id,p.name,p.category,link.supplier_name,link.supplier_ref,s.supplier].join(" ").toLowerCase();return `<tr data-stock-search-row data-search="${esc(searchText)}"><td><strong>${esc(p.public_ref || p.id)}</strong><br>${esc(p.name)}<br><span class="small-note">${esc(p.category || p.cat || "")}</span></td><td>${esc(link.supplier_name || s.supplier || "—")}<br><span class="small-note">${esc(link.supplier_ref || "Réf. fournisseur non renseignée")}</span></td><td><input class="input stock-field" type="number" min="0" step="1" aria-label="Quantité en stock" data-stock-id="${esc(p.id)}" data-stock-key="quantity" value="${Number(s.quantity||0)}"></td><td><input class="input stock-field" type="number" min="0" step="1" aria-label="Seuil d’alerte" data-stock-id="${esc(p.id)}" data-stock-key="min_quantity" value="${Number(s.min_quantity||0)}"></td><td><input class="input stock-field" type="number" min="0" step="0.01" aria-label="Coût d’achat pour stock" data-stock-id="${esc(p.id)}" data-stock-key="unit_cost" value="${Number(s.unit_cost||0)}"></td><td>${money(Number(s.quantity||0)*Number(s.unit_cost||0))}</td><td><select class="input stock-field" aria-label="Disponibilité au catalogue" data-stock-id="${esc(p.id)}" data-stock-key="availability_status"><option value="available" ${p.availability_status !== "out_of_stock" ? "selected" : ""}>Disponible</option><option value="out_of_stock" ${p.availability_status === "out_of_stock" ? "selected" : ""}>Rupture de stock</option></select><div>${availabilityBadgeHtml(p)}</div></td></tr>`}).join("")}</tbody></table></div><p class="small-note">Les changements sont enregistrés à la sortie du champ. Utilise le formulaire de l’article pour changer le fournisseur associé. Les articles SNAD importés commencent à zéro et en rupture jusqu’à réception physique du stock.</p></div>`;
+    products = (productResult.data || []).map(normalizeProduct);
+    const supplierById = new Map(suppliers.map(s => [s.id,s]));
+    const linkByProduct = new Map(links.map(link => [link.product_id,{...link,supplier_name:supplierById.get(link.supplier_id)?.name || ""}]));
+    const currentProducts = products.slice().sort((a,b) => String(a.name).localeCompare(String(b.name),"fr"));
+    const tableRows = currentProducts.map(p => {
+      const s = rows.find(x => x.product_id === p.id) || {quantity:0,min_quantity:0,supplier:""};
+      const link = linkByProduct.get(p.id) || {};
+      const supplierLabel = isGeneralAdmin()
+        ? (link.supplier_name || s.supplier || "—") + (link.supplier_ref ? '<br><span class="small-note">Réf. ' + esc(link.supplier_ref) + '</span>' : "")
+        : esc(s.supplier || "—");
+      const searchText = [p.public_ref,p.id,p.name,p.category,link.supplier_name,link.supplier_ref,s.supplier].join(" ").toLowerCase();
+      return '<tr data-stock-search-row data-search="' + esc(searchText) + '">' +
+        '<td><strong>' + esc(p.public_ref || p.id) + '</strong><br>' + esc(p.name) + '<br><span class="small-note">' + esc(p.category || p.cat || "") + '</span></td>' +
+        '<td>' + supplierLabel + '</td>' +
+        '<td><input class="input stock-field" type="number" min="0" step="1" aria-label="Quantité en stock" data-stock-id="' + esc(p.id) + '" data-stock-key="quantity" value="' + Number(s.quantity||0) + '"></td>' +
+        '<td><input class="input stock-field" type="number" min="0" step="1" aria-label="Seuil d’alerte" data-stock-id="' + esc(p.id) + '" data-stock-key="min_quantity" value="' + Number(s.min_quantity||0) + '"></td>' +
+        '<td><select class="input stock-field" aria-label="Disponibilité au catalogue" data-stock-id="' + esc(p.id) + '" data-stock-key="availability_status"><option value="available" ' + (p.availability_status !== "out_of_stock" ? "selected" : "") + '>Disponible</option><option value="out_of_stock" ' + (p.availability_status === "out_of_stock" ? "selected" : "") + '>Rupture de stock</option></select><div>' + availabilityBadgeHtml(p) + '</div></td>' +
+        '</tr>';
+    }).join("");
+    return '<div class="panel"><div class="admin-panel-head"><h3>Stock, réception et réapprovisionnement</h3><span class="small-note">Les coûts d’achat sont confidentiels et ne sont pas exposés dans ce module. Une quantité positive ne modifie pas le prix de vente.</span></div>' +
+      '<div class="table-wrap"><table class="table"><thead><tr><th>Référence / article</th><th>Fournisseur associé / réf.</th><th>Quantité</th><th>Seuil</th><th>Disponibilité catalogue</th></tr></thead><tbody>' + tableRows + '</tbody></table></div>' +
+      '<p class="small-note">Les changements sont enregistrés à la sortie du champ. Les prix fournisseur et les marges restent accessibles uniquement au propriétaire.</p></div>';
   }
+
 
   function nextProductId() {
     let max = 0; for (const p of products) { const m = /^SP(\d+)$/i.exec(p.id); if (m) max = Math.max(max, Number(m[1])); }
@@ -3111,6 +3144,13 @@
   }
   async function adminPacks() {
     const baseRows = await readRows("products");
+    if (!isGeneralAdmin()) {
+      const rows = baseRows.filter(p => p.catalog_type === "pack" && p.active === true);
+      return '<div class="panel"><div class="admin-panel-head"><h3>Packs publiés</h3><span class="small-note">Consultation uniquement. Les prix, promotions, coûts et publications sont réservés au propriétaire.</span></div>' +
+        (rows.length ? '<div class="table-wrap"><table class="table"><thead><tr><th>Référence</th><th>Pack</th><th>Prix affiché</th><th>Disponibilité</th></tr></thead><tbody>' +
+          rows.map(p => '<tr><td>' + esc(p.public_ref || p.id) + '</td><td><strong>' + esc(p.name) + '</strong><br><span class="small-note">' + esc(p.category || "") + '</span></td><td>' + money(p.price) + '</td><td>' + availabilityBadgeHtml(p) + '</td></tr>').join("") +
+          '</tbody></table></div>' : '<div class="empty">Aucun pack publié.</div>') + '</div>';
+    }
     const [costResult, linkResult, supplierResult] = await Promise.all([
       client.from("product_costs").select("product_id,supplier_price,margin_percent"),
       client.from("product_supplier_links").select("product_id,supplier_id,supplier_ref,carton_price,units_per_carton,source_url,research_note"),
@@ -3376,6 +3416,7 @@
         if (key === "availability_status") {
           if (!["available","out_of_stock"].includes(val)) { toast("Disponibilité invalide.",true); return showAdminView("stock"); }
           if (val === "available" && Number(getP(productId)?.price || 0) <= 0) { toast("Définis un prix de vente avant de marquer l’article disponible.",true); return showAdminView("stock"); }
+          if (!isGeneralAdmin() && !hasAdminPermission("stock.update")) { toast("Cette action n’est pas autorisée.", true); return showAdminView("stock"); }
           const { error } = await client.from("products").update({ availability_status: val, updated_at: new Date().toISOString() }).eq("id", productId);
           if (error) return toast(errorMessage(error),true);
           const product = getP(productId); if (product) product.availability_status = val;
@@ -3383,7 +3424,7 @@
         }
         if (key !== "supplier") { val = Number(val); if (!Number.isFinite(val) || val < 0) { toast("Valeur numérique invalide.",true); return showAdminView("stock"); } }
         const existing = stockRows.find(x=>x.product_id===productId);
-        const row = { product_id: productId, quantity: Number(existing?.quantity||0), min_quantity: Number(existing?.min_quantity||0), unit_cost: Number(existing?.unit_cost||0), supplier: existing?.supplier||"" };
+        const row = { product_id: productId, quantity: Number(existing?.quantity||0), min_quantity: Number(existing?.min_quantity||0), supplier: existing?.supplier||"" };
         row[key] = val;
         const { error } = await client.from("stock").upsert(row,{onConflict:"product_id"});
         if (error) toast(errorMessage(error),true); else { const idx = stockRows.findIndex(x=>x.product_id===productId); if (idx>=0) stockRows[idx]=row; else stockRows.push(row);
