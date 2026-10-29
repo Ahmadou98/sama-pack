@@ -1,0 +1,1 @@
+REVOKE ALL ON FUNCTION public.sama_get_stock_costs() FROM PUBLIC, anon, authenticated;
