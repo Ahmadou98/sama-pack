@@ -118,7 +118,7 @@ async function unsubscribeByToken(token: string, origin: string | null) {
   const { error } = await supabase.from("profiles")
     .update({ marketing_opt_in: false, updated_at: new Date().toISOString() })
     .eq("marketing_unsubscribe_token", token)
-    .eq("role", "customer")
+    .in("role", ["customer", "admin"])
     .eq("marketing_opt_in", true);
   if (error) {
     console.error("Unsubscribe update failed", error.message);
@@ -146,9 +146,9 @@ async function getMarketingSubscribers() {
   for (let offset = 0; ; offset += pageSize) {
     const { data, error } = await supabase.from("profiles")
       .select("id,full_name,email,marketing_unsubscribe_token")
-      .eq("role", "customer").eq("marketing_opt_in", true)
+      .in("role", ["customer", "admin"]).eq("marketing_opt_in", true)
       .order("email", { ascending: true }).range(offset, offset + pageSize - 1);
-    if (error) throw new Error("Impossible de charger les clients abonnés aux e-mails.");
+    if (error) throw new Error("Impossible de charger les profils abonnés aux e-mails.");
     for (const row of data ?? []) {
       const email = String(row.email ?? "").trim().toLowerCase();
       if (!emailValid(email) || !row.marketing_unsubscribe_token) continue;
@@ -363,9 +363,9 @@ async function sendCampaign(action: "promotion" | "monthly", payload: Record<str
   if (subscribers.length === 0 && (!previousRecipients || previousRecipients.length === 0)) {
     await supabase.from("customer_email_campaigns").update({
       status: "skipped", recipients_total: 0, recipients_sent: 0, recipients_failed: 0,
-      error_message: "Aucun client n’a accepté les e-mails promotionnels.", completed_at: new Date().toISOString(),
+      error_message: "Aucun profil n’a accepté les e-mails promotionnels.", completed_at: new Date().toISOString(),
     }).eq("id", campaign.id);
-    return { ok: true, campaign_id: campaign.id, status: "skipped", recipients_sent: 0, recipients_failed: 0, message: "Aucun client abonné aux e-mails commerciaux." };
+    return { ok: true, campaign_id: campaign.id, status: "skipped", recipients_sent: 0, recipients_failed: 0, message: "Aucun profil abonné aux e-mails commerciaux." };
   }
 
   if (subscribers.length) {
@@ -485,7 +485,7 @@ async function sendCampaign(action: "promotion" | "monthly", payload: Record<str
     recipients_sent: sent,
     recipients_failed: failed,
     message: finalStatus === "sent"
-      ? "Campagne envoyée à " + sent + " client(s)."
+      ? "Campagne envoyée à " + sent + " destinataire(s)."
       : finalStatus === "skipped"
       ? "Aucun envoi nécessaire."
       : "Campagne terminée partiellement : " + sent + " envoyé(s), " + failed + " en échec ou en attente.",
