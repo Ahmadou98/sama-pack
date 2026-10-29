@@ -1427,7 +1427,9 @@
     const field = (label, name, value, placeholder, required = false, full = false) =>
       '<label class="' + (full ? 'full' : '') + '">' + label + '<input class="input" name="' + name + '" value="' + esc(value || '') + '" maxlength="300" placeholder="' + placeholder + '"' + (required ? ' required' : '') + '></label>';
     return '<section class="panel account-profile-panel">' +
-      '<div class="profile-card-header"><div class="profile-avatar" aria-label="Initiales du profil">' + esc(initials) + '</div><div class="profile-card-heading"><div class="eyebrow">ESPACE CLIENT</div><h3>' + esc(fullName) + '</h3><p>' + esc(email) + '</p><span class="profile-completion ' + (isComplete ? 'is-complete' : 'is-incomplete') + '">' + (isComplete ? 'Profil renseigné' : 'Profil à compléter') + '</span></div></div>' +
+      '<div class="profile-card-header"><button type="button" class="profile-avatar" id="toggleProfileDetails" aria-label="Afficher mes informations" aria-expanded="false" aria-controls="profileDetails">' + esc(initials) + '</button><div class="profile-card-heading"><div class="eyebrow">ESPACE CLIENT</div><h3>Mon profil</h3><p class="small-note">Appuie sur le rond pour consulter tes informations personnelles.</p></div></div>' +
+      '<div id="profileDetails" class="profile-details hidden">' +
+      '<div class="profile-details-heading"><div><h3>' + esc(fullName) + '</h3><p class="small-note">' + esc(email) + '</p><span class="profile-completion ' + (isComplete ? 'is-complete' : 'is-incomplete') + '">' + (isComplete ? 'Profil renseigné' : 'Profil à compléter') + '</span></div></div>' +
       '<div class="profile-summary-heading"><div><h4>Mes informations</h4><p class="small-note">Tes coordonnées sont conservées pour accélérer tes prochaines commandes.</p></div><button class="btn primary small" id="editProfileBtn" type="button">Modifier le profil</button></div>' +
       '<div class="profile-summary-grid" id="profileSummary">' +
       summaryItem('Nom complet', fullName) +
@@ -1451,7 +1453,8 @@
       field('Adresse précise', 'delivery_address', p.delivery_address, 'Rue, numéro, bâtiment…', true, true) +
       '<label class="full">Repère pour le livreur (facultatif)<input class="input" name="delivery_landmark" value="' + esc(p.delivery_landmark || '') + '" maxlength="200" placeholder="Ex. près de la pharmacie…"></label>' +
       '<label class="full">Instructions de livraison (facultatif)<textarea class="input" name="delivery_instructions" maxlength="500" rows="2" placeholder="Précisions utiles au livreur">' + esc(p.delivery_instructions || '') + '</textarea></label>' +
-      '<div class="profile-edit-actions full"><button class="btn primary" type="submit">Enregistrer les modifications</button><button class="btn ghost" id="cancelProfileEditBtn" type="button">Annuler</button></div></form></section>';
+      '<div class="profile-edit-actions full"><button class="btn primary" type="submit">Enregistrer les modifications</button><button class="btn ghost" id="cancelProfileEditBtn" type="button">Annuler</button></div></form>' +
+      '</div></section>';
   }
 
   async function saveCustomerProfile(form) {
@@ -1523,9 +1526,9 @@
     const subscriptionsHtml = renderSubscriptionsHtml(cachedSubscriptions);
     const accountNotificationsHtml = userNotifications.length ? userNotifications.map(n => '<article class="notification-item ' + (n.read_at ? 'read' : 'unread') + '"><div class="notification-title">' + esc(n.title) + '</div><div class="notification-message">' + esc(n.message) + '</div><div class="notification-meta">' + esc(fmtDate(n.created_at)) + (n.read_at ? ' · Lue' : ' · <button class="link-btn dark-link" onclick="markNotificationRead(\'' + esc(n.id) + '\')">Marquer comme lue</button>') + '</div></article>').join("") : '<div class="empty compact-empty">Aucune notification pour le moment.</div>';
     showModal(
-      '<div class="modal-head account-modal-header"><div><div class="eyebrow">ESPACE CLIENT</div><h2>Mon compte</h2><p class="small-note">Gère tes informations et tes commandes depuis un seul espace.</p></div><button class="close" onclick="closeModal()" aria-label="Fermer">✕</button></div>' +
+      '<div class="modal-head account-modal-header"><div><div class="eyebrow">ESPACE CLIENT</div><h2>Mon compte</h2><p class="small-note">Retrouve tes commandes et paramètres ici.</p></div><div class="account-header-actions"><button type="button" class="account-menu-toggle" id="accountMenuToggle" aria-expanded="false" aria-controls="accountTabsMenu" aria-label="Ouvrir le menu du compte"><span></span><span></span><span></span></button><button class="close" onclick="closeModal()" aria-label="Fermer">✕</button></div></div>' +
       '<div class="account-workspace">' +
-        '<nav class="account-tabs" role="tablist" aria-label="Rubriques du compte">' +
+        '<nav id="accountTabsMenu" class="account-tabs hidden" role="tablist" aria-label="Rubriques du compte">' +
           '<button type="button" class="account-tab is-active" role="tab" aria-selected="true" data-account-tab="profile"><span class="account-tab-icon">◉</span><span>Mon profil</span></button>' +
           '<button type="button" class="account-tab" role="tab" aria-selected="false" data-account-tab="orders"><span class="account-tab-icon">▤</span><span>Commandes</span><span class="account-tab-count">' + orders.length + '</span></button>' +
           '<button type="button" class="account-tab" role="tab" aria-selected="false" data-account-tab="replenishments"><span class="account-tab-icon">↻</span><span>Rappels</span></button>' +
@@ -1559,6 +1562,16 @@
     const accountModalCard = document.querySelector(".modal-card");
     if (accountModalCard) accountModalCard.classList.add("account-modal-card");
     const accountTabButtons = [...document.querySelectorAll("[data-account-tab]")];
+    const accountMenuToggle = $("accountMenuToggle");
+    const accountTabsMenu = $("accountTabsMenu");
+    const setAccountMenuOpen = (open) => {
+      if (!accountTabsMenu || !accountMenuToggle) return;
+      accountTabsMenu.classList.toggle("hidden", !open);
+      accountTabsMenu.classList.toggle("account-menu-open", open);
+      accountMenuToggle.setAttribute("aria-expanded", open ? "true" : "false");
+      accountMenuToggle.setAttribute("aria-label", open ? "Fermer le menu du compte" : "Ouvrir le menu du compte");
+    };
+    if (accountMenuToggle) accountMenuToggle.onclick = () => setAccountMenuOpen(accountTabsMenu?.classList.contains("hidden"));
     const activateAccountTab = (tabName) => {
       accountTabButtons.forEach(button => {
         const active = button.dataset.accountTab === tabName;
@@ -1566,14 +1579,27 @@
         button.setAttribute("aria-selected", active ? "true" : "false");
       });
       document.querySelectorAll(".account-tab-panel").forEach(panel => panel.classList.toggle("hidden", panel.id !== "accountTab-" + tabName));
+      setAccountMenuOpen(false);
     };
     accountTabButtons.forEach(button => button.addEventListener("click", () => activateAccountTab(button.dataset.accountTab)));
+
+    const profileDetails = $("profileDetails");
+    const profileDetailsToggle = $("toggleProfileDetails");
+    const setProfileDetailsVisible = (visible) => {
+      if (!profileDetails || !profileDetailsToggle) return;
+      profileDetails.classList.toggle("hidden", !visible);
+      profileDetailsToggle.setAttribute("aria-expanded", visible ? "true" : "false");
+      profileDetailsToggle.setAttribute("aria-label", visible ? "Masquer mes informations" : "Afficher mes informations");
+      profileDetailsToggle.classList.toggle("is-expanded", visible);
+    };
+    if (profileDetailsToggle) profileDetailsToggle.onclick = () => setProfileDetailsVisible(profileDetails.classList.contains("hidden"));
 
     const profileEditBtn = $("editProfileBtn");
     const profileSummary = $("profileSummary");
     const profileForm = $("profileForm");
     const cancelProfileEditBtn = $("cancelProfileEditBtn");
     const toggleProfileEdit = (editing) => {
+      if (editing) setProfileDetailsVisible(true);
       if (profileSummary) profileSummary.classList.toggle("hidden", editing);
       if (profileEditBtn) profileEditBtn.classList.toggle("hidden", editing);
       if (profileForm) profileForm.classList.toggle("hidden", !editing);
