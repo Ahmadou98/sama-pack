@@ -2859,6 +2859,10 @@
     return `<div class="panel"><div class="admin-panel-head"><h3>Commandes (${orders.length})</h3><button class="btn ghost small" onclick="showAdminView('orders')">Actualiser</button></div><p class="small-note">Les commandes en attente de paiement ne doivent pas être préparées. Les frais de livraison doivent être encaissés et confirmés avant le départ du livreur.</p>${orders.length ? `<div class="table-wrap"><table class="table"><thead><tr><th>Référence</th><th>Date</th><th>Client</th><th>Total</th><th>Paiement reçu</th><th>Statut</th>${isGeneralAdmin() ? "<th>Attribuée à</th><th>Coût livraison réel (FCFA)</th>" : ""}<th>Détails</th></tr></thead><tbody>${orders.map(o=>{
       const pendingPayment = ["awaiting_payment","awaiting_delivery_payment"].includes(o.status);
       const options = pendingPayment ? [o.status,"cancelled"] : ["new","confirmed","processing","prepared","out_for_delivery","delivered","cancelled"];
+      const quoteChar = String.fromCharCode(39);
+      const statusCell = hasAdminPermission("orders.update_status")
+        ? '<select class="input" onchange="setOrderStatus(' + quoteChar + esc(o.id) + quoteChar + ',this.value)">' + options.map(s => '<option ' + (o.status === s ? 'selected' : '') + ' value="' + s + '">' + esc(statusLabel(s)) + '</option>').join("") + '</select>'
+        : '<span class="status">' + esc(statusLabel(o.status)) + '</span>';
       const selectedAdmin = o.assigned_admin_id || o.sales_referrer_user_id || "";
       const assignmentCell = isGeneralAdmin()
         ? "<td><select class=\"input\" aria-label=\"Attribuer la commande\" onchange=\"setOrderAssigned('" + esc(o.id) + "',this.value)\"><option value=\"\">Non attribuée</option>" +
@@ -2868,7 +2872,7 @@
       const deliveryCostCell = isGeneralAdmin()
         ? "<td><input class=\"input profit-delivery-input\" type=\"number\" min=\"0\" step=\"1\" aria-label=\"Coût réel livraison\" value=\"" + Number(o.delivery_cost_actual || 0) + "\" onchange=\"setOrderDeliveryCost('" + esc(o.id) + "',this.value)\"></td>"
         : "";
-      return `<tr><td>${esc(o.id)}</td><td>${esc(fmtDate(o.created_at))}</td><td>${esc(o.customer_name)}<br><span class="small-note">${esc(o.customer_phone)}</span></td><td>${money(o.total)}</td><td>${money(o.amount_paid || 0)}<br><span class="small-note">${esc(paymentStatusLabel(o.payment_status))}</span></td><td><select class="input" onchange="setOrderStatus('${esc(o.id)}',this.value)">${options.map(s=>`<option ${o.status===s?"selected":""} value="${s}">${esc(statusLabel(s))}</option>`).join("")}</select></td>${assignmentCell}${deliveryCostCell}<td><div class="account-order-actions"><button class="btn small ghost" onclick="showOrder('${esc(o.id)}')">Voir</button><button class="btn small secondary" onclick="openOrderWhatsApp('${esc(o.id)}')">WhatsApp</button></div></td></tr>`;
+      return `<tr><td>${esc(o.id)}</td><td>${esc(fmtDate(o.created_at))}</td><td>${esc(o.customer_name)}<br><span class="small-note">${esc(o.customer_phone)}</span></td><td>${money(o.total)}</td><td>${money(o.amount_paid || 0)}<br><span class="small-note">${esc(paymentStatusLabel(o.payment_status))}</span></td><td>${statusCell}</td>${assignmentCell}${deliveryCostCell}<td><div class="account-order-actions"><button class="btn small ghost" onclick="showOrder('${esc(o.id)}')">Voir</button><button class="btn small secondary" onclick="openOrderWhatsApp('${esc(o.id)}')">WhatsApp</button></div></td></tr>`;
     }).join("")}</tbody></table></div>` : '<div class="empty">Aucune commande pour le moment.</div>'}</div>`;
   }
 
@@ -3195,9 +3199,9 @@
       return '<tr data-stock-search-row data-search="' + esc(searchText) + '">' +
         '<td><strong>' + esc(p.public_ref || p.id) + '</strong><br>' + esc(p.name) + '<br><span class="small-note">' + esc(p.category || p.cat || "") + '</span></td>' +
         '<td>' + supplierLabel + '</td>' +
-        '<td><input class="input stock-field" type="number" min="0" step="1" aria-label="Quantité en stock" data-stock-id="' + esc(p.id) + '" data-stock-key="quantity" value="' + Number(s.quantity||0) + '"></td>' +
-        '<td><input class="input stock-field" type="number" min="0" step="1" aria-label="Seuil d’alerte" data-stock-id="' + esc(p.id) + '" data-stock-key="min_quantity" value="' + Number(s.min_quantity||0) + '"></td>' +
-        '<td><select class="input stock-field" aria-label="Disponibilité au catalogue" data-stock-id="' + esc(p.id) + '" data-stock-key="availability_status"><option value="available" ' + (p.availability_status !== "out_of_stock" ? "selected" : "") + '>Disponible</option><option value="out_of_stock" ' + (p.availability_status === "out_of_stock" ? "selected" : "") + '>Rupture de stock</option></select><div>' + availabilityBadgeHtml(p) + '</div></td>' +
+        '<td><input class="input stock-field" type="number" min="0" step="1" aria-label="Quantité en stock" data-stock-id="' + esc(p.id) + '" data-stock-key="quantity" ' + (!isGeneralAdmin() && !hasAdminPermission("stock.update") ? "disabled" : "") + ' value="' + Number(s.quantity||0) + '"></td>' +
+        '<td><input class="input stock-field" type="number" min="0" step="1" aria-label="Seuil d’alerte" data-stock-id="' + esc(p.id) + '" data-stock-key="min_quantity" ' + (!isGeneralAdmin() && !hasAdminPermission("stock.update") ? "disabled" : "") + ' value="' + Number(s.min_quantity||0) + '"></td>' +
+        '<td><select class="input stock-field" aria-label="Disponibilité au catalogue" data-stock-id="' + esc(p.id) + '" data-stock-key="availability_status" ' + (!isGeneralAdmin() && !hasAdminPermission("stock.update") ? "disabled" : "") + '><option value="available" ' + (p.availability_status !== "out_of_stock" ? "selected" : "") + '>Disponible</option><option value="out_of_stock" ' + (p.availability_status === "out_of_stock" ? "selected" : "") + '>Rupture de stock</option></select><div>' + availabilityBadgeHtml(p) + '</div></td>' +
         '</tr>';
     }).join("");
     return '<div class="panel"><div class="admin-panel-head"><h3>Stock, réception et réapprovisionnement</h3><span class="small-note">Les coûts d’achat sont confidentiels et ne sont pas exposés dans ce module. Une quantité positive ne modifie pas le prix de vente.</span></div>' +
@@ -3467,12 +3471,16 @@
     }
     const tableRows = cachedQuotes.map(q => {
       const selectedAdmin = q.assigned_admin_id || q.sales_referrer_user_id || "";
+      const quoteChar = String.fromCharCode(39);
+      const statusCell = hasAdminPermission("quotes.update_status")
+        ? '<select class="input" onchange="setQuoteStatus(' + quoteChar + esc(q.id) + quoteChar + ',this.value)">' + ["new","processing","won","lost"].map(s => '<option ' + (q.status === s ? 'selected' : '') + ' value="' + s + '">' + esc(statusLabel(s)) + '</option>').join("") + '</select>'
+        : '<span class="status">' + esc(statusLabel(q.status)) + '</span>';
       const assignmentCell = isGeneralAdmin()
         ? "<td><select class=\"input\" aria-label=\"Attribuer le devis\" onchange=\"setQuoteAssigned('" + esc(q.id) + "',this.value)\"><option value=\"\">Non attribué</option>" +
           assignableAdmins.map(a => '<option value="' + esc(a.id) + '"' + (selectedAdmin === a.id ? " selected" : "") + '>' + esc(a.full_name || a.email || "Administrateur") + '</option>').join("") +
           '</select></td>'
         : "";
-      return `<tr><td>${esc(q.id)}</td><td>${esc(fmtDate(q.created_at))}</td><td>${esc(q.company)}</td><td>${esc(q.need)}<br><span class="small-note">${esc(q.message||"")}</span></td><td>${esc(q.phone)}<br><span class="small-note">${esc(q.email||"")}</span></td>${assignmentCell}<td><select class="input" onchange="setQuoteStatus('${esc(q.id)}',this.value)">${["new","processing","won","lost"].map(s=>`<option ${q.status===s?"selected":""} value="${s}">${esc(statusLabel(s))}</option>`).join("")}</select></td></tr>`;
+      return `<tr><td>${esc(q.id)}</td><td>${esc(fmtDate(q.created_at))}</td><td>${esc(q.company)}</td><td>${esc(q.need)}<br><span class="small-note">${esc(q.message||"")}</span></td><td>${esc(q.phone)}<br><span class="small-note">${esc(q.email||"")}</span></td>${assignmentCell}<td>${statusCell}</td></tr>`;
     }).join("");
     return `<div class="panel"><h3>Demandes de devis (${rows.length})</h3>${rows.length ? `<div class="table-wrap"><table class="table"><thead><tr><th>Référence</th><th>Date</th><th>Structure</th><th>Besoin</th><th>Contact</th>${isGeneralAdmin() ? "<th>Attribué à</th>" : ""}<th>Statut</th></tr></thead><tbody>${tableRows}</tbody></table></div>` : '<div class="empty">Aucune demande de devis.</div>'}</div>`;
   }
