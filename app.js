@@ -3810,18 +3810,20 @@
     if ($("budgetPackBuilderBtn")) $("budgetPackBuilderBtn").onclick = openBudgetPackBuilder;
     document.querySelectorAll("[data-mobile-action=cart]").forEach(b => b.addEventListener("click", renderCartModal));
     document.querySelectorAll("[data-mobile-action=account]").forEach(b => b.addEventListener("click", openAccountModal));
-    const mobileNav = $("mobileBottomNav");
+    const mobileNav = $("mobileMenuShell");
     const mobileMenuToggle = $("mobileMenuToggle");
     const closeMobileNav = () => {
       if (!mobileNav || !mobileMenuToggle) return;
       mobileNav.classList.remove("is-open");
       mobileMenuToggle.setAttribute("aria-expanded", "false");
+      mobileMenuToggle.setAttribute("aria-label", "Ouvrir le menu");
     };
     if (mobileNav && mobileMenuToggle) {
       mobileMenuToggle.addEventListener("click", () => {
         const isOpen = !mobileNav.classList.contains("is-open");
         mobileNav.classList.toggle("is-open", isOpen);
         mobileMenuToggle.setAttribute("aria-expanded", String(isOpen));
+        mobileMenuToggle.setAttribute("aria-label", isOpen ? "Fermer le menu" : "Ouvrir le menu");
       });
       mobileNav.querySelectorAll(".mobile-nav-menu .mobile-nav-item").forEach(item => {
         item.addEventListener("click", closeMobileNav);
@@ -3831,6 +3833,9 @@
       });
       document.addEventListener("click", event => {
         if (!mobileNav.contains(event.target)) closeMobileNav();
+      });
+      window.addEventListener("resize", () => {
+        if (!window.matchMedia("(max-width: 700px)").matches) closeMobileNav();
       });
     }
     if ($("heroWhatsApp")) $("heroWhatsApp").onclick = () => document.getElementById("catalogue").scrollIntoView({behavior:"smooth"});
