@@ -2299,3 +2299,14 @@ tr[hidden]{display:none!important}
   .product-card img, .pack-card img, .product-image, .pack-image { max-height: 150px; }
   .account-tab { gap: 4px; padding: 7px 6px; font-size: 9px; }
 }
+
+
+/* Accueil : recentrer l'image de fond sur ordinateur et mobile */
+.hero.has-custom-bg {
+  background-position: center center;
+}
+@media (max-width: 600px) {
+  .hero.has-custom-bg {
+    background-position: center center;
+  }
+}
