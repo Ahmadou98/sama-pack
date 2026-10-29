@@ -1160,6 +1160,30 @@
     if (currentUser) { showAccountHome(); return; }
     renderAuthForm("login");
   }
+  function passwordVisibilityToggleHtml(inputId) {
+    return '<button type="button" class="password-visibility-toggle" data-password-toggle="' + inputId + '" aria-controls="' + inputId + '" aria-label="Afficher le mot de passe" aria-pressed="false">' +
+      '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"></path><circle cx="12" cy="12" r="3"></circle></svg>' +
+      '</button>';
+  }
+
+  function bindPasswordVisibilityToggles(scope = document) {
+    const eye = '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"></path><circle cx="12" cy="12" r="3"></circle></svg>';
+    const eyeOff = '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M3 3l18 18"></path><path d="M10.6 5.2A10.8 10.8 0 0 1 12 5c6.5 0 10 7 10 7a16 16 0 0 1-3.1 3.8M6.2 6.2C3.5 8 2 12 2 12s3.5 7 10 7c1.4 0 2.6-.3 3.7-.8"></path><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"></path></svg>';
+    scope.querySelectorAll("[data-password-toggle]").forEach(button => {
+      if (button.dataset.passwordToggleBound === "true") return;
+      button.dataset.passwordToggleBound = "true";
+      button.addEventListener("click", () => {
+        const input = document.getElementById(button.dataset.passwordToggle);
+        if (!input) return;
+        const visible = input.type === "password";
+        input.type = visible ? "text" : "password";
+        button.setAttribute("aria-pressed", visible ? "true" : "false");
+        button.setAttribute("aria-label", visible ? "Masquer le mot de passe" : "Afficher le mot de passe");
+        button.innerHTML = visible ? eyeOff : eye;
+      });
+    });
+  }
+
   function renderAuthForm(mode = "login", message = "") {
     const signup = mode === "signup";
     showModal(`<div class="modal-head"><div><div class="eyebrow">ESPACE CLIENT</div><h2>${signup ? "Créer un compte" : "Se connecter"}</h2></div><button class="close" onclick="closeModal()">✕</button></div><p class="muted">Crée ton compte pour commander directement sur Sama-Pack, retrouver tes commandes et recevoir des notifications.</p>${message ? `<div class="inline-message">${esc(message)}</div>` : ""}<form id="authForm" class="checkout-grid">
@@ -1175,15 +1199,22 @@
       <label class="full ${signup ? "" : "hidden"}">Adresse précise<input class="input" name="delivery_address" maxlength="300" placeholder="Rue, numéro, bâtiment…" ${signup ? "required" : "disabled"}></label>
       <label class="full ${signup ? "" : "hidden"}">Repère pour le livreur (facultatif)<input class="input" name="delivery_landmark" maxlength="200" placeholder="Ex. près de la pharmacie…"></label>
       <label class="full ${signup ? "" : "hidden"}">Instructions de livraison (facultatif)<textarea class="input" name="delivery_instructions" maxlength="500" rows="2" placeholder="Précisions utiles au livreur"></textarea></label>
-      <label class="full">Mot de passe<input class="input" name="password" type="password" required minlength="8" placeholder="Mot de passe (8 caractères minimum)" autocomplete="${signup ? "new-password" : "current-password"}"></label>
+      <label class="full password-field">Mot de passe<span class="password-input-wrap"><input class="input" id="authPassword" name="password" type="password" required minlength="8" placeholder="Mot de passe (8 caractères minimum)" autocomplete="${signup ? "new-password" : "current-password"}">${passwordVisibilityToggleHtml("authPassword")}</span></label>
+      <label class="full password-field ${signup ? "" : "hidden"}">Confirmer le mot de passe<span class="password-input-wrap"><input class="input" id="authPasswordConfirmation" name="password_confirmation" type="password" minlength="8" placeholder="Confirme ton mot de passe" autocomplete="new-password" ${signup ? "required" : "disabled"}>${passwordVisibilityToggleHtml("authPasswordConfirmation")}</span></label>
       <div class="full auth-actions"><button class="btn primary full" type="submit">${signup ? "Créer mon compte" : "Se connecter"}</button><button class="link-btn dark-link" type="button" onclick="renderAuthForm('${signup ? "login" : "signup"}')">${signup ? "J’ai déjà un compte" : "Créer un compte client"}</button>${signup ? "" : '<button class="link-btn dark-link" type="button" onclick="resetPassword()">Mot de passe oublié ?</button>'}</div>
     </form><p class="small-note">Tes commandes et coordonnées ne seront accessibles qu’à toi et aux administrateurs autorisés.</p>`);
     const form = $("authForm");
+    bindPasswordVisibilityToggles(form);
     const testSignupButton = $("testSignupWhatsappBtn");
     if (testSignupButton) testSignupButton.onclick = () => testWhatsAppNumber("signupPhone");
     form.onsubmit = async (e) => {
       e.preventDefault(); if (authBusy) return; authBusy = true; setBusy(form, true, signup ? "Création du compte…" : "Connexion…");
       const fd = new FormData(form); const email = String(fd.get("email") || "").trim().toLowerCase(); const password = String(fd.get("password") || "");
+      const passwordConfirmation = String(fd.get("password_confirmation") || "");
+      if (signup && password !== passwordConfirmation) {
+        setBusy(form, false); authBusy = false;
+        return toast("Les deux mots de passe ne correspondent pas.", true);
+      }
       const signupProfile = {
         full_name: String(fd.get("full_name") || "").trim(),
         phone: normalizeWhatsAppNumber(fd.get("phone")),
@@ -1553,7 +1584,10 @@
         '</section>' +
         '<section class="account-tab-panel hidden" id="accountTab-security" role="tabpanel">' +
           '<div class="account-section-heading"><div><div class="eyebrow">PROTECTION</div><h3>Sécurité du compte</h3><p class="small-note">Gère ton mot de passe et ferme ta session lorsque tu as terminé.</p></div></div>' +
-          '<div class="panel account-password"><h3>' + (currentUser?.last_sign_in_at ? "Changer mon mot de passe" : "Définir un mot de passe") + '</h3><form id="changePasswordForm" class="checkout-grid"><input class="input full" name="password" type="password" minlength="8" required placeholder="Nouveau mot de passe (8 caractères minimum)"><button class="btn primary full" type="submit">Enregistrer le mot de passe</button></form></div>' +
+          '<div class="panel account-password"><h3>' + (currentUser?.last_sign_in_at ? "Changer mon mot de passe" : "Définir un mot de passe") + '</h3><form id="changePasswordForm" class="checkout-grid">' +
+            '<label class="full password-field">Nouveau mot de passe<span class="password-input-wrap"><input class="input" id="newAccountPassword" name="password" type="password" minlength="8" required placeholder="Nouveau mot de passe (8 caractères minimum)" autocomplete="new-password">' + passwordVisibilityToggleHtml("newAccountPassword") + '</span></label>' +
+            '<label class="full password-field">Confirmer le mot de passe<span class="password-input-wrap"><input class="input" id="confirmAccountPassword" name="password_confirmation" type="password" minlength="8" required placeholder="Confirme le nouveau mot de passe" autocomplete="new-password">' + passwordVisibilityToggleHtml("confirmAccountPassword") + '</span></label>' +
+            '<button class="btn primary full" type="submit">Enregistrer le mot de passe</button></form></div>' +
           (!initialized ? '<div class="panel bootstrap-panel"><h3>Configurer le premier administrateur</h3><p>Cette option n’apparaît que tant qu’aucun administrateur n’est configuré. Utilise le code initial transmis par le propriétaire.</p><form id="bootstrapAdminForm" class="checkout-grid"><input class="input full" name="bootstrap_token" autocomplete="off" required placeholder="Code initial du propriétaire"><button class="btn primary full" type="submit">Devenir le premier administrateur</button></form></div>' : '') +
           '<button class="btn ghost full account-signout" onclick="signOut()">Se déconnecter</button>' +
         '</section>' +
@@ -1617,7 +1651,24 @@
     const profileWhatsappTest = $("testProfileWhatsappBtn");
     if (profileWhatsappTest) profileWhatsappTest.onclick = () => testWhatsAppNumber("profilePhone");
     if (profileForm) profileForm.onsubmit = async e => { e.preventDefault(); await saveCustomerProfile(profileForm); };
-    const pw = $("changePasswordForm"); pw.onsubmit = async e => { e.preventDefault(); const form = e.currentTarget; const password = String(new FormData(form).get("password") || ""); if (password.length < 8) return toast("Choisis au moins 8 caractères.", true); setBusy(form, true, "Enregistrement…"); const { error } = await client.auth.updateUser({ password }); if (error) toast(errorMessage(error), true); else { toast("Mot de passe mis à jour."); form.reset(); } setBusy(form, false); };
+    const pw = $("changePasswordForm");
+    if (pw) {
+      bindPasswordVisibilityToggles(pw);
+      pw.onsubmit = async e => {
+        e.preventDefault();
+        const form = e.currentTarget;
+        const fd = new FormData(form);
+        const password = String(fd.get("password") || "");
+        const confirmation = String(fd.get("password_confirmation") || "");
+        if (password.length < 8) return toast("Choisis au moins 8 caractères.", true);
+        if (password !== confirmation) return toast("Les deux mots de passe ne correspondent pas.", true);
+        setBusy(form, true, "Enregistrement…");
+        const { error } = await client.auth.updateUser({ password });
+        if (error) toast(errorMessage(error), true);
+        else { toast("Mot de passe mis à jour."); form.reset(); }
+        setBusy(form, false);
+      };
+    }
     const bootstrap = $("bootstrapAdminForm"); if (bootstrap) bootstrap.onsubmit = async e => { e.preventDefault(); const form = e.currentTarget; setBusy(form, true, "Configuration…"); const token = String(new FormData(form).get("bootstrap_token") || "").trim(); const { data, error } = await client.rpc("sama_bootstrap_first_admin", { p_token: token }); setBusy(form, false); if (error) return toast(errorMessage(error), true); await syncAuth(currentUser); closeModal(); toast(data?.message || "Compte administrateur configuré."); };
   }
   async function signOut() { await client.auth.signOut(); await syncAuth(null); closeModal(); toast("Tu es déconnecté."); }
