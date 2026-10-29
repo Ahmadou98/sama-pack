@@ -40,7 +40,7 @@
   let currentSalesReferralCode = "";
   let cachedExpenses = [];
   let cachedSuppliers = [];
-  let appSettings = { company: "SAMA-PACK", whatsapp: "", deliveryFee: 1500, currency: "FCFA", homepageBackgroundUrl: "" };
+  let appSettings = { company: "SAMA-PACK", whatsapp: "", contactEmail: "", deliveryFee: 1500, currency: "FCFA", homepageBackgroundUrl: "" };
   let cart = loadCart();
   let budgetBuilderState = { budget: 5000, category: "all", items: [] };
 
@@ -809,12 +809,15 @@
       catalogLoadFailed = true;
       console.warn("Catalogue distant indisponible; les prix de secours ne sont pas utilisés.", error);
     }
-    const { data: setting, error: settingError } = await client.from("settings")
-      .select("id,company,whatsapp,delivery_fee,currency,homepage_background_url").eq("id", true).maybeSingle();
+    const [{ data: setting, error: settingError }, { data: notificationSettings, error: notificationError }] = await Promise.all([
+      client.from("settings").select("id,company,whatsapp,delivery_fee,currency,homepage_background_url").eq("id", true).maybeSingle(),
+      client.from("notification_settings").select("id,order_notification_email").eq("id", true).maybeSingle()
+    ]);
     if (!settingError && setting) {
-      appSettings = { company: setting.company || "SAMA-PACK", whatsapp: String(setting.whatsapp || ""), deliveryFee: Number(setting.delivery_fee || 0), currency: setting.currency || "FCFA", homepageBackgroundUrl: String(setting.homepage_background_url || "") };
+      appSettings = { company: setting.company || "SAMA-PACK", whatsapp: String(setting.whatsapp || ""), contactEmail: String(notificationSettings?.order_notification_email || ""), deliveryFee: Number(setting.delivery_fee || 0), currency: setting.currency || "FCFA", homepageBackgroundUrl: String(setting.homepage_background_url || "") };
       applyHomepageBackground();
     } else if (settingError) console.warn("Paramètres distants indisponibles.", settingError);
+    if (notificationError) console.warn("Adresse e-mail de contact indisponible.", notificationError);
     await loadProductReviewStats();
     const count = $("packCount"); if (count) count.textContent = String(products.filter(p => p.active && p.catalog_type === "pack").length);
     updateContact(); updateCategoryFilter(); renderTop(); renderProducts(); renderPromoCarousel(); updateCartCount();
@@ -835,17 +838,27 @@
   }
   function updateContact() {
     const n = waNumber();
+    const email = String(appSettings.contactEmail || "").trim();
     const card = document.querySelector(".contact-card");
     const intro = $("contactText");
-    if (n) {
-      if (card && !$("contactPhone")) card.innerHTML = '<div class="contact-icon">✉</div><div><strong>WhatsApp</strong><p id="contactPhone"></p></div><button class="btn secondary" id="contactWhatsApp">Ouvrir WhatsApp</button>';
-      const phone = $("contactPhone"); if (phone) phone.textContent = "+" + n;
-      const button = $("contactWhatsApp"); if (button) button.onclick = () => openWA("Bonjour SAMA-PACK, je souhaite avoir plus d’informations sur vos produits.");
-      if (intro) intro.textContent = "Notre équipe répond à vos questions sur les produits et les commandes.";
-      return;
+    if (card) {
+      const rows = [];
+      if (n) rows.push('<div class="contact-detail"><strong>WhatsApp</strong><p id="contactPhone"></p></div>');
+      if (email) rows.push('<div class="contact-detail"><strong>E-mail</strong><p><a id="contactEmailLink"></a></p></div>');
+      if (n) rows.push('<button class="btn secondary" id="contactWhatsApp">Ouvrir WhatsApp</button>');
+      if (!rows.length) {
+        card.innerHTML = '<div class="contact-icon">ⓘ</div><div><strong>Besoin d’aide ?</strong><p>Retrouvez les étapes de commande et les réponses aux questions fréquentes.</p></div><a class="btn secondary" href="comment-ca-marche.html">Voir le guide client</a>';
+      } else {
+        card.innerHTML = '<div class="contact-icon">💬</div><div class="contact-details-list">' + rows.join("") + '</div>';
+        const phone = $("contactPhone"); if (phone) phone.textContent = "+" + n;
+        const emailLink = $("contactEmailLink");
+        if (emailLink) { emailLink.href = "mailto:" + email; emailLink.textContent = email; }
+        const button = $("contactWhatsApp"); if (button) button.onclick = () => openWA("Bonjour " + String(appSettings.company || "SAMA-PACK") + ", je souhaite avoir plus d’informations sur vos produits.");
+      }
     }
-    if (intro) intro.textContent = "Consultez notre guide client ou envoyez une demande de devis à notre équipe.";
-    if (card) card.innerHTML = '<div class="contact-icon">ⓘ</div><div><strong>Besoin d’aide ?</strong><p>Retrouvez les étapes de commande et les réponses aux questions fréquentes.</p></div><a class="btn secondary" href="comment-ca-marche.html">Voir le guide client</a>';
+    if (intro) intro.textContent = (n || email)
+      ? "Contacte " + String(appSettings.company || "SAMA-PACK") + " avec les coordonnées officielles configurées dans la boutique."
+      : "Consultez notre guide client ou envoyez une demande de devis à notre équipe.";
   }
 
   function applyHomepageBackground() {
@@ -3649,7 +3662,7 @@
       <label class="full">Ou URL HTTPS de l’image de fond<input class="input" name="homepage_background_url" type="url" placeholder="https://…" value="${esc(backgroundUrl)}"></label>
       ${backgroundUrl ? `<div class="homepage-bg-preview-wrap full"><span class="small-note">Image actuellement enregistrée</span><img class="homepage-bg-preview" src="${esc(backgroundUrl)}" alt="Aperçu du fond de l’accueil"></div>` : '<p class="small-note full">Aucune image personnalisée : le fond vert clair par défaut sera utilisé.</p>'}
       <p class="small-note full">Si tu sélectionnes un fichier, il remplace l’URL ci-dessus. Pour revenir au fond par défaut, vide l’URL et enregistre sans choisir de fichier.</p>
-      <label class="full">E-mail recevant les nouvelles commandes et demandes de devis<input class="input" name="order_notification_email" type="email" placeholder="gestion@sama-pack.store" value="${esc(notificationEmail)}"></label>
+      <label class="full">E-mail de contact officiel et de réception des commandes/devis<input class="input" name="order_notification_email" type="email" placeholder="Adresse e-mail professionnelle" value="${esc(notificationEmail)}"></label>
       <button class="btn primary full" type="submit">Enregistrer les paramètres</button>
     </form><p class="small-note">Pour activer les e-mails, configure aussi RESEND_API_KEY et RESEND_FROM_EMAIL dans Supabase → Edge Functions → Secrets.</p></div>`;
   }
@@ -3755,7 +3768,7 @@
         const emailResult = await client.from("notification_settings").update({order_notification_email:String(f.get("order_notification_email")||"").trim()}).eq("id",true);
         setBusy(form,false);
         if (emailResult.error) { await loadPublicData(); return toast("Paramètres boutique enregistrés, mais l’e-mail n’a pas pu être enregistré : "+errorMessage(emailResult.error),true); }
-        toast("Paramètres, image de fond et e-mail de notification enregistrés.");
+        toast("Paramètres enregistrés. Le WhatsApp et l’e-mail de contact sont mis à jour sur la boutique.");
         await loadPublicData();
         await showAdminView("settings");
       };
