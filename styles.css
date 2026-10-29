@@ -3802,3 +3802,51 @@ body.general-admin-mode .general-admin-account-modal {
   .marketing-admin-schedule { grid-template-columns: minmax(0,1fr); gap: 12px; }
   .marketing-admin-schedule .marketing-send-now { max-width: none; width: 100%; }
 }
+
+
+/* Owner-controlled associate permissions */
+.permission-option-list {
+  display: grid;
+  gap: 8px;
+  max-height: min(62dvh, 620px);
+  overflow: auto;
+  padding: 2px 2px 8px;
+}
+.permission-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--border, #dce5dc);
+  border-radius: 12px;
+  background: var(--surface, #fff);
+  cursor: pointer;
+}
+.permission-option-copy {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+.permission-option-copy strong {
+  font-size: 14px;
+}
+.permission-option-copy small {
+  color: var(--muted, #607064);
+  font-size: 12px;
+  line-height: 1.45;
+}
+.permission-option input[type="checkbox"] {
+  flex: 0 0 auto;
+  width: 19px;
+  height: 19px;
+  accent-color: var(--primary, #176b43);
+}
+.permission-option:focus-within {
+  outline: 2px solid var(--primary, #176b43);
+  outline-offset: 2px;
+}
+@media (max-width: 600px) {
+  .permission-option { padding: 11px; gap: 10px; }
+  .permission-option-copy strong { font-size: 13px; }
+}
