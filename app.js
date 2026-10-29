@@ -442,7 +442,10 @@
     }
     const current = editing || {};
     const statusOptions = PROSPECT_STATUSES.map(([value, label]) => `<option value="${value}" ${current.status === value ? "selected" : ""}>${label}</option>`).join("");
-    const formHtml = `<div class="panel prospect-form-panel"><div class="section-head"><div><div class="eyebrow">SUIVI COMMERCIAL</div><h3>${editing ? "Modifier le prospect" : "Ajouter un prospect"}</h3></div>${editing ? '<button type="button" class="btn ghost small" onclick="editProspect(\'\')">Annuler</button>' : ""}</div>
+    const canCreateProspect = hasAdminPermission("prospects.create");
+    const canUpdateProspect = hasAdminPermission("prospects.update");
+    const showProspectForm = editing ? canUpdateProspect : canCreateProspect;
+    const formHtml = showProspectForm ? `<div class="panel prospect-form-panel"><div class="section-head"><div><div class="eyebrow">SUIVI COMMERCIAL</div><h3>${editing ? "Modifier le prospect" : "Ajouter un prospect"}</h3></div>${editing ? '<button type="button" class="btn ghost small" onclick="editProspect(\'\')">Annuler</button>' : ""}</div>
       <p class="small-note">Chaque prospect est attribué à l’administrateur connecté. Il faut au moins un numéro de téléphone ou une adresse e-mail.</p>
       <form id="prospectForm" class="admin-form">
         <label>Nom complet *<input class="input" name="full_name" required minlength="2" maxlength="160" value="${esc(current.full_name || "")}" placeholder="Nom du contact"></label>
@@ -455,14 +458,14 @@
         <label>Statut<select class="input" name="status">${PROSPECT_STATUSES.map(([value,label]) => `<option value="${value}" ${(current.status || "to_contact") === value ? "selected" : ""}>${label}</option>`).join("")}</select></label>
         <label class="full">Notes de prospection<textarea class="input" name="notes" maxlength="2000" rows="3" placeholder="Besoins, prochaines actions, compte rendu…">${esc(current.notes || "")}</textarea></label>
         <div class="full"><button class="btn primary" type="submit">${editing ? "Enregistrer les modifications" : "Ajouter le prospect"}</button></div>
-      </form></div>`;
+      </form></div>` : '<div class="panel"><h3>Prospection</h3><p class="small-note">Tu peux consulter les prospects accessibles, mais tu n’as pas la permission de créer ou modifier des fiches.</p></div>';
 
     const listHtml = rows?.length ? `<div class="table-wrap"><table class="table"><thead><tr><th>Prospect</th><th>Coordonnées</th><th>Suivi</th><th>Responsable</th><th>Actions</th></tr></thead><tbody>${rows.map(row => `<tr>
       <td><strong>${esc(row.full_name)}</strong><br><span class="small-note">${esc(row.company || "Structure non renseignée")}</span>${row.position ? `<br><span class="small-note">${esc(row.position)}</span>` : ""}</td>
       <td>${row.phone ? `<div>${esc(row.phone)}</div>` : ""}${row.email ? `<div>${esc(row.email)}</div>` : ""}${row.address ? `<div class="small-note">${esc(row.address)}</div>` : ""}</td>
-      <td><label class="prospect-status-field"><span class="small-note">${esc(prospectStatusLabel(row.status))}</span><select class="input" aria-label="Statut de ${esc(row.full_name)}" onchange="setProspectStatus('${esc(row.id)}',this.value)">${PROSPECT_STATUSES.map(([value,label]) => `<option value="${value}" ${row.status === value ? "selected" : ""}>${label}</option>`).join("")}</select></label>${row.notes ? `<details class="prospect-notes"><summary>Notes</summary><p>${esc(row.notes)}</p></details>` : ""}</td>
+      <td>${hasAdminPermission("prospects.update") ? `<label class="prospect-status-field"><span class="small-note">${esc(prospectStatusLabel(row.status))}</span><select class="input" aria-label="Statut de ${esc(row.full_name)}" onchange="setProspectStatus('${esc(row.id)}',this.value)">${PROSPECT_STATUSES.map(([value,label]) => `<option value="${value}" ${row.status === value ? "selected" : ""}>${label}</option>`).join("")}</select></label>` : `<span class="small-note">${esc(prospectStatusLabel(row.status))}</span>`}${row.notes ? `<details class="prospect-notes"><summary>Notes</summary><p>${esc(row.notes)}</p></details>` : ""}</td>
       <td><strong>${esc(assignedLabels[row.created_by] || "Administrateur")}</strong></td>
-      <td><div class="prospect-actions"><button class="btn ghost small" onclick="editProspect('${esc(row.id)}')">Modifier</button><button class="btn ghost small danger" onclick="deleteProspect('${esc(row.id)}')">Supprimer</button></div></td>
+      <td><div class="prospect-actions">${hasAdminPermission("prospects.update") ? `<button class="btn ghost small" onclick="editProspect('${esc(row.id)}')">Modifier</button>` : ""}${hasAdminPermission("prospects.delete") ? `<button class="btn ghost small danger" onclick="deleteProspect('${esc(row.id)}')">Supprimer</button>` : ""}</div></td>
     </tr>`).join("")}</tbody></table></div>` : '<div class="empty">Aucun prospect pour le moment. Ajoute le premier contact avec le formulaire ci-dessus.</div>';
     host.innerHTML = `${formHtml}<div class="panel"><div class="section-head"><div><div class="eyebrow">CARNET DE PROSPECTION</div><h3>Prospects accessibles (${(rows || []).length})</h3></div></div>${listHtml}</div>`;
 
@@ -506,12 +509,14 @@
   }
 
   async function editProspect(id) {
+    if (id && !hasAdminPermission("prospects.update")) return toast("Tu n’as pas la permission de modifier les prospects.", true);
     editingProspectId = id || null;
     await renderProspectsAdmin();
     if (editingProspectId) $("adminContent")?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
   async function setProspectStatus(id, status) {
+    if (!hasAdminPermission("prospects.update")) return toast("Cette action n’est pas autorisée.", true);
     if (!PROSPECT_STATUSES.some(option => option[0] === status)) return toast("Statut de prospect invalide.", true);
     const { error } = await client.from("prospects").update({ status, updated_at: new Date().toISOString() }).eq("id", id);
     if (error) return toast(errorMessage(error), true);
@@ -520,6 +525,7 @@
   }
 
   async function deleteProspect(id) {
+    if (!hasAdminPermission("prospects.delete")) return toast("Cette action n’est pas autorisée.", true);
     if (!window.confirm("Supprimer définitivement ce prospect ? Cette action est irréversible.")) return;
     const { error } = await client.from("prospects").delete().eq("id", id);
     if (error) return toast(errorMessage(error), true);
