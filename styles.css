@@ -3887,3 +3887,6 @@ body.general-admin-mode .general-admin-account-modal {
   .seo-product-photo-wrap { min-height:220px; }
   body.legal-page, body.product-detail-page { padding-bottom:calc(90px + env(safe-area-inset-bottom)); }
 }
+
+/* Heading scale for the single-product catalogue page */
+.individual-catalog-section h1 { font-size:clamp(30px,3.2vw,38px); line-height:1.08; letter-spacing:-.04em; margin:6px 0 0; }
