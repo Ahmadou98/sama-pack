@@ -12,19 +12,19 @@
   let currentPromoIndex = 0;
   let promoCarouselTimer = null;
   let promoCountdownTimer = null;
-  const FALLBACK_PRODUCTS = window.SAMA_PRODUCTS || [];
+  const FALLBACK_PRODUCTS = [];
   const iconById = {SP01:"🧼",SP02:"👶",SP03:"🧽",SP04:"🧼",SP05:"💼",SP06:"🍳",SP07:"🌸",SP08:"🏡",SP09:"🎉",SP10:"🏪"};
   const $ = (id) => document.getElementById(id);
 
   let client = null;
-  let products = FALLBACK_PRODUCTS.map(normalizeFallbackProduct);
+  let products = [];
+  let catalogLoadFailed = false;
   let currentUser = null;
   let currentProfile = null;
   let accountButtonAvatarUrl = "";
   let accountButtonAvatarPath = "";
   let accountAvatarRequestId = 0;
   let profilePhotoPreviewUrl = null;
-  let adminInitialized = true;
   let userNotifications = [];
   let notificationsChannel = null;
   let authBusy = false;
@@ -100,6 +100,7 @@
 
   function hasPromotion(p) {
     if (!p || p.promo_active !== true || p.promo_price == null || p.promo_price === "") return false;
+    if (p.promo_started_at) { const start = new Date(p.promo_started_at).getTime(); if (Number.isFinite(start) && start > Date.now()) return false; }
     if (p.promo_end_at) { const end = new Date(p.promo_end_at).getTime(); if (Number.isFinite(end) && end <= Date.now()) return false; }
     const regular = Number(p.price), special = Number(p.promo_price);
     return Number.isFinite(regular) && Number.isFinite(special) && special >= 0 && special < regular;
@@ -147,12 +148,6 @@
     const { data, error } = await client.from("profiles").select("id,full_name,phone,phone_secondary,delivery_region,delivery_city,delivery_commune,delivery_neighborhood,delivery_address,delivery_landmark,delivery_instructions,email,role,is_super_admin,admin_permissions,invited_by,created_at,avatar_path,marketing_opt_in").eq("id", user.id).maybeSingle();
     if (error) { console.warn("Profile unavailable", error); return null; }
     return data;
-  }
-  async function isAdminInitialized() {
-    if (!client) return true;
-    const { data, error } = await client.rpc("sama_admin_initialized");
-    if (error) { console.warn("Admin bootstrap state unavailable", error); return true; }
-    return Boolean(data);
   }
   function isAdmin() { return currentProfile?.role === "admin"; }
   function isGeneralAdmin() { return isAdmin() && currentProfile?.is_super_admin === true; }
@@ -627,7 +622,7 @@
     const host = $("adminContent");
     if (!host || !client || !isAdmin()) return;
     const { data: rows, error } = await client.from("products")
-      .select("id,public_ref,availability_status,name,catalog_type,category,price,description,items,image_path,image_paths,active,promo_active,promo_price,promo_label,promo_end_at")
+      .select("id,public_ref,availability_status,name,catalog_type,category,price,description,items,image_path,image_paths,active,promo_active,promo_price,promo_label,promo_started_at,promo_end_at")
       .in("catalog_type", ["product", "tool"])
       .order("name", { ascending: true });
     if (error) {
@@ -740,6 +735,7 @@
         if (imageUpload.error) return toast(imageUpload.error, true);
         payload.image_paths = imageUpload.images;
         payload.image_path = payload.image_paths[0] || (replaceImages ? "" : payload.image_path);
+        if (payload.active && !payload.image_paths.length) return toast("Ajoute au moins une photo avant de publier cet article.", true);
         let result;
         if (editingCatalogItemId) {
           result = await client.from("products").update(payload).eq("id", productId);
@@ -773,6 +769,7 @@
     const action = active ? "rendre visible" : "masquer";
     const product = getP(id);
     if (active && (!product || Number(product.price) <= 0)) return toast("Renseigne un prix de vente supérieur à zéro avant la publication.", true);
+    if (active && !getProductImages(product).length) return toast("Ajoute au moins une photo à cet article avant de le publier.", true);
     if (!window.confirm(`Confirmer : ${action} cet article dans le catalogue ?`)) return;
     const { error } = await client.from("products").update({ active, updated_at: new Date().toISOString() }).eq("id", id);
     if (error) return toast(errorMessage(error), true);
@@ -802,10 +799,16 @@
   async function loadPublicData() {
     if (!client) return;
     const { data: rows, error } = await client.from("products")
-      .select("id,public_ref,availability_status,name,catalog_type,category,price,description,items,image_path,image_paths,active,promo_active,promo_price,promo_label,promo_end_at")
+      .select("id,public_ref,availability_status,name,catalog_type,category,price,description,items,image_path,image_paths,active,promo_active,promo_price,promo_label,promo_started_at,promo_end_at")
       .order("id", { ascending: true });
-    if (!error && Array.isArray(rows)) products = rows.map(normalizeProduct);
-    else console.warn("Catalogue distant indisponible; affichage du catalogue de secours.", error);
+    if (!error && Array.isArray(rows)) {
+      products = rows.map(normalizeProduct);
+      catalogLoadFailed = false;
+    } else {
+      products = [];
+      catalogLoadFailed = true;
+      console.warn("Catalogue distant indisponible; les prix de secours ne sont pas utilisés.", error);
+    }
     const { data: setting, error: settingError } = await client.from("settings")
       .select("id,company,whatsapp,delivery_fee,currency,homepage_background_url").eq("id", true).maybeSingle();
     if (!settingError && setting) {
@@ -815,6 +818,7 @@
     await loadProductReviewStats();
     const count = $("packCount"); if (count) count.textContent = String(products.filter(p => p.active && p.catalog_type === "pack").length);
     updateContact(); updateCategoryFilter(); renderTop(); renderProducts(); renderPromoCarousel(); updateCartCount();
+    if (document.body?.dataset?.productDetail === "true") renderSEOProductPage();
   }
   function getCurrentCatalogType() {
     const value = document.body?.dataset?.catalogType;
@@ -966,6 +970,65 @@
     const src = /^https?:\/\//i.test(path) ? path : path.replace(/^\//, "");
     return `<div class="${klass} product-image-frame"><img class="product-photo" src="${esc(src)}" alt="${esc(p.name)}" loading="lazy" onerror="this.remove();this.parentElement.classList.remove('product-image-frame');this.parentElement.innerHTML='${fallback.replace(/'/g,"&#039;").replace(/`/g,"&#096;")}'"></div>`;
   }
+  function updateSEOProductMeta(selector, value) {
+    const node = document.querySelector(selector);
+    if (node) node.setAttribute("content", String(value || ""));
+  }
+  function renderSEOProductPage() {
+    const host = $("seoProductRoot");
+    if (!host) return;
+    let ref = "";
+    try { ref = new URLSearchParams(window.location.search).get("ref") || ""; } catch { ref = ""; }
+    const p = products.find(item => item.active && (item.id === ref || item.public_ref === ref));
+    const canonical = p ? "https://sama-pack.store/fiche-produit.html?ref=" + encodeURIComponent(p.id) : "https://sama-pack.store/fiche-produit.html";
+    const canonicalNode = document.querySelector('link[rel="canonical"]');
+    if (canonicalNode) canonicalNode.setAttribute("href", canonical);
+    if (!p) {
+      document.title = catalogLoadFailed ? "Catalogue indisponible | SAMA-PACK" : "Article indisponible | SAMA-PACK";
+      updateSEOProductMeta('meta[name="description"]', "Consultez les produits de nettoyage et les packs disponibles chez SAMA-PACK à Dakar.");
+      updateSEOProductMeta('meta[name="robots"]', "noindex,follow");
+      updateSEOProductMeta('meta[property="og:title"]', document.title);
+      updateSEOProductMeta('meta[property="og:description"]', "Retournez au catalogue SAMA-PACK pour consulter les articles disponibles.");
+      updateSEOProductMeta('meta[property="og:url"]', canonical);
+      $("seoProductCategory").textContent = "Fiche indisponible";
+      host.innerHTML = '<div class="panel"><h1>' + (catalogLoadFailed ? "Catalogue temporairement indisponible" : "Article introuvable") + '</h1><p>' + (catalogLoadFailed ? "Les données et prix n’ont pas pu être actualisés. Réessaie dans quelques instants." : "Cette fiche n’est pas publiée ou la référence n’existe plus.") + '</p><div class="hero-actions"><a class="btn primary" href="index.html#catalogue">Voir les packs</a><a class="btn ghost" href="produits.html">Voir les produits</a></div><button class="btn ghost" type="button" onclick="window.location.reload()">Réessayer</button></div>';
+      const jsonld = $("productJsonLd"); if (jsonld) jsonld.textContent = "{}";
+      return;
+    }
+    const title = p.name + " | SAMA-PACK à Dakar";
+    const plainDesc = String(p.desc || p.description || ("Découvrez " + p.name + " chez SAMA-PACK à Dakar.")).replace(/\s+/g, " ").trim();
+    const description = plainDesc.length > 155 ? plainDesc.slice(0,152).replace(/\s+\S*$/,"") + "…" : plainDesc;
+    document.title = title;
+    updateSEOProductMeta('meta[name="description"]', description);
+    updateSEOProductMeta('meta[name="robots"]', "index,follow,max-image-preview:large");
+    updateSEOProductMeta('meta[property="og:title"]', title);
+    updateSEOProductMeta('meta[property="og:description"]', description);
+    updateSEOProductMeta('meta[property="og:url"]', canonical);
+    const category = String(p.cat || p.category || (p.catalog_type === "pack" ? "Packs ménagers" : "Produits de nettoyage"));
+    $("seoProductCategory").textContent = category;
+    const paths = getProductImages(p);
+    const images = paths.map(path => {
+      try { return new URL(resolveProductImageUrl(path), window.location.origin + "/").href; }
+      catch { return ""; }
+    }).filter(Boolean);
+    const picture = paths.length
+      ? '<div class="seo-product-photo-wrap"><img class="seo-product-photo" src="' + esc(resolveProductImageUrl(paths[0])) + '" alt="' + esc(p.name) + '" loading="eager" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'grid\'"><div class="product-placeholder" style="display:none">' + cleaningBottleSvg() + '</div></div>'
+      : '<div class="seo-product-photo-wrap"><div class="product-placeholder">' + cleaningBottleSvg() + '</div></div>';
+    const list = Array.isArray(p.items) && p.items.length
+      ? '<h2>Composition et caractéristiques</h2><ul class="seo-product-list">' + p.items.map(item => '<li>' + esc(item) + '</li>').join("") + '</ul>'
+      : "";
+    const status = p.availability_status === "out_of_stock" ? "Actuellement en rupture de stock." : "Article disponible à la commande, sous réserve de confirmation au moment de valider le panier.";
+    host.innerHTML = '<article class="seo-product-layout">' + picture + '<div class="seo-product-info"><div class="eyebrow">' + esc(category) + ' · ' + esc(publicProductRef(p)) + '</div><h1>' + esc(p.name) + '</h1><div id="seoProductRatingSummary">' + renderProductRatingSummary(p.id) + '</div><p>' + esc(p.desc || p.description || "") + '</p><p class="small-note">' + esc(status) + '</p>' + list + '<div class="seo-product-price">' + priceDisplayHtml(p) + '</div><div class="product-actions"><button class="btn primary" type="button" id="seoAddToCartBtn" ' + (canSellProduct(p) ? "" : "disabled") + '>' + (p.availability_status === "out_of_stock" ? "Rupture de stock" : canSellProduct(p) ? "Ajouter au panier" : "Prix à confirmer") + '</button><button class="btn ghost" type="button" id="seoOpenCartBtn">Voir le panier</button></div><a class="btn ghost" href="' + (p.catalog_type === "product" ? "produits.html" : "index.html#catalogue") + '">Retour au catalogue</a></div></article><section id="productReviewsPanel" class="product-reviews-panel" data-product-id="' + esc(p.id) + '"><p class="review-loading">Chargement des avis…</p></section>';
+    $("seoAddToCartBtn")?.addEventListener("click", () => addToCart(p.id));
+    $("seoOpenCartBtn")?.addEventListener("click", renderCartModal);
+    const offer = { "@type":"Offer", "priceCurrency":"XOF", "price":getEffectivePrice(p), "availability":p.availability_status === "out_of_stock" ? "https://schema.org/OutOfStock" : "https://schema.org/InStock", "url":canonical };
+    const schema = { "@context":"https://schema.org", "@type":"Product", "name":p.name, "description":plainDesc, "sku":publicProductRef(p), "offers":offer };
+    if (images.length) schema.image = images;
+    if (p.brand) schema.brand = { "@type":"Brand", "name":p.brand };
+    const jsonld = $("productJsonLd"); if (jsonld) jsonld.textContent = JSON.stringify(schema);
+    if (!isGeneralAdmin()) void renderProductReviews(p.id);
+  }
+
   function renderProducts() {
     const grid = $("productGrid"); if (!grid) return;
     const q = String($("searchBox")?.value || "").toLowerCase().trim();
@@ -975,7 +1038,9 @@
     const pages = Math.max(1, Math.ceil(arr.length / PRODUCTS_PER_PAGE));
     currentProductPage = Math.min(Math.max(1, currentProductPage), pages);
     const start = (currentProductPage - 1) * PRODUCTS_PER_PAGE;
-    grid.innerHTML = arr.slice(start, start + PRODUCTS_PER_PAGE).map(productCard).join("") || '<div class="empty">' + (currentType === "product" ? "Aucun produit ne correspond à votre recherche." : "Aucun pack ne correspond à votre recherche.") + '</div>';
+    grid.innerHTML = catalogLoadFailed
+      ? '<div class="product-load-error"><strong>Le catalogue est momentanément indisponible.</strong><p>Pour éviter de te présenter des prix obsolètes, les articles ne sont pas affichés. Vérifie ta connexion puis réessaie.</p><button class="btn ghost" type="button" onclick="window.location.reload()">Réessayer</button></div>'
+      : arr.slice(start, start + PRODUCTS_PER_PAGE).map(productCard).join("") || '<div class="empty">' + (currentType === "product" ? "Aucun produit ne correspond à votre recherche." : "Aucun pack ne correspond à votre recherche.") + '</div>';
     const pagination = $("productPagination");
     if (pagination) pagination.innerHTML = arr.length > PRODUCTS_PER_PAGE ? `<button class="btn ghost small" ${currentProductPage === 1 ? "disabled" : ""} onclick="goToProductPage(${currentProductPage - 1})">← Précédent</button><span>Page ${currentProductPage} / ${pages} · ${arr.length} packs</span><button class="btn ghost small" ${currentProductPage === pages ? "disabled" : ""} onclick="goToProductPage(${currentProductPage + 1})">Suivant →</button>` : "";
     renderIndividualCatalogs();
@@ -1004,7 +1069,7 @@
     const out = p.availability_status === "out_of_stock";
     const canAdd = canSellProduct(p);
     const description = p.catalog_type === "product" && p.desc ? `<p class="product-desc">${esc(p.desc)}</p>` : "";
-    return `<article class="product-card"><div class="pack-visual ${hasImage ? "has-photo" : ""}">${photo}${fallback}${hasPromotion(p) ? `<span class="product-promo-ribbon">${esc(p.promo_label || "Promo")}</span>` : ""}</div><div class="product-body">${availabilityBadgeHtml(p)}<div class="product-cat">${esc(p.cat)}</div><div class="product-name">${esc(p.name)}</div>${description}${renderProductRatingSummary(p.id)}<div class="price-row">${priceDisplayHtml(p)}</div><div class="product-actions"><button class="btn ghost" onclick="openProduct('${esc(p.id)}')">Détails</button><button class="btn primary" onclick="addToCart('${esc(p.id)}')" ${canAdd ? "" : "disabled"}>${out ? "Rupture" : canAdd ? "Ajouter" : "Prix à confirmer"}</button></div></div></article>`;
+    return `<article class="product-card"><div class="pack-visual ${hasImage ? "has-photo" : ""}">${photo}${fallback}${hasPromotion(p) ? `<span class="product-promo-ribbon">${esc(p.promo_label || "Promo")}</span>` : ""}</div><div class="product-body">${availabilityBadgeHtml(p)}<div class="product-cat">${esc(p.cat)}</div><a class="product-name-link" href="fiche-produit.html?ref=${encodeURIComponent(p.id)}">${esc(p.name)}</a>${description}${renderProductRatingSummary(p.id)}<div class="price-row">${priceDisplayHtml(p)}</div><div class="product-actions"><button class="btn ghost" onclick="openProduct('${esc(p.id)}')">Détails</button><button class="btn primary" onclick="addToCart('${esc(p.id)}')" ${canAdd ? "" : "disabled"}>${out ? "Rupture" : canAdd ? "Ajouter" : "Prix à confirmer"}</button></div></div></article>`;
   }
 
   function openProduct(id) {
@@ -1821,7 +1886,6 @@
     const subscriptionResult = await client.from("replenishment_subscriptions").select("*").eq("user_id", currentUser.id).order("next_reminder_at", { ascending: true });
     cachedSubscriptions = subscriptionResult.error ? [] : (subscriptionResult.data || []);
     if (subscriptionResult.error) console.warn("Replenishment subscriptions unavailable", subscriptionResult.error);
-    const initialized = await isAdminInitialized(); adminInitialized = initialized;
     const orderHtml = orders.length ? '<div class="table-wrap"><table class="table"><thead><tr><th>Commande</th><th>Date</th><th>Total</th><th>Paiement et solde</th><th>Suivi</th><th>Action</th></tr></thead><tbody>' + orders.map(o => {
       const paymentPending = ["awaiting_payment","awaiting_delivery_payment"].includes(o.status);
       const paymentActionHtml = paymentPending
@@ -1991,12 +2055,12 @@
     if (!nextUser || nextUser.id !== currentUser?.id) currentBusinessAccount = null;
     currentUser = nextUser; currentProfile = currentUser ? await getProfile(currentUser) : null;
     setupAccountPresence(currentUser);
-    adminInitialized = await isAdminInitialized();
     updateAccountButtons();
     await refreshAccountButtonAvatar();
     await loadNotifications();
     setupNotificationsRealtime();
     if (isAdmin()) { updateCategoryFilter(); renderProducts(); }
+    if (document.body?.dataset?.productDetail === "true") renderSEOProductPage();
   }
   function updateAccountButtons() {
     document.body.classList.toggle("general-admin-mode", isGeneralAdmin());
@@ -3296,6 +3360,7 @@
   async function togglePack(id, active) {
     const product = getP(id);
     if (active && (!product || Number(product.price) <= 0)) return toast("Renseigne un prix de vente supérieur à zéro avant la publication.", true);
+    if (active && !getProductImages(product).length) return toast("Ajoute au moins une photo à ce pack avant de le publier.", true);
     const { error } = await client.from("products").update({ active }).eq("id", id);
     if (error) return toast(errorMessage(error), true);
     toast(active ? "Pack publié dans le catalogue." : "Pack masqué du catalogue."); await loadPublicData(); await showAdminView("packs");
@@ -3573,6 +3638,7 @@
         if (imageUpload.error) { setBusy(form,false); return toast(imageUpload.error,true); }
         payload.image_paths = imageUpload.images;
         payload.image_path = payload.image_paths[0] || (replaceImages ? "" : payload.image_path);
+        if (payload.active && !payload.image_paths.length) { setBusy(form,false); return toast("Ajoute au moins une photo avant de publier ce pack.",true); }
         let result;
         if (editingProductId) result = await client.from("products").update(payload).eq("id",editingProductId);
         else result = await client.from("products").insert({id:productId,...payload});
