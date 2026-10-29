@@ -2603,7 +2603,7 @@
         row.hidden = !match;
         if (match) visible++;
       });
-      let note = wrap.parentElement?.querySelector(":scope > .admin-no-match");
+      let note = wrap.nextElementSibling?.classList.contains("admin-no-match") ? wrap.nextElementSibling : null;
       if (!note && rows.length) {
         note = document.createElement("p");
         note.className = "admin-no-match small-note";
@@ -2620,6 +2620,7 @@
     currentAdminView = view; editingProductId = (view === "packs" || view === "products") ? editingProductId : null;
     const navSearch = $("adminNavSearch"); if (navSearch) navSearch.value = "";
     document.querySelectorAll(".admin-nav-group").forEach(group => group.classList.remove("admin-nav-group-empty"));
+    const navNoResults = $("adminNavNoResults"); if (navNoResults) navNoResults.classList.add("hidden");
     document.querySelectorAll(".side-btn").forEach(b => { b.classList.remove("admin-nav-hidden"); b.classList.toggle("active", b.dataset.view === view || (view === "products" && b.dataset.view === "packs")); });
     const globalSearch = $("adminGlobalSearch"); if (globalSearch) globalSearch.value = "";
     updateAdminContext();
@@ -2804,7 +2805,7 @@
     const customer = cachedCustomers.find(c => c.id === o.customer_id) || {};
     const lines = cachedOrderItems.filter(x => x.order_id === o.id);
     const name = o.customer_name || customer.name || "Client"; const phone = o.customer_phone || customer.phone || "";
-    showModal(`<div class="modal-head"><div><div class="eyebrow">COMMANDE</div><h2>${esc(o.id)}</h2></div><button class="close" onclick="closeModal()">✕</button></div><p><strong>${esc(name)}</strong> · ${esc(phone)}<br>${esc(o.delivery_address || customer.address || "")} ${esc(o.delivery_zone || customer.zone || "")}<br><span class="small-note">Créée le ${esc(fmtDate(o.created_at))}</span></p><ul class="pack-items">${lines.map(i=>`<li>${Number(i.quantity)} × ${esc(i.product_name)} — ${money(i.unit_price)}</li>`).join("") || "<li>Détails des lignes indisponibles pour cette ancienne commande.</li>"}</ul><div class="summary"><div class="summary-row"><span>Sous-total</span><strong>${money(o.subtotal)}</strong></div><div class="summary-row"><span>Livraison</span><strong>${money(o.delivery)}</strong></div><div class="summary-row"><span>Mode choisi</span><strong>${esc(o.payment || "Non renseigné")}</strong></div><div class="summary-row"><span>Statut du paiement</span><strong>${esc(paymentStatusLabel(o.payment_status))}</strong></div><div class="summary-row"><span>Déjà encaissé</span><strong>${money(o.amount_paid || 0)}</strong></div><div class="summary-row"><span>Solde restant</span><strong>${money(Math.max(0, Number(o.total || 0)-Number(o.amount_paid || 0)))}</strong></div><div class="summary-row total"><span>Total</span><strong>${money(o.total)}</strong></div></div>${["awaiting_payment","awaiting_delivery_payment"].includes(o.status) ? `<button class="btn primary full" onclick="retryOrderPayment('${esc(o.id)}')">Reprendre le paiement</button>` : ""}`);
+    showModal(`<div class="modal-head"><div><div class="eyebrow">COMMANDE</div><h2>${esc(o.id)}</h2></div><button class="close" onclick="closeModal()">✕</button></div><p><strong>${esc(name)}</strong> · ${esc(phone)}<br>${esc(o.delivery_address || customer.address || "")} ${esc(o.delivery_zone || customer.zone || "")}<br><span class="small-note">Créée le ${esc(fmtDate(o.created_at))}</span></p>${orderTrackingHtml(o)}<ul class="pack-items">${lines.map(i=>`<li>${Number(i.quantity)} × ${esc(i.product_name)} — ${money(i.unit_price)}</li>`).join("") || "<li>Détails des lignes indisponibles pour cette ancienne commande.</li>"}</ul><div class="summary"><div class="summary-row"><span>Sous-total</span><strong>${money(o.subtotal)}</strong></div><div class="summary-row"><span>Livraison</span><strong>${money(o.delivery)}</strong></div><div class="summary-row"><span>Mode de paiement</span><strong>${esc(o.payment_choice || o.payment || "Non renseigné")}</strong></div><div class="summary-row"><span>Créneau de livraison</span><strong>${esc(o.slot || "À convenir")}</strong></div><div class="summary-row"><span>Statut du paiement</span><strong>${esc(paymentStatusLabel(o.payment_status))}</strong></div><div class="summary-row"><span>Déjà encaissé</span><strong>${money(o.amount_paid || 0)}</strong></div><div class="summary-row"><span>Solde restant</span><strong>${money(Math.max(0, Number(o.total || 0)-Number(o.amount_paid || 0)))}</strong></div><div class="summary-row total"><span>Total</span><strong>${money(o.total)}</strong></div></div>${["awaiting_payment","awaiting_delivery_payment"].includes(o.status) ? `<button class="btn primary full" onclick="retryOrderPayment('${esc(o.id)}')">Reprendre le paiement</button>` : ""}`);
   }
   async function setOrderStatus(id, status) {
     if (!isAdmin()) return toast("Accès refusé.", true);
