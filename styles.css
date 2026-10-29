@@ -2821,3 +2821,136 @@ tr[hidden]{display:none!important}
 @media (prefers-reduced-motion:reduce) {
   .b2b-workspace-modal * { scroll-behavior:auto; transition:none; animation:none; }
 }
+
+
+/* Administrateur général : masquer les raccourcis et actions destinés aux clients */
+body.general-admin-mode #openCartBtn,
+body.general-admin-mode #notificationBtn,
+body.general-admin-mode #quoteBtn,
+body.general-admin-mode #businessSpaceBtn,
+body.general-admin-mode #heroWhatsApp,
+body.general-admin-mode #budgetPackBuilderBtn,
+body.general-admin-mode #b2b,
+body.general-admin-mode .mobile-bottom-nav [data-mobile-action="cart"],
+body.general-admin-mode .product-actions button[onclick^="addToCart("],
+body.general-admin-mode .price-row button[onclick*="addToCart("],
+body.general-admin-mode .flash-add-btn,
+body.general-admin-mode .product-rating-summary,
+body.general-admin-mode #productRatingSummaryDetail,
+body.general-admin-mode .product-reviews-panel {
+  display: none !important;
+}
+body.general-admin-mode .product-actions { grid-template-columns: minmax(0, 1fr); }
+body.general-admin-mode .general-admin-account-modal {
+  width: min(650px, calc(100vw - 24px));
+  max-height: min(92dvh, 900px);
+  padding: clamp(16px, 3vw, 28px);
+  overflow-y: auto;
+  border: 1px solid #dfe9e1;
+  border-radius: 22px;
+  box-shadow: 0 24px 70px rgba(15, 45, 27, .2);
+}
+.general-admin-modal-head {
+  align-items: flex-start;
+  padding-bottom: 15px;
+  border-bottom: 1px solid #edf2ee;
+}
+.general-admin-modal-head h2 {
+  margin: 4px 0 5px;
+  font-size: clamp(22px, 3.6vw, 29px);
+  letter-spacing: -.035em;
+}
+.general-admin-modal-head .small-note {
+  max-width: 48ch;
+  margin: 0;
+  line-height: 1.5;
+}
+.general-admin-identity {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  margin: 17px 0;
+  padding: 17px;
+  border: 1px solid #e4ebe5;
+  border-radius: 17px;
+  background: #fbfdfb;
+}
+.general-admin-avatar {
+  display: grid;
+  flex: 0 0 56px;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+  border: 3px solid #dcfce7;
+  border-radius: 50%;
+  background: linear-gradient(145deg, #166534, #22c55e);
+  box-shadow: 0 0 0 1px #bbf7d0;
+  color: white;
+  font-size: 16px;
+  font-weight: 900;
+}
+.general-admin-role, .general-admin-kicker {
+  display: inline-block;
+  color: #247447;
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: .12em;
+}
+.general-admin-identity h3 {
+  margin: 3px 0;
+  color: #193423;
+  font-size: 17px;
+  overflow-wrap: anywhere;
+}
+.general-admin-identity p {
+  margin: 0 0 7px;
+  color: #67766b;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.general-admin-status {
+  display: inline-flex;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: #effaf2;
+  color: #176b43;
+  font-size: 10px;
+  font-weight: 800;
+}
+.general-admin-control {
+  display: grid;
+  gap: 14px;
+  margin: 14px 0;
+  padding: 18px;
+  border: 1px solid #e4ebe5;
+  border-radius: 17px;
+  background: white;
+}
+.general-admin-control h3 {
+  margin: 4px 0 5px;
+  color: #193423;
+  font-size: 16px;
+}
+.general-admin-control p {
+  margin: 0;
+  color: #657469;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.general-admin-control .checkout-grid { gap: 12px; margin-top: 0; }
+.general-admin-control .input { width: 100%; min-width: 0; border-radius: 11px; }
+.general-admin-account-modal .account-signout { margin-top: 6px; }
+@media (max-width: 600px) {
+  body.general-admin-mode .nav-actions { gap: 4px; }
+  body.general-admin-mode #accountBtn.account-nav-user { min-width: 56px; }
+  body.general-admin-mode .general-admin-account-modal {
+    width: calc(100vw - 16px);
+    max-height: 94dvh;
+    padding: 13px;
+    border-radius: 18px;
+  }
+  .general-admin-identity { gap: 11px; padding: 13px; }
+  .general-admin-avatar { flex-basis: 46px; width: 46px; height: 46px; font-size: 14px; }
+  .general-admin-control { gap: 12px; padding: 14px; border-radius: 14px; }
+  .general-admin-control .btn { width: 100%; }
+}
