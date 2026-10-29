@@ -2936,7 +2936,16 @@
       : orderQuery.eq("customer_id", customerId);
     const primaryOrderResult = await orderQuery.order("created_at", { ascending: false }).limit(100);
     if (primaryOrderResult.error) return toast(errorMessage(primaryOrderResult.error), true);
-    const profileId = requestedProfileId || customer.user_id || (primaryOrderResult.data || []).find(order => order.user_id)?.user_id || null;
+    let linkedProfileId = customer.user_id || (primaryOrderResult.data || []).find(order => order.user_id)?.user_id || null;
+    if (!requestedProfileId && !linkedProfileId) {
+      const normalizedPhone = normalizeCustomerWhatsapp(customer.phone);
+      if (normalizedPhone) {
+        const phoneProfileResult = await client.from("profiles").select("id")
+          .eq("role", "customer").eq("phone", normalizedPhone).limit(2);
+        if (!phoneProfileResult.error && phoneProfileResult.data?.length === 1) linkedProfileId = phoneProfileResult.data[0].id;
+      }
+    }
+    const profileId = requestedProfileId || linkedProfileId;
 
     let quotes = [], subscriptions = [], reviews = [], userOrders = [];
     if (profileId) {
@@ -2990,7 +2999,7 @@
     const name = profile?.full_name || customer.name || "Client";
     const phone = profile?.phone || customer.phone || "";
     const secondaryPhone = profile?.phone_secondary || "";
-    const email = profile?.email || quotes.find(quote => emailValid(quote.email))?.email || "";
+    const email = profile?.email || quotes.find(quote => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(quote.email || "")))?.email || "";
     const zone = [profile?.delivery_region, profile?.delivery_city, profile?.delivery_commune, profile?.delivery_neighborhood].filter(Boolean).join(" · ") || customer.zone || "";
     const address = [profile?.delivery_address || customer.address, profile?.delivery_landmark ? "Repère : " + profile.delivery_landmark : "", profile?.delivery_instructions ? "Instructions : " + profile.delivery_instructions : ""].filter(Boolean).join(" · ");
     const whatsapp = normalizeCustomerWhatsapp(phone);
