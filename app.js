@@ -2855,12 +2855,12 @@
       const options = pendingPayment ? [o.status,"cancelled"] : ["new","confirmed","processing","prepared","out_for_delivery","delivered","cancelled"];
       const selectedAdmin = o.assigned_admin_id || o.sales_referrer_user_id || "";
       const assignmentCell = isGeneralAdmin()
-        ? '<td><select class="input" aria-label="Attribuer la commande" onchange="setOrderAssigned(\\'' + esc(o.id) + '\\',this.value)"><option value="">Non attribuée</option>' +
+        ? "<td><select class=\"input\" aria-label=\"Attribuer la commande\" onchange=\"setOrderAssigned('" + esc(o.id) + "',this.value)\"><option value=\"\">Non attribuée</option>" +
           assignableAdmins.map(a => '<option value="' + esc(a.id) + '"' + (selectedAdmin === a.id ? " selected" : "") + '>' + esc(a.full_name || a.email || "Administrateur") + '</option>').join("") +
           '</select></td>'
         : "";
       const deliveryCostCell = isGeneralAdmin()
-        ? '<td><input class="input profit-delivery-input" type="number" min="0" step="1" aria-label="Coût réel livraison" value="' + Number(o.delivery_cost_actual || 0) + '" onchange="setOrderDeliveryCost(\\'' + esc(o.id) + '\\',this.value)"></td>'
+        ? "<td><input class=\"input profit-delivery-input\" type=\"number\" min=\"0\" step=\"1\" aria-label=\"Coût réel livraison\" value=\"" + Number(o.delivery_cost_actual || 0) + "\" onchange=\"setOrderDeliveryCost('" + esc(o.id) + "',this.value)\"></td>"
         : "";
       return `<tr><td>${esc(o.id)}</td><td>${esc(fmtDate(o.created_at))}</td><td>${esc(o.customer_name)}<br><span class="small-note">${esc(o.customer_phone)}</span></td><td>${money(o.total)}</td><td>${money(o.amount_paid || 0)}<br><span class="small-note">${esc(paymentStatusLabel(o.payment_status))}</span></td><td><select class="input" onchange="setOrderStatus('${esc(o.id)}',this.value)">${options.map(s=>`<option ${o.status===s?"selected":""} value="${s}">${esc(statusLabel(s))}</option>`).join("")}</select></td>${assignmentCell}${deliveryCostCell}<td><div class="account-order-actions"><button class="btn small ghost" onclick="showOrder('${esc(o.id)}')">Voir</button><button class="btn small secondary" onclick="openOrderWhatsApp('${esc(o.id)}')">WhatsApp</button></div></td></tr>`;
     }).join("")}</tbody></table></div>` : '<div class="empty">Aucune commande pour le moment.</div>'}</div>`;
@@ -3432,7 +3432,7 @@
     const tableRows = cachedQuotes.map(q => {
       const selectedAdmin = q.assigned_admin_id || q.sales_referrer_user_id || "";
       const assignmentCell = isGeneralAdmin()
-        ? '<td><select class="input" aria-label="Attribuer le devis" onchange="setQuoteAssigned(\\'' + esc(q.id) + '\\',this.value)"><option value="">Non attribué</option>' +
+        ? "<td><select class=\"input\" aria-label=\"Attribuer le devis\" onchange=\"setQuoteAssigned('" + esc(q.id) + "',this.value)\"><option value=\"\">Non attribué</option>" +
           assignableAdmins.map(a => '<option value="' + esc(a.id) + '"' + (selectedAdmin === a.id ? " selected" : "") + '>' + esc(a.full_name || a.email || "Administrateur") + '</option>').join("") +
           '</select></td>'
         : "";
