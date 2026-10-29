@@ -322,7 +322,7 @@ async function sendCampaign(action: "promotion" | "monthly", payload: Record<str
     .eq("campaign_key", campaignKey).maybeSingle();
   if (existingError) throw new Error("Impossible de vérifier les campagnes déjà envoyées.");
 
-  if (existing?.status === "sent" || existing?.status === "skipped") {
+  if (existing?.status === "sent") {
     return {
       ok: true, duplicate: true, campaign_id: existing.id, status: existing.status,
       recipients_sent: existing.recipients_sent, recipients_failed: existing.recipients_failed,
