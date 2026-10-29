@@ -2518,7 +2518,7 @@
     }catch(error){toast(errorMessage(error),true);}
   }
   async function setOrderDeliveryCost(id, rawValue) {
-    if(!isAdmin())return toast("Accès administrateur requis.",true);const amount=Number(rawValue);if(!Number.isFinite(amount)||amount<0)return toast("Saisis un coût de livraison valide.",true);
+    if(!isGeneralAdmin())return toast("Seul le propriétaire peut modifier les coûts de livraison.",true);const amount=Number(rawValue);if(!Number.isFinite(amount)||amount<0)return toast("Saisis un coût de livraison valide.",true);
     const {error}=await client.from("orders").update({delivery_cost_actual:amount}).eq("id",id);if(error)return toast(errorMessage(error),true);
     const row=cachedOrders.find(o=>o.id===id);if(row)row.delivery_cost_actual=amount;toast("Coût réel de livraison enregistré.");
   }
@@ -2836,12 +2836,29 @@
   }
   async function adminOrders() {
     const orders = await loadOrdersWithItems();
-    return `<div class="panel"><div class="admin-panel-head"><h3>Commandes (${orders.length})</h3><button class="btn ghost small" onclick="showAdminView('orders')">Actualiser</button></div><p class="small-note">Les commandes en attente de paiement ne doivent pas être préparées. Les frais de livraison doivent être encaissés et confirmés avant le départ du livreur.</p>${orders.length ? `<div class="table-wrap"><table class="table"><thead><tr><th>Référence</th><th>Date</th><th>Client</th><th>Total</th><th>Paiement reçu</th><th>Statut</th><th>Coût livraison réel (FCFA)</th><th>Détails</th></tr></thead><tbody>${orders.map(o=>{
+    let assignableAdmins = [];
+    if (isGeneralAdmin()) {
+      const adminResult = await client.from("profiles").select("id,full_name,email")
+        .eq("role","admin").eq("is_super_admin",false).order("created_at",{ascending:true});
+      if (adminResult.error) throw adminResult.error;
+      assignableAdmins = adminResult.data || [];
+    }
+    return `<div class="panel"><div class="admin-panel-head"><h3>Commandes (${orders.length})</h3><button class="btn ghost small" onclick="showAdminView('orders')">Actualiser</button></div><p class="small-note">Les commandes en attente de paiement ne doivent pas être préparées. Les frais de livraison doivent être encaissés et confirmés avant le départ du livreur.</p>${orders.length ? `<div class="table-wrap"><table class="table"><thead><tr><th>Référence</th><th>Date</th><th>Client</th><th>Total</th><th>Paiement reçu</th><th>Statut</th>${isGeneralAdmin() ? "<th>Attribuée à</th><th>Coût livraison réel (FCFA)</th>" : ""}<th>Détails</th></tr></thead><tbody>${orders.map(o=>{
       const pendingPayment = ["awaiting_payment","awaiting_delivery_payment"].includes(o.status);
       const options = pendingPayment ? [o.status,"cancelled"] : ["new","confirmed","processing","prepared","out_for_delivery","delivered","cancelled"];
-      return `<tr><td>${esc(o.id)}</td><td>${esc(fmtDate(o.created_at))}</td><td>${esc(o.customer_name)}<br><span class="small-note">${esc(o.customer_phone)}</span></td><td>${money(o.total)}</td><td>${money(o.amount_paid || 0)}<br><span class="small-note">${esc(paymentStatusLabel(o.payment_status))}</span></td><td><select class="input" onchange="setOrderStatus('${esc(o.id)}',this.value)">${options.map(s=>`<option ${o.status===s?"selected":""} value="${s}">${esc(statusLabel(s))}</option>`).join("")}</select></td><td><input class="input profit-delivery-input" type="number" min="0" step="1" aria-label="Coût réel livraison" value="${Number(o.delivery_cost_actual || 0)}" onchange="setOrderDeliveryCost('${esc(o.id)}',this.value)"></td><td><div class="account-order-actions"><button class="btn small ghost" onclick="showOrder('${esc(o.id)}')">Voir</button><button class="btn small secondary" onclick="openOrderWhatsApp('${esc(o.id)}')">WhatsApp</button></div></td></tr>`;
+      const selectedAdmin = o.assigned_admin_id || o.sales_referrer_user_id || "";
+      const assignmentCell = isGeneralAdmin()
+        ? '<td><select class="input" aria-label="Attribuer la commande" onchange="setOrderAssigned(\\'' + esc(o.id) + '\\',this.value)"><option value="">Non attribuée</option>' +
+          assignableAdmins.map(a => '<option value="' + esc(a.id) + '"' + (selectedAdmin === a.id ? " selected" : "") + '>' + esc(a.full_name || a.email || "Administrateur") + '</option>').join("") +
+          '</select></td>'
+        : "";
+      const deliveryCostCell = isGeneralAdmin()
+        ? '<td><input class="input profit-delivery-input" type="number" min="0" step="1" aria-label="Coût réel livraison" value="' + Number(o.delivery_cost_actual || 0) + '" onchange="setOrderDeliveryCost(\\'' + esc(o.id) + '\\',this.value)"></td>'
+        : "";
+      return `<tr><td>${esc(o.id)}</td><td>${esc(fmtDate(o.created_at))}</td><td>${esc(o.customer_name)}<br><span class="small-note">${esc(o.customer_phone)}</span></td><td>${money(o.total)}</td><td>${money(o.amount_paid || 0)}<br><span class="small-note">${esc(paymentStatusLabel(o.payment_status))}</span></td><td><select class="input" onchange="setOrderStatus('${esc(o.id)}',this.value)">${options.map(s=>`<option ${o.status===s?"selected":""} value="${s}">${esc(statusLabel(s))}</option>`).join("")}</select></td>${assignmentCell}${deliveryCostCell}<td><div class="account-order-actions"><button class="btn small ghost" onclick="showOrder('${esc(o.id)}')">Voir</button><button class="btn small secondary" onclick="openOrderWhatsApp('${esc(o.id)}')">WhatsApp</button></div></td></tr>`;
     }).join("")}</tbody></table></div>` : '<div class="empty">Aucune commande pour le moment.</div>'}</div>`;
   }
+
   function showOrder(id) {
     const o = cachedOrders.find(x => x.id === id); if (!o) return toast("Commande introuvable.", true);
     const customer = cachedCustomers.find(c => c.id === o.customer_id) || {};
@@ -2850,7 +2867,7 @@
     showModal(`<div class="modal-head"><div><div class="eyebrow">COMMANDE</div><h2>${esc(o.id)}</h2></div><button class="close" onclick="closeModal()">✕</button></div><p><strong>${esc(name)}</strong> · ${esc(phone)}<br>${esc(o.delivery_address || customer.address || "")} ${esc(o.delivery_zone || customer.zone || "")}<br><span class="small-note">Créée le ${esc(fmtDate(o.created_at))}</span></p>${orderTrackingHtml(o)}<ul class="pack-items">${lines.map(i=>`<li>${Number(i.quantity)} × ${esc(i.product_name)} — ${money(i.unit_price)}</li>`).join("") || "<li>Détails des lignes indisponibles pour cette ancienne commande.</li>"}</ul><div class="summary"><div class="summary-row"><span>Sous-total</span><strong>${money(o.subtotal)}</strong></div><div class="summary-row"><span>Livraison</span><strong>${money(o.delivery)}</strong></div><div class="summary-row"><span>Mode de paiement</span><strong>${esc(o.payment_choice || o.payment || "Non renseigné")}</strong></div><div class="summary-row"><span>Créneau de livraison</span><strong>${esc(o.slot || "À convenir")}</strong></div><div class="summary-row"><span>Statut du paiement</span><strong>${esc(paymentStatusLabel(o.payment_status))}</strong></div><div class="summary-row"><span>Déjà encaissé</span><strong>${money(o.amount_paid || 0)}</strong></div><div class="summary-row"><span>Solde restant</span><strong>${money(Math.max(0, Number(o.total || 0)-Number(o.amount_paid || 0)))}</strong></div><div class="summary-row total"><span>Total</span><strong>${money(o.total)}</strong></div></div>${["awaiting_payment","awaiting_delivery_payment"].includes(o.status) ? `<button class="btn primary full" onclick="retryOrderPayment('${esc(o.id)}')">Reprendre le paiement</button>` : ""}`);
   }
   async function setOrderStatus(id, status) {
-    if (!isAdmin()) return toast("Accès refusé.", true);
+    if (!hasAdminPermission("orders.update_status")) return toast("Accès refusé.", true);
     const allowed = ["new","confirmed","processing","prepared","out_for_delivery","delivered","cancelled","awaiting_payment","awaiting_delivery_payment"];
     if (!allowed.includes(status)) return toast("Statut invalide.", true);
     const order = cachedOrders.find(row => row.id === id);
@@ -2863,6 +2880,14 @@
     toast(status === "cancelled" ? "Commande annulée. La notification est ajoutée au compte du client." : "Statut modifié. Le client reçoit une notification dans son compte ; utilise le bouton WhatsApp pour lui préparer aussi un message.");
     await showAdminView("orders");
   }
+  async function setOrderAssigned(id, assignedAdminId) {
+    if (!isGeneralAdmin()) return toast("Seul le propriétaire peut attribuer les commandes.", true);
+    const { error } = await client.from("orders").update({ assigned_admin_id: assignedAdminId || null }).eq("id", id);
+    if (error) return toast(errorMessage(error), true);
+    toast(assignedAdminId ? "Commande attribuée." : "Attribution retirée.");
+    await showAdminView("orders");
+  }
+  window.setOrderAssigned = setOrderAssigned;
   async function adminCustomers() {
     const customerRows = await readRows("customers");
     cachedCustomers = customerRows;
@@ -3388,9 +3413,35 @@
   }
 
   async function adminQuotes() {
-    const rows = await readRows("quotes"); cachedQuotes = rows.sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
-    return `<div class="panel"><h3>Demandes de devis (${rows.length})</h3>${rows.length ? `<div class="table-wrap"><table class="table"><thead><tr><th>Référence</th><th>Date</th><th>Structure</th><th>Besoin</th><th>Contact</th><th>Statut</th></tr></thead><tbody>${cachedQuotes.map(q=>`<tr><td>${esc(q.id)}</td><td>${esc(fmtDate(q.created_at))}</td><td>${esc(q.company)}</td><td>${esc(q.need)}<br><span class="small-note">${esc(q.message||"")}</span></td><td>${esc(q.phone)}<br><span class="small-note">${esc(q.email||"")}</span></td><td><select class="input" onchange="setQuoteStatus('${esc(q.id)}',this.value)">${["new","processing","won","lost"].map(s=>`<option ${q.status===s?"selected":""} value="${s}">${esc(statusLabel(s))}</option>`).join("")}</select></td></tr>`).join("")}</tbody></table></div>` : '<div class="empty">Aucune demande de devis.</div>'}</div>`;
+    const rows = await readRows("quotes");
+    cachedQuotes = rows.sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
+    let assignableAdmins = [];
+    if (isGeneralAdmin()) {
+      const adminResult = await client.from("profiles").select("id,full_name,email")
+        .eq("role","admin").eq("is_super_admin",false).order("created_at",{ascending:true});
+      if (adminResult.error) throw adminResult.error;
+      assignableAdmins = adminResult.data || [];
+    }
+    const tableRows = cachedQuotes.map(q => {
+      const selectedAdmin = q.assigned_admin_id || q.sales_referrer_user_id || "";
+      const assignmentCell = isGeneralAdmin()
+        ? '<td><select class="input" aria-label="Attribuer le devis" onchange="setQuoteAssigned(\\'' + esc(q.id) + '\\',this.value)"><option value="">Non attribué</option>' +
+          assignableAdmins.map(a => '<option value="' + esc(a.id) + '"' + (selectedAdmin === a.id ? " selected" : "") + '>' + esc(a.full_name || a.email || "Administrateur") + '</option>').join("") +
+          '</select></td>'
+        : "";
+      return `<tr><td>${esc(q.id)}</td><td>${esc(fmtDate(q.created_at))}</td><td>${esc(q.company)}</td><td>${esc(q.need)}<br><span class="small-note">${esc(q.message||"")}</span></td><td>${esc(q.phone)}<br><span class="small-note">${esc(q.email||"")}</span></td>${assignmentCell}<td><select class="input" onchange="setQuoteStatus('${esc(q.id)}',this.value)">${["new","processing","won","lost"].map(s=>`<option ${q.status===s?"selected":""} value="${s}">${esc(statusLabel(s))}</option>`).join("")}</select></td></tr>`;
+    }).join("");
+    return `<div class="panel"><h3>Demandes de devis (${rows.length})</h3>${rows.length ? `<div class="table-wrap"><table class="table"><thead><tr><th>Référence</th><th>Date</th><th>Structure</th><th>Besoin</th><th>Contact</th>${isGeneralAdmin() ? "<th>Attribué à</th>" : ""}<th>Statut</th></tr></thead><tbody>${tableRows}</tbody></table></div>` : '<div class="empty">Aucune demande de devis.</div>'}</div>`;
   }
+  async function setQuoteAssigned(id, assignedAdminId) {
+    if (!isGeneralAdmin()) return toast("Seul le propriétaire peut attribuer les devis.", true);
+    const { error } = await client.from("quotes").update({ assigned_admin_id: assignedAdminId || null }).eq("id", id);
+    if (error) return toast(errorMessage(error), true);
+    toast(assignedAdminId ? "Devis attribué." : "Attribution retirée.");
+    await showAdminView("quotes");
+  }
+  window.setQuoteAssigned = setQuoteAssigned;
+
   async function adminSettings() {
     const [{ data, error }, { data: notificationSettings, error: notificationError }] = await Promise.all([
       client.from("settings").select("id,company,whatsapp,delivery_fee,currency,homepage_background_url,payment_fee_percent").eq("id",true).maybeSingle(),
@@ -3536,7 +3587,7 @@
     if (view === "orders" || view === "quotes") { /* les sélecteurs déclaratifs utilisent les fonctions globales */ }
   }
   async function setQuoteStatus(id,status) {
-    if(!isAdmin()) return toast("Accès refusé.",true);
+    if(!hasAdminPermission("quotes.update_status")) return toast("Accès refusé.",true);
     if(!["new","processing","won","lost"].includes(status)) return toast("Statut invalide.",true);
     const {error}=await client.from("quotes").update({status}).eq("id",id);
     if(error) return toast(errorMessage(error),true);
