@@ -144,7 +144,7 @@
 
   async function getProfile(user = currentUser) {
     if (!client || !user) return null;
-    const { data, error } = await client.from("profiles").select("id,full_name,phone,phone_secondary,delivery_region,delivery_city,delivery_commune,delivery_neighborhood,delivery_address,delivery_landmark,delivery_instructions,email,role,is_super_admin,invited_by,created_at,avatar_path").eq("id", user.id).maybeSingle();
+    const { data, error } = await client.from("profiles").select("id,full_name,phone,phone_secondary,delivery_region,delivery_city,delivery_commune,delivery_neighborhood,delivery_address,delivery_landmark,delivery_instructions,email,role,is_super_admin,invited_by,created_at,avatar_path,marketing_opt_in").eq("id", user.id).maybeSingle();
     if (error) { console.warn("Profile unavailable", error); return null; }
     return data;
   }
@@ -1209,6 +1209,7 @@
       <label class="full ${signup ? "" : "hidden"}">Adresse précise<input class="input" name="delivery_address" maxlength="300" placeholder="Rue, numéro, bâtiment…" ${signup ? "required" : "disabled"}></label>
       <label class="full ${signup ? "" : "hidden"}">Repère pour le livreur (facultatif)<input class="input" name="delivery_landmark" maxlength="200" placeholder="Ex. près de la pharmacie…"></label>
       <label class="full ${signup ? "" : "hidden"}">Instructions de livraison (facultatif)<textarea class="input" name="delivery_instructions" maxlength="500" rows="2" placeholder="Précisions utiles au livreur"></textarea></label>
+      <label class="full marketing-consent ${signup ? "" : "hidden"}"><span><input type="checkbox" name="marketing_opt_in" value="true" ${signup ? "" : "disabled"}> J’accepte de recevoir par e-mail les ventes flash, promotions et nouveautés de SAMA-PACK.</span><small>Tu pourras retirer ton accord à tout moment depuis ton compte ou le lien de désabonnement.</small></label>
       <label class="full password-field">Mot de passe<span class="password-input-wrap"><input class="input" id="authPassword" name="password" type="password" required minlength="8" placeholder="Mot de passe (8 caractères minimum)" autocomplete="${signup ? "new-password" : "current-password"}">${passwordVisibilityToggleHtml("authPassword")}</span></label>
       <label class="full password-field ${signup ? "" : "hidden"}">Confirmer le mot de passe<span class="password-input-wrap"><input class="input" id="authPasswordConfirmation" name="password_confirmation" type="password" minlength="8" placeholder="Confirme ton mot de passe" autocomplete="new-password" ${signup ? "required" : "disabled"}>${passwordVisibilityToggleHtml("authPasswordConfirmation")}</span></label>
       <div class="full auth-actions"><button class="btn primary full" type="submit">${signup ? "Créer mon compte" : "Se connecter"}</button><button class="link-btn dark-link" type="button" onclick="renderAuthForm('${signup ? "login" : "signup"}')">${signup ? "J’ai déjà un compte" : "Créer un compte client"}</button>${signup ? "" : '<button class="link-btn dark-link" type="button" onclick="resetPassword()">Mot de passe oublié ?</button>'}</div>
@@ -1235,7 +1236,8 @@
         delivery_neighborhood: String(fd.get("delivery_neighborhood") || "").trim(),
         delivery_address: String(fd.get("delivery_address") || "").trim(),
         delivery_landmark: String(fd.get("delivery_landmark") || "").trim(),
-        delivery_instructions: String(fd.get("delivery_instructions") || "").trim()
+        delivery_instructions: String(fd.get("delivery_instructions") || "").trim(),
+        marketing_opt_in: ["on", "true"].includes(String(fd.get("marketing_opt_in") || ""))
       };
       if (signup) {
         if (!signupProfile.phone) { setBusy(form, false); authBusy = false; return toast("Le numéro WhatsApp doit être valide (ex. +221 77 123 45 67).", true); }
@@ -1485,6 +1487,7 @@
       summaryItem('Téléphone supplémentaire', p.phone_secondary || 'Non renseigné') +
       summaryItem('Zone de livraison', zone, true) +
       summaryItem('Adresse de livraison', address, true) +
+      summaryItem('E-mails promotionnels', p.marketing_opt_in ? 'Acceptés' : 'Non activés') +
       '</div>' +
       '<form id="profileForm" class="checkout-grid profile-edit-form hidden">' +
       '<div class="profile-edit-heading full"><div><h4>Modifier mes coordonnées</h4><p class="small-note">L’adresse e-mail est protégée et ne peut pas être modifiée ici.</p></div></div>' +
@@ -1500,6 +1503,7 @@
       field('Adresse précise', 'delivery_address', p.delivery_address, 'Rue, numéro, bâtiment…', true, true) +
       '<label class="full">Repère pour le livreur (facultatif)<input class="input" name="delivery_landmark" value="' + esc(p.delivery_landmark || '') + '" maxlength="200" placeholder="Ex. près de la pharmacie…"></label>' +
       '<label class="full">Instructions de livraison (facultatif)<textarea class="input" name="delivery_instructions" maxlength="500" rows="2" placeholder="Précisions utiles au livreur">' + esc(p.delivery_instructions || '') + '</textarea></label>' +
+      '<label class="full marketing-consent"><span><input type="checkbox" name="marketing_opt_in" ' + (p.marketing_opt_in ? 'checked' : '') + '> Recevoir les promotions, ventes flash et nouveautés par e-mail.</span><small>Ce choix est facultatif et modifiable à tout moment.</small></label>' +
       '<div class="profile-edit-actions full"><button class="btn primary" type="submit">Enregistrer les modifications</button><button class="btn ghost" id="cancelProfileEditBtn" type="button">Annuler</button></div></form>' +
       '</div></section>';
   }
@@ -1523,13 +1527,13 @@
     if (name.length < 2 || !phone) return toast('Vérifie ton nom et ton numéro WhatsApp.', true);
     if (secondaryRaw && !phoneSecondary) return toast('Le numéro supplémentaire n’est pas valide.', true);
     if (!delivery.delivery_region || !delivery.delivery_city || !delivery.delivery_commune || !delivery.delivery_neighborhood || !delivery.delivery_address) return toast('Complète toutes les informations obligatoires de livraison.', true);
-    const profilePayload = { full_name: name, phone, phone_secondary: phoneSecondary || '', ...delivery, updated_at: new Date().toISOString() };
+    const profilePayload = { full_name: name, phone, phone_secondary: phoneSecondary || '', marketing_opt_in: fd.get('marketing_opt_in') === 'on', ...delivery, updated_at: new Date().toISOString() };
     setBusy(form, true, 'Enregistrement…');
     try {
       const { error: authError } = await client.auth.updateUser({ data: { full_name: name, phone } });
       if (authError) throw authError;
       const { data, error } = await client.from('profiles').update(profilePayload).eq('id', currentUser.id)
-        .select('id,full_name,phone,phone_secondary,delivery_region,delivery_city,delivery_commune,delivery_neighborhood,delivery_address,delivery_landmark,delivery_instructions,email,role,is_super_admin,invited_by,created_at,avatar_path').maybeSingle();
+        .select('id,full_name,phone,phone_secondary,delivery_region,delivery_city,delivery_commune,delivery_neighborhood,delivery_address,delivery_landmark,delivery_instructions,email,role,is_super_admin,invited_by,created_at,avatar_path,marketing_opt_in').maybeSingle();
       if (error) throw error;
       if (!data) throw new Error('Aucune modification du profil n’a été enregistrée.');
       currentProfile = data;
@@ -2624,7 +2628,7 @@
     document.querySelectorAll(".side-btn").forEach(b => { b.classList.remove("admin-nav-hidden"); b.classList.toggle("active", b.dataset.view === view || (view === "products" && b.dataset.view === "packs")); });
     const globalSearch = $("adminGlobalSearch"); if (globalSearch) globalSearch.value = "";
     updateAdminContext();
-    const titles = {dashboard:"Tableau de bord",orders:"Commandes",customers:"Clients",stock:"Stock",products:"Packs",packs:"Packs",catalogs:"Produits & outils",prospects:"Prospection",admins:"Comptes administrateurs",activity:"Journal des actions",suppliers:"Fournisseurs",expenses:"Dépenses",quotes:"Devis professionnels",settings:"Paramètres",profitability:"Rentabilité",sales_codes:"Codes commerciaux"};
+    const titles = {dashboard:"Tableau de bord",orders:"Commandes",customers:"Clients",stock:"Stock",products:"Packs",packs:"Packs",catalogs:"Produits & outils",prospects:"Prospection",admins:"Comptes administrateurs",activity:"Journal des actions",suppliers:"Fournisseurs",expenses:"Dépenses",quotes:"Devis professionnels",settings:"Paramètres",profitability:"Rentabilité",sales_codes:"Codes commerciaux",marketing:"Campagnes e-mail"};
     $("adminTitle").textContent = titles[view] || "Gestion";
     $("adminContent").innerHTML = '<div class="panel loading-panel">Chargement des données…</div>';
     try {
@@ -2641,11 +2645,13 @@
       else if (view === "suppliers") html = await adminSuppliers();
       else if (view === "expenses") html = await adminExpenses();
       else if (view === "quotes") html = await adminQuotes();
+      else if (view === "marketing") html = await adminMarketing();
       else if (view === "profitability") html = await adminProfitability();
       else if (view === "sales_codes") html = await adminSalesCodes();
       else if (view === "settings") html = await adminSettings();
       $("adminContent").innerHTML = html;
       bindAdmin(view);
+      if (view === "marketing") { const button = $("sendMonthlyMarketingBtn"); if (button) button.onclick = sendMonthlyMarketingNow; }
       if (view === "dashboard") startDashboardPresencePolling();
     } catch (error) {
       console.error("Admin view failed", error);
@@ -2822,9 +2828,237 @@
     await showAdminView("orders");
   }
   async function adminCustomers() {
-    const rows = await readRows("customers"); cachedCustomers = rows;
-    return `<div class="panel"><div class="admin-panel-head"><h3>Clients (${rows.length})</h3><span class="small-note">Les comptes inscrits peuvent consulter leurs propres commandes.</span></div>${rows.length ? `<div class="table-wrap"><table class="table"><thead><tr><th>Nom</th><th>Téléphone</th><th>Zone</th><th>Commandes</th><th>Dernière commande</th></tr></thead><tbody>${rows.sort((a,b)=>new Date(b.last_order_at||0)-new Date(a.last_order_at||0)).map(c=>`<tr><td>${esc(c.name)}</td><td>${esc(c.phone)}</td><td>${esc(c.zone || "")}</td><td>${Number(c.orders_count || 0)}</td><td>${esc(fmtDate(c.last_order_at))}</td></tr>`).join("")}</tbody></table></div>` : '<div class="empty">Les clients apparaîtront après leurs premières commandes.</div>'}</div>`;
+    const customerRows = await readRows("customers");
+    cachedCustomers = customerRows;
+
+    const profileRows = [];
+    const pageSize = 500;
+    for (let offset = 0; ; offset += pageSize) {
+      const { data, error } = await client.from("profiles")
+        .select("id,full_name,email,phone,phone_secondary,delivery_region,delivery_city,delivery_commune,delivery_neighborhood,delivery_address,marketing_opt_in,role,created_at")
+        .eq("role", "customer").order("created_at", { ascending: false }).range(offset, offset + pageSize - 1);
+      if (error) throw error;
+      profileRows.push(...(data || []));
+      if (!data || data.length < pageSize) break;
+    }
+
+    const profilesById = new Map(profileRows.map(row => [row.id, row]));
+    const profilesByPhone = new Map();
+    profileRows.forEach(profile => {
+      const key = normalizeCustomerWhatsapp(profile.phone);
+      if (!key) return;
+      if (!profilesByPhone.has(key)) profilesByPhone.set(key, []);
+      profilesByPhone.get(key).push(profile);
+    });
+    const matchedProfileIds = new Set();
+    const enriched = customerRows.map(customer => {
+      let profile = customer.user_id ? profilesById.get(customer.user_id) || null : null;
+      if (!profile) {
+        const matches = profilesByPhone.get(normalizeCustomerWhatsapp(customer.phone)) || [];
+        if (matches.length === 1) profile = matches[0];
+      }
+      if (profile) matchedProfileIds.add(profile.id);
+      return { ...customer, profile, list_id: String(customer.id) };
+    });
+    profileRows.forEach(profile => {
+      if (!matchedProfileIds.has(profile.id)) {
+        enriched.push({
+          id: "profile:" + profile.id,
+          list_id: "profile:" + profile.id,
+          name: profile.full_name || "Client SAMA-PACK",
+          phone: profile.phone || "",
+          address: profile.delivery_address || "",
+          zone: [profile.delivery_region, profile.delivery_city, profile.delivery_commune, profile.delivery_neighborhood].filter(Boolean).join(", "),
+          orders_count: 0,
+          last_order_at: null,
+          created_at: profile.created_at,
+          updated_at: profile.created_at,
+          user_id: profile.id,
+          profile,
+        });
+      }
+    });
+
+    const subscribedCount = profileRows.filter(profile => profile.marketing_opt_in === true).length;
+    const tableHtml = enriched.length ? '<div class="table-wrap"><table class="table"><thead><tr><th>Client</th><th>Contact</th><th>Zone</th><th>Commandes</th><th>Dernière commande</th><th>E-mails commerciaux</th><th>Fiche</th></tr></thead><tbody>' +
+      enriched.slice().sort((a,b) => new Date(b.last_order_at || b.created_at || 0) - new Date(a.last_order_at || a.created_at || 0)).map(customer => {
+        const profile = customer.profile || {};
+        const name = profile.full_name || customer.name || "Client";
+        const email = profile.email || "";
+        const subscribed = profile.marketing_opt_in === true;
+        return '<tr><td><strong>' + esc(name) + '</strong><br><span class="small-note">' + esc(email || "E-mail non renseigné") + '</span></td>' +
+          '<td>' + esc(profile.phone || customer.phone || "—") + (profile.phone_secondary ? '<br><span class="small-note">Secondaire : ' + esc(profile.phone_secondary) + '</span>' : '') + '</td>' +
+          '<td>' + esc([profile.delivery_commune, profile.delivery_neighborhood].filter(Boolean).join(" · ") || customer.zone || "—") + '</td>' +
+          '<td>' + Number(customer.orders_count || 0) + '</td><td>' + esc(fmtDate(customer.last_order_at)) + '</td>' +
+          '<td><span class="status ' + (subscribed ? 'delivered' : 'cancelled') + '">' + (subscribed ? 'Abonné' : 'Non abonné') + '</span></td>' +
+          '<td><button class="btn small secondary" type="button" onclick="showCustomerProfile(\'' + esc(customer.list_id) + '\')">Fiche client</button></td></tr>';
+      }).join("") + '</tbody></table></div>' : '<div class="empty">Aucun client enregistré pour le moment.</div>';
+    return '<div class="panel admin-customers-intro"><div class="admin-panel-head"><h3>Clients et fiches clients (' + enriched.length + ')</h3><span class="small-note">' + subscribedCount + ' compte(s) autorisent les e-mails commerciaux.</span></div><p class="small-note">Les comptes clients inscrits et les clients historiques sont listés. Ouvre une fiche pour consulter les coordonnées, les commandes, les paiements, les devis et les rappels, puis contacter le client sur WhatsApp.</p>' + tableHtml + '</div>';
   }
+
+  async function showCustomerProfile(customerId) {
+    if (!isAdmin()) return toast("Accès réservé aux administrateurs.", true);
+    if (!customerId) return toast("Référence client manquante.", true);
+    const profileReference = String(customerId).startsWith("profile:");
+    const requestedProfileId = profileReference ? String(customerId).slice("profile:".length) : null;
+    let customer = null;
+    let profile = null;
+    if (profileReference) {
+      const result = await client.from("profiles")
+        .select("id,full_name,email,phone,phone_secondary,delivery_region,delivery_city,delivery_commune,delivery_neighborhood,delivery_address,delivery_landmark,delivery_instructions,role,created_at,avatar_path,marketing_opt_in")
+        .eq("id", requestedProfileId).eq("role", "customer").maybeSingle();
+      if (result.error || !result.data) return toast(errorMessage(result.error || new Error("Client introuvable.")), true);
+      profile = result.data;
+      customer = {
+        id: "profile:" + profile.id,
+        user_id: profile.id,
+        name: profile.full_name || "Client SAMA-PACK",
+        phone: profile.phone || "",
+        address: profile.delivery_address || "",
+        zone: [profile.delivery_region, profile.delivery_city, profile.delivery_commune, profile.delivery_neighborhood].filter(Boolean).join(", "),
+        orders_count: 0,
+        last_order_at: null,
+        created_at: profile.created_at,
+        updated_at: profile.created_at,
+      };
+    } else {
+      const { data, error } = await client.from("customers")
+        .select("id,name,phone,address,zone,orders_count,last_order_at,created_at,updated_at,user_id")
+        .eq("id", customerId).maybeSingle();
+      if (error || !data) return toast(errorMessage(error || new Error("Client introuvable.")), true);
+      customer = data;
+    }
+
+    const orderColumns = "id,customer_id,user_id,created_at,status,slot,payment,subtotal,delivery,total,customer_name,customer_phone,delivery_address,delivery_zone,payment_choice,payment_status,amount_paid,updated_at,delivery_cost_actual";
+    let orderQuery = client.from("orders").select(orderColumns);
+    orderQuery = profileReference
+      ? orderQuery.eq("user_id", requestedProfileId)
+      : orderQuery.eq("customer_id", customerId);
+    const primaryOrderResult = await orderQuery.order("created_at", { ascending: false }).limit(100);
+    if (primaryOrderResult.error) return toast(errorMessage(primaryOrderResult.error), true);
+    let linkedProfileId = customer.user_id || (primaryOrderResult.data || []).find(order => order.user_id)?.user_id || null;
+    if (!requestedProfileId && !linkedProfileId) {
+      const normalizedPhone = normalizeCustomerWhatsapp(customer.phone);
+      if (normalizedPhone) {
+        const phoneProfileResult = await client.from("profiles").select("id")
+          .eq("role", "customer").eq("phone", normalizedPhone).limit(2);
+        if (!phoneProfileResult.error && phoneProfileResult.data?.length === 1) linkedProfileId = phoneProfileResult.data[0].id;
+      }
+    }
+    const profileId = requestedProfileId || linkedProfileId;
+
+    let quotes = [], subscriptions = [], reviews = [], userOrders = [], notifications = [], businessAccount = null;
+    if (profileId) {
+      const [profileResult, linkedOrdersResult, quotesResult, subscriptionsResult, reviewsResult, notificationResult, businessResult] = await Promise.all([
+        client.from("profiles").select("id,full_name,email,phone,phone_secondary,delivery_region,delivery_city,delivery_commune,delivery_neighborhood,delivery_address,delivery_landmark,delivery_instructions,role,created_at,avatar_path,marketing_opt_in").eq("id", profileId).maybeSingle(),
+        client.from("orders").select(orderColumns).eq("user_id", profileId).order("created_at", { ascending: false }).limit(100),
+        client.from("quotes").select("id,company,phone,email,need,message,status,created_at").eq("user_id", profileId).order("created_at", { ascending: false }).limit(30),
+        client.from("replenishment_subscriptions").select("id,label,frequency,next_reminder_at,status,created_at").eq("user_id", profileId).order("next_reminder_at", { ascending: true }).limit(30),
+        client.from("product_reviews").select("id,product_id,rating,review,display_name,created_at").eq("user_id", profileId).order("created_at", { ascending: false }).limit(30),
+        client.from("notifications").select("id,type,title,message,entity_type,entity_id,read_at,created_at").eq("recipient_user_id", profileId).order("created_at", { ascending: false }).limit(40),
+        client.from("business_accounts").select("id,company_name,sector,contact_name,phone,email,address,delivery_zone,created_at,updated_at").eq("owner_user_id", profileId).maybeSingle()
+      ]);
+      if (profileResult.error) console.warn("Fiche profil client partielle", profileResult.error);
+      else profile = profileResult.data || null;
+      if (linkedOrdersResult.error) console.warn("Historique par compte indisponible", linkedOrdersResult.error);
+      else userOrders = linkedOrdersResult.data || [];
+      quotes = quotesResult.error ? [] : (quotesResult.data || []);
+      subscriptions = subscriptionsResult.error ? [] : (subscriptionsResult.data || []);
+      reviews = reviewsResult.error ? [] : (reviewsResult.data || []);
+      notifications = notificationResult.error ? [] : (notificationResult.data || []);
+      businessAccount = businessResult.error ? null : (businessResult.data || null);
+    } else {
+      const quoteResult = await client.from("quotes").select("id,company,phone,email,need,message,status,created_at")
+        .eq("phone", customer.phone).order("created_at", { ascending: false }).limit(20);
+      quotes = quoteResult.error ? [] : (quoteResult.data || []);
+    }
+
+    const orderMap = new Map();
+    [...(primaryOrderResult.data || []), ...userOrders].forEach(order => orderMap.set(order.id, order));
+    const orders = [...orderMap.values()].sort((a,b) => new Date(b.created_at) - new Date(a.created_at)).slice(0, 100);
+    const orderIds = orders.map(order => order.id);
+    let orderItems = [];
+    if (orderIds.length) {
+      const itemResult = await client.from("order_items")
+        .select("id,order_id,product_id,product_name,quantity,unit_price")
+        .in("order_id", orderIds);
+      if (itemResult.error) console.warn("Lignes de commande client indisponibles", itemResult.error);
+      else orderItems = itemResult.data || [];
+    }
+
+    let avatarUrl = "";
+    if (profile?.avatar_path) {
+      const { data: signed, error } = await client.storage.from("sama-pack-avatars").createSignedUrl(profile.avatar_path, 60 * 60);
+      if (!error) avatarUrl = signed?.signedUrl || "";
+    }
+
+    cachedOrders = orders;
+    cachedOrderItems = orderItems;
+    cachedCustomers = [customer];
+    const orderItemsById = new Map();
+    orderItems.forEach(item => {
+      if (!orderItemsById.has(item.order_id)) orderItemsById.set(item.order_id, []);
+      orderItemsById.get(item.order_id).push(item);
+    });
+    const name = profile?.full_name || customer.name || "Client";
+    const phone = profile?.phone || customer.phone || "";
+    const secondaryPhone = profile?.phone_secondary || "";
+    const email = profile?.email || quotes.find(quote => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(quote.email || "")))?.email || "";
+    const zone = [profile?.delivery_region, profile?.delivery_city, profile?.delivery_commune, profile?.delivery_neighborhood].filter(Boolean).join(" · ") || customer.zone || "";
+    const address = [profile?.delivery_address || customer.address, profile?.delivery_landmark ? "Repère : " + profile.delivery_landmark : "", profile?.delivery_instructions ? "Instructions : " + profile.delivery_instructions : ""].filter(Boolean).join(" · ");
+    const whatsapp = normalizeCustomerWhatsapp(phone);
+    const whatsappHref = /^[1-9]\d{7,14}$/.test(whatsapp) ? "https://wa.me/" + whatsapp + "?text=" + encodeURIComponent("Bonjour " + name + ", je vous contacte depuis SAMA-PACK au sujet de vos commandes et de vos besoins en produits de nettoyage et d’hygiène.") : "";
+    const nonCancelled = orders.filter(order => order.status !== "cancelled");
+    const totalOrders = Math.max(Number(customer.orders_count || 0), orders.length);
+    const totalValue = nonCancelled.reduce((sum, order) => sum + Number(order.total || 0), 0);
+    const paidValue = nonCancelled.reduce((sum, order) => sum + Number(order.amount_paid || 0), 0);
+    const balanceValue = nonCancelled.reduce((sum, order) => sum + Math.max(0, Number(order.total || 0) - Number(order.amount_paid || 0)), 0);
+    const deliveredCount = orders.filter(order => order.status === "delivered").length;
+    const identityMarkup = avatarUrl
+      ? '<img src="' + esc(avatarUrl) + '" alt="" class="customer-detail-avatar-image">'
+      : '<span class="customer-detail-avatar-fallback">' + esc(name.trim().split(/\s+/).filter(Boolean).slice(0,2).map(part => part.charAt(0)).join("").toUpperCase() || "CL") + '</span>';
+    const orderMarkup = orders.length ? orders.map(order => {
+      const lines = orderItemsById.get(order.id) || [];
+      const itemsMarkup = lines.length
+        ? '<ul class="customer-order-items">' + lines.map(item => '<li>' + Number(item.quantity) + ' × ' + esc(item.product_name) + ' — ' + money(item.unit_price) + '</li>').join("") + '</ul>'
+        : '<p class="small-note">Détail des articles indisponible pour cette commande.</p>';
+      const balance = Math.max(0, Number(order.total || 0) - Number(order.amount_paid || 0));
+      return '<article class="customer-history-order"><div class="customer-history-order-head"><div><strong>' + esc(order.id) + '</strong><span class="small-note">' + esc(fmtDate(order.created_at)) + '</span></div><span class="status ' + esc(order.status) + '">' + esc(statusLabel(order.status)) + '</span><strong>' + money(order.total) + '</strong></div>' +
+        itemsMarkup +
+        '<div class="customer-history-order-meta"><span>Mode : ' + esc(order.payment_choice || order.payment || "—") + '</span><span>Paiement : ' + esc(paymentStatusLabel(order.payment_status)) + '</span><span>Encaissé : ' + money(order.amount_paid || 0) + '</span><span>Solde : ' + money(balance) + '</span></div>' +
+        (order.slot ? '<p class="small-note">Créneau : ' + esc(order.slot) + '</p>' : '') +
+        ((order.delivery_address || order.delivery_zone) ? '<p class="small-note">Livraison : ' + esc([order.delivery_address, order.delivery_zone].filter(Boolean).join(" · ")) + '</p>' : '') +
+        '<button class="btn ghost small" type="button" onclick="showOrder(\'' + esc(order.id) + '\')">Voir le détail de la commande</button></article>';
+    }).join("") : '<div class="empty">Aucune commande liée à cette fiche.</div>';
+    const quoteMarkup = quotes.length ? '<div class="customer-detail-list">' + quotes.map(quote => '<article class="customer-detail-list-item"><strong>' + esc(quote.company || "Demande de devis") + '</strong><span class="status ' + esc(quote.status) + '">' + esc(statusLabel(quote.status)) + '</span><p>' + esc(quote.need || "") + '</p><small>' + esc(fmtDate(quote.created_at)) + (quote.email ? " · " + esc(quote.email) : "") + '</small></article>').join("") + '</div>' : '<p class="small-note">Aucune demande de devis liée à ce compte.</p>';
+    const subscriptionMarkup = subscriptions.length ? '<div class="customer-detail-list">' + subscriptions.map(item => '<article class="customer-detail-list-item"><strong>' + esc(item.label) + '</strong><span class="status ' + (item.status === "active" ? "delivered" : "processing") + '">' + esc(item.status === "active" ? "Actif" : item.status) + '</span><p>' + esc(frequencyLabel(item.frequency)) + ' · prochaine échéance : ' + esc(fmtDate(item.next_reminder_at)) + '</p></article>').join("") + '</div>' : '<p class="small-note">Aucun rappel de réapprovisionnement programmé.</p>';
+    const reviewsMarkup = reviews.length ? '<div class="customer-detail-list">' + reviews.map(review => '<article class="customer-detail-list-item"><strong>' + esc(getP(String(review.product_id))?.name || String(review.product_id)) + ' · ' + Number(review.rating) + '/5</strong><p>' + esc(review.review || "") + '</p><small>' + esc(fmtDate(review.created_at)) + '</small></article>').join("") + '</div>' : '<p class="small-note">Aucun avis produit publié par ce client.</p>';
+    const businessMarkup = businessAccount
+      ? '<div class="customer-detail-info-grid"><div><span>Structure</span><strong>' + esc(businessAccount.company_name || "—") + '</strong></div><div><span>Secteur</span><strong>' + esc(businessAccount.sector || "—") + '</strong></div><div><span>Contact structure</span><strong>' + esc(businessAccount.contact_name || "—") + '</strong></div><div><span>Téléphone professionnel</span><strong>' + esc(businessAccount.phone || "—") + '</strong></div><div><span>E-mail professionnel</span><strong>' + esc(businessAccount.email || "—") + '</strong></div><div class="customer-detail-info-full"><span>Adresse / zone de livraison</span><strong>' + esc([businessAccount.address, businessAccount.delivery_zone].filter(Boolean).join(" · ") || "—") + '</strong></div></div>'
+      : '<p class="small-note">Aucun compte professionnel associé à ce client.</p>';
+    const notificationMarkup = notifications.length
+      ? '<div class="customer-detail-list">' + notifications.map(note => '<article class="customer-detail-list-item"><strong>' + esc(note.title || note.type || "Notification") + '</strong><span class="status ' + (note.read_at ? "" : "processing") + '">' + (note.read_at ? "Lue" : "Non lue") + '</span><p>' + esc(note.message || "") + '</p><small>' + esc(fmtDate(note.created_at)) + (note.entity_id ? " · " + esc(note.entity_id) : "") + '</small></article>').join("") + '</div>'
+      : '<p class="small-note">Aucune notification conservée pour ce compte.</p>';
+    showModal(
+      '<div class="modal-head customer-detail-modal-head"><div><div class="eyebrow">CRM · DOSSIER CLIENT</div><h2>Fiche client</h2><p class="small-note">Informations et historique consolidés depuis SAMA-PACK.</p></div><button class="close" type="button" onclick="closeModal()" aria-label="Fermer">✕</button></div>' +
+      '<section class="customer-detail-identity">' + identityMarkup + '<div class="customer-detail-identity-copy"><span class="customer-detail-kicker">' + esc(profile?.role === "customer" ? "Compte client" : "Fiche client") + '</span><h3>' + esc(name) + '</h3><p>' + esc(email || "Adresse e-mail non renseignée") + '</p><small>Client depuis ' + esc(fmtDate(customer.created_at)) + '</small></div></section>' +
+      '<div class="customer-detail-contact-actions">' + (whatsappHref ? '<a class="btn primary" href="' + esc(whatsappHref) + '" target="_blank" rel="noopener noreferrer">Discuter avec lui sur WhatsApp</a>' : '<span class="small-note">Numéro WhatsApp non valide ou non renseigné.</span>') + (email ? '<a class="btn ghost" href="mailto:' + esc(email) + '">Envoyer un e-mail</a>' : '') + '</div>' +
+      '<section class="customer-detail-stats"><article><span>Commandes</span><strong>' + totalOrders + '</strong></article><article><span>Livrées</span><strong>' + deliveredCount + '</strong></article><article><span>Valeur des commandes non annulées</span><strong>' + money(totalValue) + '</strong></article><article><span>Montant encaissé</span><strong>' + money(paidValue) + '</strong></article><article><span>Solde restant estimé</span><strong>' + money(balanceValue) + '</strong></article><article><span>Dernière commande</span><strong>' + esc(fmtDate(customer.last_order_at) || "—") + '</strong></article></section>' +
+      '<section class="customer-detail-section"><div class="customer-detail-section-heading"><h3>Coordonnées et livraison</h3></div><div class="customer-detail-info-grid">' +
+      '<div><span>WhatsApp principal</span><strong>' + esc(phone || "Non renseigné") + '</strong></div><div><span>Téléphone secondaire</span><strong>' + esc(secondaryPhone || "Non renseigné") + '</strong></div>' +
+      '<div><span>Zone</span><strong>' + esc(zone || "Non renseignée") + '</strong></div><div class="customer-detail-info-full"><span>Adresse précise</span><strong>' + esc(address || "Non renseignée") + '</strong></div>' +
+      '<div><span>E-mails commerciaux</span><strong>' + (profile?.marketing_opt_in ? 'Consentement actif' : 'Non activés') + '</strong></div><div><span>Compte créé</span><strong>' + esc(fmtDate(profile?.created_at || customer.created_at)) + '</strong></div></div></section>' +
+      '<section class="customer-detail-section"><div class="customer-detail-section-heading"><h3>Historique des commandes</h3><span>' + orders.length + ' affichée(s), jusqu’à 100</span></div>' + orderMarkup + '</section>' +
+      '<section class="customer-detail-section"><div class="customer-detail-section-heading"><h3>Devis professionnels</h3></div>' + quoteMarkup + '</section>' +
+      '<section class="customer-detail-section"><div class="customer-detail-section-heading"><h3>Rappels de réapprovisionnement</h3></div>' + subscriptionMarkup + '</section>' +
+      '<section class="customer-detail-section"><div class="customer-detail-section-heading"><h3>Compte professionnel</h3></div>' + businessMarkup + '</section>' +
+      '<section class="customer-detail-section"><div class="customer-detail-section-heading"><h3>Notifications du compte</h3><span>' + notifications.length + ' récente(s)</span></div>' + notificationMarkup + '</section>' +
+      '<section class="customer-detail-section"><div class="customer-detail-section-heading"><h3>Avis publiés</h3></div>' + reviewsMarkup + '</section>'
+    );
+    const modalCard = document.querySelector(".modal-card");
+    if (modalCard) modalCard.classList.add("admin-customer-detail-modal");
+  }
+
   async function adminStock() {
     const [rows, productRows, linkResult, supplierResult] = await Promise.all([
       readRows("stock"),
@@ -2936,6 +3170,52 @@
     const rows = await readRows("expenses"); cachedExpenses = rows;
     return `<div class="panel"><h3>Enregistrer une dépense</h3><form id="expenseForm" class="admin-form"><input class="input" name="label" required maxlength="200" placeholder="Libellé"><input class="input" type="number" min="0" step="1" name="amount" required placeholder="Montant FCFA"><input class="input" name="category" placeholder="Catégorie"><input class="input" type="date" name="date" value="${new Date().toISOString().slice(0,10)}"><button class="btn primary full" type="submit">Enregistrer la dépense</button></form></div><div style="height:16px"></div><div class="panel"><h3>Dépenses — Total ${money(rows.reduce((s,x)=>s+Number(x.amount||0),0))}</h3>${rows.length ? `<div class="table-wrap"><table class="table"><thead><tr><th>Date</th><th>Libellé</th><th>Catégorie</th><th>Montant</th></tr></thead><tbody>${rows.sort((a,b)=>new Date(b.expense_date)-new Date(a.expense_date)).map(e=>`<tr><td>${esc(e.expense_date)}</td><td>${esc(e.label)}</td><td>${esc(e.category||"")}</td><td>${money(e.amount)}</td></tr>`).join("")}</tbody></table></div>` : '<div class="empty">Aucune dépense enregistrée.</div>'}</div>`;
   }
+  async function adminMarketing() {
+    const [campaigns, subscriberCountResult] = await Promise.all([
+      readRows("customer_email_campaigns", "id,campaign_key,campaign_type,subject,product_id,status,recipients_total,recipients_sent,recipients_failed,error_message,created_at,completed_at"),
+      client.from("profiles").select("id", { count: "exact", head: true }).eq("role", "customer").eq("marketing_opt_in", true)
+    ]);
+    if (subscriberCountResult.error) throw subscriberCountResult.error;
+    const subscribers = Number(subscriberCountResult.count || 0);
+    const sorted = campaigns.slice().sort((a,b) => new Date(b.created_at) - new Date(a.created_at));
+    const sent = campaigns.reduce((total, row) => total + Number(row.recipients_sent || 0), 0);
+    const promotionCount = campaigns.filter(row => row.campaign_type === "promotion").length;
+    const monthCount = campaigns.filter(row => row.campaign_type === "monthly").length;
+    const statusLabelForCampaign = status => ({processing:"En cours",sent:"Envoyée",partial:"Partielle",failed:"Échec",skipped:"Sans envoi"})[status] || status || "—";
+    const statusCss = status => ({processing:"processing",sent:"delivered",partial:"processing",failed:"cancelled",skipped:""})[status] || "";
+    const history = sorted.length
+      ? '<div class="table-wrap"><table class="table"><thead><tr><th>Date</th><th>Campagne</th><th>Objet</th><th>Statut</th><th>Envois réussis</th><th>Échecs</th><th>Détail</th></tr></thead><tbody>' +
+        sorted.map(row => '<tr><td>' + esc(fmtDate(row.created_at)) + '</td><td>' + (row.campaign_type === "promotion" ? "Promotion" : "Mensuelle") + '</td><td><strong>' + esc(row.subject) + '</strong></td><td><span class="status ' + statusCss(row.status) + '">' + statusLabelForCampaign(row.status) + '</span></td><td>' + Number(row.recipients_sent || 0) + ' / ' + Number(row.recipients_total || 0) + '</td><td>' + Number(row.recipients_failed || 0) + '</td><td>' + esc(row.error_message || "—") + '</td></tr>').join("") +
+        '</tbody></table></div>'
+      : '<div class="empty">Aucune campagne commerciale n’a encore été envoyée.</div>';
+    return '<section class="marketing-admin-hero"><div><div class="eyebrow">FIDÉLISATION CLIENT</div><h3>Campagnes e-mail SAMA-PACK</h3><p>Les e-mails promotionnels sont envoyés aux clients qui ont explicitement accepté de les recevoir. Les e-mails de commande restent indépendants de ce consentement.</p></div></section>' +
+      '<section class="marketing-admin-stats"><article class="marketing-admin-stat"><span>Clients abonnés</span><strong>' + subscribers + '</strong><small>Consentement commercial actif</small></article>' +
+      '<article class="marketing-admin-stat"><span>Campagnes promotion</span><strong>' + promotionCount + '</strong><small>Envoi lors de l’activation d’une vente flash</small></article>' +
+      '<article class="marketing-admin-stat"><span>Campagnes mensuelles</span><strong>' + monthCount + '</strong><small>Programmées le 1er à 08 h, heure de Dakar</small></article>' +
+      '<article class="marketing-admin-stat"><span>E-mails envoyés</span><strong>' + sent + '</strong><small>Total cumulé depuis l’activation</small></article></section>' +
+      '<section class="panel marketing-admin-schedule"><div><div class="eyebrow">AUTOMATISATION</div><h4>Le prochain rendez-vous client</h4><p>Le premier jour de chaque mois à 08 h, SAMA-PACK présente quelques essentiels disponibles et les promotions en cours. Chaque client reçoit un e-mail individuel avec un lien de désabonnement.</p><p class="small-note">Une vente flash publiée déclenche automatiquement un message dédié. Modifier le prix, la durée ou le texte d’une promotion active peut déclencher une nouvelle campagne pour cette nouvelle version.</p></div>' +
+      (isGeneralAdmin() ? '<button class="btn primary marketing-send-now" type="button" id="sendMonthlyMarketingBtn">Envoyer la campagne du mois maintenant</button>' : '<p class="small-note">L’envoi manuel est réservé à l’administrateur général.</p>') +
+      '</section><section class="panel marketing-admin-history"><div class="admin-panel-head"><h3>Historique des campagnes (' + campaigns.length + ')</h3><button class="btn ghost small" type="button" onclick="showAdminView(\'marketing\')">Actualiser</button></div>' + history + '</section>';
+  }
+
+  async function sendMonthlyMarketingNow() {
+    if (!isGeneralAdmin()) return toast("Seul l’administrateur général peut lancer une campagne manuellement.", true);
+    if (!window.confirm("Envoyer maintenant la campagne mensuelle à tous les clients ayant accepté les e-mails commerciaux ? Chaque client recevra un message personnalisé. Cette action envoie de vrais e-mails.")) return;
+    const button = $("sendMonthlyMarketingBtn");
+    if (button) { button.disabled = true; button.dataset.oldText = button.textContent; button.textContent = "Préparation de la campagne…"; }
+    try {
+      const { data, error } = await client.functions.invoke("sama-customer-marketing", { body: { action: "monthly" } });
+      if (error || data?.error || data?.ok === false) throw new Error(data?.error || errorMessage(error || new Error("La campagne n’a pas pu être envoyée.")));
+      toast(data?.message || "Campagne mensuelle traitée.");
+      await showAdminView("marketing");
+    } catch (error) {
+      toast(errorMessage(error), true);
+    } finally {
+      const currentButton = $("sendMonthlyMarketingBtn");
+      if (currentButton) { currentButton.disabled = false; currentButton.textContent = currentButton.dataset.oldText || "Envoyer la campagne du mois maintenant"; delete currentButton.dataset.oldText; }
+    }
+  }
+
   async function adminQuotes() {
     const rows = await readRows("quotes"); cachedQuotes = rows.sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
     return `<div class="panel"><h3>Demandes de devis (${rows.length})</h3>${rows.length ? `<div class="table-wrap"><table class="table"><thead><tr><th>Référence</th><th>Date</th><th>Structure</th><th>Besoin</th><th>Contact</th><th>Statut</th></tr></thead><tbody>${cachedQuotes.map(q=>`<tr><td>${esc(q.id)}</td><td>${esc(fmtDate(q.created_at))}</td><td>${esc(q.company)}</td><td>${esc(q.need)}<br><span class="small-note">${esc(q.message||"")}</span></td><td>${esc(q.phone)}<br><span class="small-note">${esc(q.email||"")}</span></td><td><select class="input" onchange="setQuoteStatus('${esc(q.id)}',this.value)">${["new","processing","won","lost"].map(s=>`<option ${q.status===s?"selected":""} value="${s}">${esc(statusLabel(s))}</option>`).join("")}</select></td></tr>`).join("")}</tbody></table></div>` : '<div class="empty">Aucune demande de devis.</div>'}</div>`;
@@ -3148,6 +3428,6 @@
   }
 
   // Functions called by inline storefront/admin controls.
-  Object.assign(window,{openProduct,addToCart,closeModal,changeQty,checkoutModal,retryOrderPayment,resendPaymentConfirmation,showAccountHome,reorderOrder,openBudgetPackBuilder,suggestBudgetPack,changeBudgetBuilderQty,addBudgetPackToCart,signOut,renderAuthForm,resetPassword,enableBrowserNotifications,loadAndShowNotifications,markNotificationRead,showAdminView,editPack,cancelPackEdit,togglePack,setOrderStatus,showOrder,setQuoteStatus,goToProductPage,movePromo,goToPromo,selectReviewRating,editProspect,deleteProspect,setProspectStatus,editCatalogItem,archiveCatalogItem,removeAdmin,openSubscriptionEditor,addSubscriptionLine,removeSubscriptionLine,toggleSubscriptionStatus,prepareSubscriptionOrder,advanceSubscriptionReminder,deleteSubscription,openOrderWhatsApp,openB2BWorkspace,addB2BLine,removeB2BLine,submitB2BQuantityOrder,submitB2BQuote,setOrderDeliveryCost,toggleSalesCode,deleteSalesCode,copySalesLink});
+  Object.assign(window,{openProduct,addToCart,closeModal,changeQty,checkoutModal,retryOrderPayment,resendPaymentConfirmation,showAccountHome,reorderOrder,openBudgetPackBuilder,suggestBudgetPack,changeBudgetBuilderQty,addBudgetPackToCart,signOut,renderAuthForm,resetPassword,enableBrowserNotifications,loadAndShowNotifications,markNotificationRead,showAdminView,editPack,cancelPackEdit,togglePack,setOrderStatus,showOrder,setQuoteStatus,goToProductPage,movePromo,goToPromo,selectReviewRating,editProspect,deleteProspect,setProspectStatus,editCatalogItem,archiveCatalogItem,removeAdmin,openSubscriptionEditor,addSubscriptionLine,removeSubscriptionLine,toggleSubscriptionStatus,prepareSubscriptionOrder,advanceSubscriptionReminder,deleteSubscription,openOrderWhatsApp,openB2BWorkspace,addB2BLine,removeB2BLine,submitB2BQuantityOrder,submitB2BQuote,setOrderDeliveryCost,toggleSalesCode,deleteSalesCode,copySalesLink,showCustomerProfile,sendMonthlyMarketingNow});
   start().catch(err => { console.error(err); toast("Initialisation impossible. Recharge la page ou contacte l’administrateur.",true); });
 })();
