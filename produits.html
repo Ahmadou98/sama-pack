@@ -16,6 +16,7 @@
 <title>SAMA-PACK | Produits de nettoyage à l’unité</title>
 <script>document.documentElement.classList.add("maintenance-checking");window.setTimeout(()=>document.documentElement.classList.remove("maintenance-checking"),7000);</script>
 <link rel="stylesheet" href="styles.css?v=20261030-header-v2">
+<script src="header.js?v=20261030-unified-actions" defer></script>
 </head>
 <body data-catalog-type="product">
 <div id="toast" class="toast"></div>
@@ -24,13 +25,11 @@
   <div class="wrap nav">
     <a class="brand" href="/#home" aria-label="SAMA-PACK, accueil"><span class="brand-mark">S</span><span>SAMA<span>-PACK</span></span></a>
     <div class="nav-actions">
-      <button class="icon-btn" id="openCartBtn" type="button" aria-label="Panier" title="Panier">🛒 <span id="cartCount">0</span></button>
-      <button class="icon-btn notification-btn" id="notificationBtn" type="button" aria-label="Notifications" title="Notifications">🔔 <span id="notificationCount" class="notification-count hidden">0</span></button>
-
-
-            <button class="btn small ghost" id="accountBtn" type="button">Connexion</button>
-      <div class="mobile-menu-shell">
-        <button class="mobile-menu-toggle" type="button" aria-label="Ouvrir le menu" aria-controls="infoFloatingMenu" aria-expanded="false">
+      <button class="icon-btn" id="openCartBtn" data-header-action="cart" type="button" aria-label="Panier" title="Panier">🛒 <span id="cartCount">0</span></button>
+      <button class="icon-btn notification-btn" id="notificationBtn" data-header-action="notifications" type="button" aria-label="Notifications" title="Notifications">🔔 <span id="notificationCount" class="notification-count hidden">0</span></button>
+      <button class="btn small ghost" id="accountBtn" data-header-action="account" type="button">Connexion</button>
+      <div class="mobile-menu-shell" id="mobileMenuShell">
+        <button class="mobile-menu-toggle" id="mobileMenuToggle" type="button" aria-label="Ouvrir le menu" aria-controls="infoFloatingMenu" aria-expanded="false">
           <span class="mobile-menu-icon" aria-hidden="true"><i></i><i></i><i></i></span>
         </button>
         <nav id="infoFloatingMenu" class="mobile-nav-menu" aria-label="Menu principal">
@@ -38,31 +37,22 @@
           <a class="mobile-nav-item" href="/#catalogue">▦ <small>Catalogue et packs</small></a>
           <a class="mobile-nav-item" href="produits.html">◫ <small>Produits</small></a>
           <a class="mobile-nav-item" href="comment-ca-marche.html">ⓘ <small>Comment ça marche</small></a>
+          <a class="mobile-nav-item" href="outils.html">▤ <small>Outils de nettoyage</small></a>
           <a class="mobile-nav-item" href="/#b2b">▤ <small>Professionnels</small></a>
           <a class="mobile-nav-item" href="contact.html">✉ <small>Contact</small></a>
           <a class="mobile-nav-item" href="conditions-vente.html">▧ <small>Conditions de vente</small></a>
           <a class="mobile-nav-item" href="livraison-retours.html">↗ <small>Livraison et retours</small></a>
           <a class="mobile-nav-item" href="confidentialite.html">♧ <small>Confidentialité</small></a>
+          <a id="courierMobileLink" class="mobile-nav-item hidden" href="livraisons.html"><span aria-hidden="true">🚚</span><small>Mes livraisons</small></a>
+          <button type="button" id="mobileManageBtn" data-header-action="manage" class="mobile-nav-item hidden" aria-label="Ouvrir la gestion"><span aria-hidden="true">⚙</span><small>Gestion</small></button>
+          
         </nav>
       </div>
+      <button class="btn small ghost hidden" id="adminBtn" data-header-action="manage" type="button">Gestion</button>
     </div>
   </div>
 </header>
-<script>
-(() => {
- const header=document.querySelector(".info-floating-header");
- if(!header || header.dataset.menuReady==="true") return;
- const shell=header.querySelector(".mobile-menu-shell"),button=header.querySelector(".mobile-menu-toggle"),menu=header.querySelector(".mobile-nav-menu");
- if(!shell||!button||!menu)return;
- header.dataset.menuReady="true";
- const close=()=>{shell.classList.remove("is-open");button.setAttribute("aria-expanded","false");button.setAttribute("aria-label","Ouvrir le menu");};
- button.addEventListener("click",event=>{event.preventDefault();event.stopPropagation();const open=!shell.classList.contains("is-open");shell.classList.toggle("is-open",open);button.setAttribute("aria-expanded",String(open));button.setAttribute("aria-label",open?"Fermer le menu":"Ouvrir le menu");});
- menu.querySelectorAll("a").forEach(link=>link.addEventListener("click",close));
- document.addEventListener("click",event=>{if(!shell.contains(event.target))close();});
- document.addEventListener("keydown",event=>{if(event.key==="Escape")close();});
- header.querySelectorAll("[data-mobile-action]").forEach(button=>button.addEventListener("click",()=>{window.location.href="/#home";}));
-})();
-</script>
+
 
 <main>
 <section id="catalogue" class="section individual-catalog-section alt">
