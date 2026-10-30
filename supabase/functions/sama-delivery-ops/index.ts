@@ -130,6 +130,7 @@ Deno.serve(async (req: Request) => {
         return json({ error: "Cette adresse e-mail est déjà associée à un autre compte. Utilise une adresse dédiée au livreur." }, 409, origin);
       }
       const { data: invitation, error: inviteError } = await admin.auth.admin.inviteUserByEmail(email, {
+        redirectTo: "https://sama-pack.store/livraisons.html",
         data: { full_name: fullName, account_type: "courier" },
       });
       if (inviteError || !invitation.user) return json({ error: inviteError?.message || "L’invitation n’a pas pu être envoyée." }, 400, origin);
