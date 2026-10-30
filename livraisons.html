@@ -1,0 +1,285 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#176b43">
+  <meta name="description" content="Espace livreur SAMA-PACK : livraisons attribuées, confirmation de remise et encaissements.">
+  <title>Mes livraisons | SAMA-PACK</title>
+  <link rel="stylesheet" href="styles.css">
+  <style>
+    body.delivery-page { background:#f4f7f4; min-height:100vh; padding-bottom:28px; }
+    .delivery-header { position:sticky; top:0; z-index:20; background:rgba(255,255,255,.96); border-bottom:1px solid #e2eae3; backdrop-filter:blur(14px); }
+    .delivery-header-inner { min-height:66px; display:flex; align-items:center; justify-content:space-between; gap:12px; }
+    .delivery-brand { display:flex; align-items:center; gap:10px; font-weight:900; color:#173b29; }
+    .delivery-brand-mark { width:38px; height:38px; display:grid; place-items:center; border-radius:12px; background:#176b43; color:white; }
+    .delivery-header-actions { display:flex; align-items:center; gap:8px; }
+    .delivery-main { width:min(900px,92vw); margin:0 auto; padding:26px 0 40px; }
+    .delivery-hero { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; margin-bottom:20px; }
+    .delivery-hero h1 { margin:4px 0 6px; font-size:clamp(27px,5vw,38px); }
+    .delivery-hero p { color:#607267; margin:0; }
+    .delivery-status-summary { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; margin:18px 0 22px; }
+    .delivery-stat { background:#fff; border:1px solid #e1e9e3; border-radius:15px; padding:14px; }
+    .delivery-stat span { display:block; color:#65766b; font-size:12px; font-weight:700; }
+    .delivery-stat strong { display:block; margin-top:4px; font-size:23px; color:#173b29; }
+    .delivery-list { display:grid; gap:14px; }
+    .delivery-card { background:#fff; border:1px solid #e0e8e2; border-radius:18px; padding:18px; box-shadow:0 5px 18px rgba(21,63,37,.04); }
+    .delivery-card-head { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; padding-bottom:13px; border-bottom:1px solid #edf1ed; }
+    .delivery-card-head h2 { margin:0 0 3px; font-size:17px; }
+    .delivery-card-head p { margin:0; color:#6a7b70; font-size:12px; }
+    .delivery-badge { display:inline-flex; align-items:center; padding:6px 9px; border-radius:999px; background:#edf6ef; color:#176b43; font-weight:800; font-size:11px; white-space:nowrap; }
+    .delivery-badge.failed { background:#fff1df; color:#945000; }
+    .delivery-details { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; padding:15px 0; }
+    .delivery-detail { min-width:0; }
+    .delivery-detail.full { grid-column:1/-1; }
+    .delivery-detail span { display:block; color:#76857b; font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.04em; }
+    .delivery-detail strong { display:block; margin-top:4px; font-size:14px; overflow-wrap:anywhere; }
+    .delivery-detail a { color:#176b43; font-weight:800; text-decoration:underline; text-underline-offset:2px; }
+    .delivery-money { background:#f6faf7; border-radius:13px; padding:12px 14px; display:grid; gap:6px; margin-bottom:14px; }
+    .delivery-money-row { display:flex; justify-content:space-between; align-items:center; gap:10px; font-size:13px; }
+    .delivery-money-row strong { white-space:nowrap; }
+    .delivery-money-row.balance { color:#9a4500; font-weight:900; border-top:1px solid #e4ece6; padding-top:7px; }
+    .delivery-actions { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+    .delivery-action-panel { grid-column:1/-1; border:1px solid #e5ece6; border-radius:13px; padding:13px; background:#fbfdfb; }
+    .delivery-action-panel h3 { margin:0 0 10px; font-size:14px; }
+    .delivery-action-panel form { display:grid; gap:9px; }
+    .delivery-action-panel .input { min-width:0; width:100%; }
+    .delivery-action-panel textarea.input { min-height:75px; resize:vertical; }
+    .delivery-action-panel .btn { width:100%; }
+    .delivery-note { color:#66776c; font-size:12px; line-height:1.55; margin:10px 0 0; }
+    .delivery-history { margin-top:12px; padding-top:10px; border-top:1px solid #edf1ed; }
+    .delivery-history summary { cursor:pointer; font-size:12px; font-weight:800; color:#456351; }
+    .delivery-history ul { padding-left:18px; margin:8px 0 0; color:#64756a; font-size:12px; line-height:1.7; }
+    .delivery-panel { background:#fff; border:1px solid #e0e8e2; border-radius:18px; padding:20px; }
+    .delivery-login { width:min(420px,92vw); margin:8vh auto; }
+    .delivery-login h1 { font-size:26px; margin:0 0 8px; }
+    .delivery-login p { color:#67786d; line-height:1.6; }
+    .delivery-login form { display:grid; gap:13px; margin-top:18px; }
+    .delivery-login label { display:grid; gap:6px; font-weight:800; font-size:13px; }
+    .delivery-alert { display:none; padding:12px 14px; border-radius:12px; margin:12px 0; line-height:1.5; font-size:13px; }
+    .delivery-alert.visible { display:block; }
+    .delivery-alert.error { background:#fff0f0; color:#9b2424; }
+    .delivery-alert.success { background:#eaf7ee; color:#17603a; }
+    .delivery-empty { text-align:center; padding:38px 20px; color:#67786d; background:#fff; border:1px dashed #cad8ce; border-radius:18px; }
+    @media(max-width:600px) {
+      .delivery-header-inner { min-height:58px; }
+      .delivery-brand { font-size:14px; gap:7px; }
+      .delivery-brand-mark { width:33px; height:33px; border-radius:10px; }
+      .delivery-header-actions .btn { padding:8px 9px; font-size:11px; }
+      .delivery-main { width:calc(100% - 24px); padding:20px 0 32px; }
+      .delivery-hero { display:block; }
+      .delivery-hero .btn { margin-top:12px; }
+      .delivery-status-summary { gap:7px; }
+      .delivery-stat { padding:11px 9px; }
+      .delivery-stat strong { font-size:19px; }
+      .delivery-stat span { font-size:10px; }
+      .delivery-card { padding:14px; border-radius:16px; }
+      .delivery-card-head { align-items:flex-start; }
+      .delivery-details { gap:11px 9px; }
+      .delivery-actions { grid-template-columns:1fr; }
+    }
+  </style>
+</head>
+<body class="delivery-page">
+  <header class="delivery-header">
+    <div class="wrap delivery-header-inner">
+      <a href="index.html" class="delivery-brand"><span class="delivery-brand-mark">S</span><span>SAMA-PACK <small style="display:block;font-size:10px;color:#6b7c71;font-weight:800;letter-spacing:.08em">ESPACE LIVREUR</small></span></a>
+      <div class="delivery-header-actions">
+        <a class="btn small ghost" href="index.html">Boutique</a>
+        <button id="deliverySignOut" class="btn small ghost" type="button" hidden>Déconnexion</button>
+      </div>
+    </div>
+  </header>
+  <main>
+    <section id="deliveryLogin" class="delivery-panel delivery-login">
+      <div class="eyebrow">ACCÈS PROFESSIONNEL</div>
+      <h1>Connexion livreur</h1>
+      <p>Connecte-toi avec l’adresse e-mail qui a reçu ton invitation SAMA-PACK.</p>
+      <div id="deliveryLoginAlert" class="delivery-alert" role="status"></div>
+      <form id="deliveryLoginForm">
+        <label>Adresse e-mail<input class="input" name="email" type="email" autocomplete="username" required placeholder="livreur@exemple.sn"></label>
+        <label>Mot de passe<input class="input" name="password" type="password" autocomplete="current-password" required placeholder="Mot de passe"></label>
+        <button id="deliveryLoginButton" class="btn primary full" type="submit">Se connecter</button>
+      </form>
+      <p class="small-note">Compte non encore activé ? Ouvre le lien d’invitation reçu par e-mail pour définir ton mot de passe.</p>
+    </section>
+
+    <section id="deliveryWorkspace" class="delivery-main" hidden>
+      <div class="delivery-hero">
+        <div><div class="eyebrow">TOURNÉES ET REMISES</div><h1>Mes livraisons</h1><p id="deliveryWelcome">Bonjour.</p></div>
+        <button id="deliveryRefresh" type="button" class="btn ghost small">↻ Actualiser</button>
+      </div>
+      <div id="deliveryWorkspaceAlert" class="delivery-alert" role="status"></div>
+      <div class="delivery-status-summary">
+        <div class="delivery-stat"><span>À récupérer</span><strong id="deliveryReadyCount">0</strong></div>
+        <div class="delivery-stat"><span>En cours</span><strong id="deliveryActiveCount">0</strong></div>
+        <div class="delivery-stat"><span>Livrées</span><strong id="deliveryDeliveredCount">0</strong></div>
+      </div>
+      <div id="deliveryOrdersList" class="delivery-list"><div class="delivery-empty">Chargement des livraisons…</div></div>
+      <p class="delivery-note">La confirmation de remise nécessite le code à six chiffres envoyé dans les notifications privées du compte client. Ne demande jamais le code avant que le colis soit physiquement remis.</p>
+    </section>
+
+    <section id="deliveryDenied" class="delivery-panel delivery-login" hidden>
+      <div class="eyebrow">ACCÈS REFUSÉ</div><h1>Espace réservé aux livreurs</h1>
+      <p>Ce compte n’a pas le rôle livreur. Contacte l’administrateur général de SAMA-PACK si tu penses qu’il s’agit d’une erreur.</p>
+      <a class="btn primary full" href="index.html">Retour à la boutique</a>
+    </section>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/dist/umd/supabase.js"></script>
+  <script>
+    (() => {
+      "use strict";
+      const SUPABASE_URL = "https://tbxxrnhcfuaeaatlrdtr.supabase.co";
+      const SUPABASE_KEY = "sb_publishable_lDAKRHFWyUYZ-tb23hbbnQ_96zF9Iwo";
+      const $ = id => document.getElementById(id);
+      let client = null, currentUser = null, currentProfile = null, orders = [], events = [];
+      const fmtMoney = value => new Intl.NumberFormat("fr-FR",{maximumFractionDigits:0}).format(Number(value)||0) + " FCFA";
+      const esc = value => String(value ?? "").replace(/[&<>"']/g, ch => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[ch]));
+      const fmtDate = value => value ? new Date(value).toLocaleString("fr-FR",{dateStyle:"short",timeStyle:"short"}) : "—";
+      function alertBox(id,message,kind="error") {
+        const el=$(id); el.textContent=message; el.className="delivery-alert visible "+kind;
+      }
+      function clearAlert(id) { const el=$(id); el.textContent=""; el.className="delivery-alert"; }
+      function statusLabel(order) {
+        if(order.status==="delivered") return "Livrée";
+        if(order.delivery_attempt_status==="failed") return "Passage à reprogrammer";
+        if(order.status==="out_for_delivery") return "En cours de livraison";
+        if(order.status==="prepared") return "Prête à récupérer";
+        return order.status;
+      }
+      async function invoke(action,extra={}) {
+        const {data,error}=await client.functions.invoke("sama-delivery-ops",{body:{action,...extra}});
+        if(error || data?.error) throw new Error(data?.error || error.message || "Action impossible.");
+        return data;
+      }
+      async function refreshOrders() {
+        const {data,error}=await client.from("orders")
+          .select("id,created_at,status,customer_name,customer_phone,delivery_address,delivery_zone,slot,total,delivery,amount_paid,payment_status,payment_choice,assigned_courier_id,delivery_attempt_status,delivery_failure_reason")
+          .eq("assigned_courier_id",currentUser.id)
+          .in("status",["prepared","out_for_delivery","delivered"])
+          .order("created_at",{ascending:false}).limit(100);
+        if(error) throw error;
+        orders=data||[];
+        const ids=orders.map(o=>o.id);
+        if(ids.length) {
+          const result=await client.from("order_delivery_events")
+            .select("id,order_id,event_type,note,amount,payment_method,review_status,created_at")
+            .in("order_id",ids).order("created_at",{ascending:false}).limit(500);
+          if(result.error) throw result.error;
+          events=result.data||[];
+        } else events=[];
+        renderOrders();
+      }
+      function renderOrders() {
+        const ready=orders.filter(o=>o.status==="prepared").length;
+        const active=orders.filter(o=>o.status==="out_for_delivery" && o.delivery_attempt_status==="in_progress").length;
+        const delivered=orders.filter(o=>o.status==="delivered").length;
+        $("deliveryReadyCount").textContent=String(ready);
+        $("deliveryActiveCount").textContent=String(active);
+        $("deliveryDeliveredCount").textContent=String(delivered);
+        const list=$("deliveryOrdersList");
+        if(!orders.length) { list.innerHTML='<div class="delivery-empty"><strong>Aucune livraison attribuée.</strong><p>Les nouvelles commandes attribuées apparaîtront ici.</p></div>'; return; }
+        list.innerHTML=orders.map(order=>{
+          const remaining=Math.max(0,Number(order.total||0)-Number(order.amount_paid||0));
+          const isPrepared=order.status==="prepared";
+          const isActive=order.status==="out_for_delivery" && order.delivery_attempt_status==="in_progress";
+          const isFailed=order.status==="out_for_delivery" && order.delivery_attempt_status==="failed";
+          const badgeClass=isFailed?"delivery-badge failed":"delivery-badge";
+          const orderEvents=events.filter(e=>e.order_id===order.id).slice(0,6);
+          const history=orderEvents.length?'<details class="delivery-history"><summary>Historique de livraison</summary><ul>'+orderEvents.map(e=>'<li>'+esc(fmtDate(e.created_at))+' · '+esc(({assigned:"Livreur attribué",out_for_delivery:"Départ en livraison",delivery_confirmed:"Remise confirmée",delivery_failed:"Échec de livraison",collection_recorded:"Encaissement déclaré",collection_validated:"Encaissement validé",collection_rejected:"Encaissement rejeté"})[e.event_type]||e.event_type)+(e.amount?": "+esc(fmtMoney(e.amount)):"")+(e.note?" — "+esc(e.note):"")+'</li>').join("")+'</ul></details>':'';
+          const mapsAddress=[order.delivery_address,order.delivery_zone].filter(Boolean).join(", ");
+          const actions=isPrepared||isFailed
+            ? '<button class="btn primary full" type="button" data-delivery-action="start" data-order-id="'+esc(order.id)+'">'+(isFailed?"Relancer la livraison":"Démarrer la livraison")+'</button>'
+            : isActive
+              ? '<div class="delivery-action-panel"><h3>Confirmer la remise</h3><form data-delivery-form="confirm" data-order-id="'+esc(order.id)+'"><input class="input" name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" minlength="6" pattern="[0-9]{6}" placeholder="Code à 6 chiffres" required><button class="btn primary" type="submit">Confirmer la livraison</button></form><p class="delivery-note">Le code se trouve dans les notifications privées du client. Ne le demande qu’au moment de la remise.</p></div>'+
+                '<div class="delivery-action-panel"><h3>Enregistrer un paiement reçu</h3><form data-delivery-form="collect" data-order-id="'+esc(order.id)+'"><input class="input" name="amount" type="number" min="1" step="1" max="'+Math.ceil(remaining)+'" placeholder="Montant encaissé (FCFA)" required><select class="input" name="payment_method" required><option value="">Mode de paiement</option><option value="cash">Espèces</option><option value="wave">Wave</option><option value="orange_money">Orange Money</option><option value="other">Autre</option></select><button class="btn secondary" type="submit">Déclarer l’encaissement</button></form><p class="delivery-note">L’encaissement sera vérifié par l’administrateur avant d’être ajouté au montant payé.</p></div>'+
+                '<div class="delivery-action-panel"><h3>Signaler une livraison impossible</h3><form data-delivery-form="fail" data-order-id="'+esc(order.id)+'"><textarea class="input" name="reason" required minlength="3" maxlength="1000" placeholder="Ex. client absent, adresse introuvable…"></textarea><button class="btn ghost" type="submit">Signaler l’échec</button></form></div>'
+              : '<span class="delivery-badge">Livraison terminée</span>';
+          return '<article class="delivery-card"><div class="delivery-card-head"><div><h2>Commande '+esc(order.id)+'</h2><p>Créée le '+esc(fmtDate(order.created_at))+'</p></div><span class="'+badgeClass+'">'+esc(statusLabel(order))+'</span></div>'+
+            '<div class="delivery-details"><div class="delivery-detail"><span>Client</span><strong>'+esc(order.customer_name||"Client")+'</strong></div><div class="delivery-detail"><span>Téléphone</span><strong>'+(order.customer_phone?'<a href="tel:'+esc(order.customer_phone)+'">'+esc(order.customer_phone)+'</a>':"Non renseigné")+'</strong></div>'+
+            '<div class="delivery-detail full"><span>Adresse de livraison</span><strong>'+esc(order.delivery_address||"Adresse à confirmer")+' · '+esc(order.delivery_zone||"Zone non précisée")+'</strong>'+(mapsAddress?'<a href="https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(mapsAddress)+'" target="_blank" rel="noopener noreferrer">Ouvrir dans Maps</a>':"")+'</div>'+
+            '<div class="delivery-detail"><span>Créneau prévu</span><strong>'+esc(order.slot||"À convenir")+'</strong></div><div class="delivery-detail"><span>Paiement</span><strong>'+esc(order.payment_status==="paid"?"Payé":order.payment_choice==="pay_now"?"Paiement en ligne":"À la livraison")+'</strong></div></div>'+
+            '<div class="delivery-money"><div class="delivery-money-row"><span>Total commande</span><strong>'+fmtMoney(order.total)+'</strong></div><div class="delivery-money-row"><span>Déjà payé (validé)</span><strong>'+fmtMoney(order.amount_paid)+'</strong></div><div class="delivery-money-row balance"><span>Solde à encaisser / vérifier</span><strong>'+fmtMoney(remaining)+'</strong></div></div>'+
+            '<div class="delivery-actions">'+actions+'</div>'+(order.delivery_failure_reason?'<p class="delivery-note"><strong>Motif du dernier échec :</strong> '+esc(order.delivery_failure_reason)+'</p>':'')+history+'</article>';
+        }).join("");
+      }
+      async function act(button,action,extra) {
+        button.disabled=true; const original=button.textContent; button.textContent="Traitement…";
+        try {
+          const result=await invoke(action,extra);
+          alertBox("deliveryWorkspaceAlert",result.message||"Action enregistrée.","success");
+          await refreshOrders();
+        } catch(error) {
+          alertBox("deliveryWorkspaceAlert",error.message||"Action impossible.","error");
+        } finally {
+          if(button.isConnected) { button.disabled=false; button.textContent=original; }
+        }
+      }
+      function bindOrderActions() {
+        $("deliveryOrdersList").addEventListener("click",event=>{
+          const button=event.target.closest("[data-delivery-action]");
+          if(!button) return;
+          if(button.dataset.deliveryAction==="start") void act(button,"start_delivery",{order_id:button.dataset.orderId});
+        });
+        $("deliveryOrdersList").addEventListener("submit",async event=>{
+          const form=event.target.closest("form[data-delivery-form]");
+          if(!form) return;
+          event.preventDefault();
+          const fd=new FormData(form), orderId=form.dataset.orderId, kind=form.dataset.deliveryForm;
+          const button=form.querySelector("button[type=submit]");
+          if(kind==="confirm") await act(button,"confirm_delivery",{order_id:orderId,code:String(fd.get("code")||"").trim()});
+          if(kind==="collect") await act(button,"record_collection",{order_id:orderId,amount:Number(fd.get("amount")),payment_method:String(fd.get("payment_method")||"")});
+          if(kind==="fail") await act(button,"fail_delivery",{order_id:orderId,reason:String(fd.get("reason")||"").trim()});
+        });
+      }
+      async function openWorkspace() {
+        $("deliveryLogin").hidden=true; $("deliveryDenied").hidden=true; $("deliveryWorkspace").hidden=false; $("deliverySignOut").hidden=false;
+        $("deliveryWelcome").textContent="Bonjour "+(currentProfile.full_name||currentUser.email||"livreur")+". Voici les commandes qui te sont attribuées.";
+        await refreshOrders();
+      }
+      async function acceptSession(user) {
+        currentUser=user;
+        const {data,error}=await client.from("profiles").select("id,full_name,email,role,phone").eq("id",user.id).maybeSingle();
+        if(error || !data) throw new Error("Impossible de charger ton profil.");
+        currentProfile=data;
+        if(data.role!=="courier") {
+          $("deliveryLogin").hidden=true; $("deliveryWorkspace").hidden=true; $("deliveryDenied").hidden=false; $("deliverySignOut").hidden=false; return;
+        }
+        await openWorkspace();
+      }
+      async function start() {
+        if(!window.supabase?.createClient) throw new Error("La connexion n’a pas pu charger. Recharge la page.");
+        client=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}});
+        bindOrderActions();
+        $("deliveryLoginForm").addEventListener("submit",async event=>{
+          event.preventDefault(); const form=event.currentTarget,fd=new FormData(form),button=$("deliveryLoginButton");
+          button.disabled=true; button.textContent="Connexion…"; clearAlert("deliveryLoginAlert");
+          try {
+            const {data,error}=await client.auth.signInWithPassword({email:String(fd.get("email")||"").trim(),password:String(fd.get("password")||"")});
+            if(error) throw error;
+            await acceptSession(data.user);
+          } catch(error) { alertBox("deliveryLoginAlert",error.message||"Connexion impossible.","error"); }
+          finally { button.disabled=false; button.textContent="Se connecter"; }
+        });
+        $("deliveryRefresh").addEventListener("click",async()=>{
+          try { await refreshOrders(); alertBox("deliveryWorkspaceAlert","Liste actualisée.","success"); }
+          catch(error) { alertBox("deliveryWorkspaceAlert",error.message,"error"); }
+        });
+        $("deliverySignOut").addEventListener("click",async()=>{
+          await client.auth.signOut(); currentUser=null; currentProfile=null; $("deliverySignOut").hidden=true; $("deliveryWorkspace").hidden=true; $("deliveryDenied").hidden=true; $("deliveryLogin").hidden=false;
+        });
+        const {data}=await client.auth.getSession();
+        if(data.session?.user) {
+          try { await acceptSession(data.session.user); }
+          catch(error) { alertBox("deliveryLoginAlert",error.message||"Impossible de charger le compte.","error"); }
+        }
+      }
+      start().catch(error=>{
+        console.error(error);
+        alertBox("deliveryLoginAlert",error.message||"Erreur de démarrage.","error");
+      });
+    })();
+  </script>
+</body>
+</html>
