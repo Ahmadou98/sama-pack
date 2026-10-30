@@ -64,7 +64,7 @@ Deno.serve(async (req: Request) => {
       if (profile.role !== "courier") return json({ error: "Cette démarche est réservée aux comptes livreurs." }, 403, origin);
       const documentType = clean(payload.document_type);
       const legalName = clean(payload.legal_name);
-      const documentNumber = clean(payload.document_number).replace(/\\s+/g, " ");
+      const documentNumber = clean(payload.document_number).replace(/\s+/g, " ");
       const issuingCountry = clean(payload.issuing_country) || "Sénégal";
       const expiresOn = clean(payload.expires_on) || null;
       const frontPath = clean(payload.front_image_path);
@@ -74,7 +74,7 @@ Deno.serve(async (req: Request) => {
       if (legalName.length < 2 || legalName.length > 160) return json({ error: "Le nom complet doit correspondre à la pièce officielle." }, 400, origin);
       if (documentNumber.length < 4 || documentNumber.length > 50 || !/^[a-zA-Z0-9 ./-]+$/.test(documentNumber)) return json({ error: "Numéro de pièce invalide." }, 400, origin);
       if (issuingCountry.length < 2 || issuingCountry.length > 80) return json({ error: "Pays de délivrance invalide." }, 400, origin);
-      if (expiresOn && (!/^\\d{4}-\\d{2}-\\d{2}$/.test(expiresOn) || Number.isNaN(Date.parse(expiresOn)) || new Date(expiresOn + "T23:59:59Z").getTime() < Date.now())) {
+      if (expiresOn && (!/^\d{4}-\d{2}-\d{2}$/.test(expiresOn) || Number.isNaN(Date.parse(expiresOn)) || new Date(expiresOn + "T23:59:59Z").getTime() < Date.now())) {
         return json({ error: "La date d’expiration est invalide ou dépassée." }, 400, origin);
       }
       if (!consent) return json({ error: "Confirme la notice d’utilisation des données personnelles pour envoyer ta pièce." }, 400, origin);
