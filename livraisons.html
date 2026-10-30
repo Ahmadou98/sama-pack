@@ -318,7 +318,7 @@
       }
       async function start() {
         if(!window.supabase?.createClient) throw new Error("La connexion n’a pas pu charger. Recharge la page.");
-        client=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}});
+        client=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY,{auth:{storageKey:"sama_pack_courier_auth_v1",persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}});
         bindOrderActions();
         $("deliveryLoginForm").addEventListener("submit",async event=>{
           event.preventDefault(); const form=event.currentTarget,fd=new FormData(form),button=$("deliveryLoginButton");
@@ -347,7 +347,21 @@
           if(!fd.get("consent")) return alertBox("deliveryIdentityStatus","Confirme la notice de traitement des données personnelles.","error");
           button.disabled=true; button.textContent="Envoi des photos…";
           try {
-            const makePath=(side,file)=>currentUser.id+"/"+crypto.randomUUID()+"_"+side+"."+identityFileExtension(file);
+            // Le portail livreur possède sa propre session Supabase, séparée de la boutique.
+            // Vérifier à nouveau l'identité côté serveur juste avant tout envoi de document.
+            const {data:verifiedAuth,error:verifiedAuthError}=await client.auth.getUser();
+            if(verifiedAuthError || !verifiedAuth?.user) throw new Error("Ta session livreur n’est plus active. Reconnecte-toi.");
+            if(!currentUser || verifiedAuth.user.id!==currentUser.id) {
+              throw new Error("La session du navigateur ne correspond plus au livreur affiché. Déconnecte-toi, puis reconnecte-toi avec l’adresse e-mail du livreur avant de transmettre sa pièce.");
+            }
+            const {data:verifiedProfile,error:verifiedProfileError}=await client.from("profiles")
+              .select("id,full_name,email,role,phone").eq("id",verifiedAuth.user.id).maybeSingle();
+            if(verifiedProfileError || !verifiedProfile || verifiedProfile.role!=="courier") {
+              throw new Error("La session connectée n’est pas un compte livreur autorisé à déposer une pièce officielle.");
+            }
+            currentUser=verifiedAuth.user;
+            currentProfile=verifiedProfile;
+            const makePath=(side,file)=>verifiedAuth.user.id+"/"+crypto.randomUUID()+"_"+side+"."+identityFileExtension(file);
             const frontPath=makePath("front",front),backPath=documentType==="national_id"?makePath("back",back):"";
             const frontUpload=await client.storage.from("courier-identity").upload(frontPath,front,{upsert:false,contentType:front.type,cacheControl:"3600"});
             if(frontUpload.error) throw frontUpload.error;
@@ -365,7 +379,11 @@
             alertBox("deliveryIdentityStatus",data.message||"Pièce envoyée pour vérification.","success");
             await refreshIdentityState();
           } catch(error) {
-            alertBox("deliveryIdentityStatus",error.message||"Le dossier n’a pas pu être envoyé. Réessaie.","error");
+            const raw=String(error?.message||"");
+            const message=/row-level security|new row violates|AccessDenied/i.test(raw)
+              ? "Le dépôt a été refusé car la session active ne correspond pas au compte livreur. Reconnecte-toi dans l’espace livreur, puis recommence l’envoi."
+              : (raw||"Le dossier n’a pas pu être envoyé. Réessaie.");
+            alertBox("deliveryIdentityStatus",message,"error");
           } finally {
             button.disabled=false; button.textContent="Envoyer ma pièce pour vérification";
           }
