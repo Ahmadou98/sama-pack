@@ -2996,29 +2996,38 @@
   }
   async function adminDeliveries() {
     if (!isGeneralAdmin()) throw new Error("Seul l’administrateur général peut gérer les livreurs.");
-    const [courierResult, orderResult, eventResult] = await Promise.all([
+    const [courierResult, orderResult, eventResult, identityResult] = await Promise.all([
       client.from("profiles").select("id,full_name,email,phone,last_seen_at,created_at")
         .eq("role","courier").order("created_at",{ascending:false}),
       client.from("orders").select("id,created_at,status,customer_name,customer_phone,delivery_address,delivery_zone,slot,total,amount_paid,payment_status,assigned_courier_id,delivery_attempt_status,delivery_failure_reason")
         .in("status",["prepared","out_for_delivery"]).order("created_at",{ascending:false}).limit(250),
       client.from("order_delivery_events").select("id,order_id,courier_id,actor_user_id,note,amount,payment_method,created_at")
-        .eq("event_type","collection_recorded").eq("review_status","pending").order("created_at",{ascending:false}).limit(250)
+        .eq("event_type","collection_recorded").eq("review_status","pending").order("created_at",{ascending:false}).limit(250),
+      client.from("courier_identity_documents").select("courier_id,document_type,legal_name,document_number,issuing_country,expires_on,front_image_path,back_image_path,verification_status,rejection_reason,submitted_at")
+        .order("submitted_at",{ascending:false})
     ]);
     if (courierResult.error) throw courierResult.error;
     if (orderResult.error) throw orderResult.error;
     if (eventResult.error) throw eventResult.error;
+    if (identityResult.error) throw identityResult.error;
     const couriers = courierResult.data || [];
     const orders = orderResult.data || [];
     const pendingEvents = eventResult.data || [];
+    const identityDocs = identityResult.data || [];
+    const identityByCourier = Object.fromEntries(identityDocs.map(row => [row.courier_id,row]));
     const courierNames = Object.fromEntries(couriers.map(row => [row.id, row.full_name || row.email || "Livreur"]));
-    const courierRows = couriers.length ? couriers.map(row =>
-      '<tr><td><strong>' + esc(row.full_name || "Sans nom") + '</strong><br><span class="small-note">' + esc(row.email || "") + '</span></td>' +
-      '<td>' + esc(row.phone || "—") + '</td><td>' + esc(row.last_seen_at ? fmtDate(row.last_seen_at) : "Jamais connecté") + '</td>' +
-      '<td>' + esc(fmtDate(row.created_at)) + '</td></tr>'
-    ).join("") : "";
+    const identityLabel = status => ({pending:"À vérifier",approved:"Validée",rejected:"À corriger"})[status] || "Non fournie";
+    const courierRows = couriers.length ? couriers.map(row => {
+      const doc = identityByCourier[row.id];
+      return '<tr><td><strong>' + esc(row.full_name || "Sans nom") + '</strong><br><span class="small-note">' + esc(row.email || "") + '</span></td>' +
+      '<td>' + esc(row.phone || "—") + '</td><td><span class="status ' + (doc?.verification_status === "approved" ? "delivered" : doc?.verification_status === "rejected" ? "cancelled" : "processing") + '">' + esc(identityLabel(doc?.verification_status)) + '</span></td>' +
+      '<td>' + esc(row.last_seen_at ? fmtDate(row.last_seen_at) : "Jamais connecté") + '</td>' +
+      '<td>' + esc(fmtDate(row.created_at)) + '</td></tr>';
+    }).join("") : "";
+    const verifiedCouriers = couriers.filter(row => identityByCourier[row.id]?.verification_status === "approved");
     const assignmentRows = orders.length ? orders.map(order => {
       const eligible = order.status === "prepared" || (order.status === "out_for_delivery" && order.delivery_attempt_status === "failed");
-      const options = '<option value="">Non attribuée</option>' + couriers.map(c =>
+      const options = '<option value="">Non attribuée</option>' + verifiedCouriers.map(c =>
         '<option value="' + esc(c.id) + '"' + (order.assigned_courier_id === c.id ? " selected" : "") + '>' + esc(c.full_name || c.email || "Livreur") + '</option>'
       ).join("");
       const statusLabelText = order.delivery_attempt_status === "failed" ? "Échec à reprogrammer"
@@ -3029,8 +3038,25 @@
         '<td>' + money(order.total) + '<br><span class="small-note">Payé : ' + money(order.amount_paid || 0) + '</span></td>' +
         '<td><span class="status">' + esc(statusLabelText) + '</span>' +
           (order.delivery_failure_reason ? '<p class="small-note">' + esc(order.delivery_failure_reason) + '</p>' : '') + '</td>' +
-        '<td><select class="input delivery-assignment-select" data-order-id="' + esc(order.id) + '" data-previous-value="' + esc(order.assigned_courier_id || "") + '"' + (!eligible || !couriers.length ? " disabled" : "") + '>' + options + '</select></td></tr>';
+        '<td><select class="input delivery-assignment-select" data-order-id="' + esc(order.id) + '" data-previous-value="' + esc(order.assigned_courier_id || "") + '"' + (!eligible || !verifiedCouriers.length ? " disabled" : "") + '>' + options + '</select></td></tr>';
     }).join("") : "";
+    const pendingIdentityDocs = identityDocs.filter(row => row.verification_status === "pending");
+    const identityRows = await Promise.all(pendingIdentityDocs.map(async doc => {
+      const courier = couriers.find(row => row.id === doc.courier_id) || {};
+      const frontResult = await client.storage.from("courier-identity").createSignedUrl(doc.front_image_path, 600);
+      const backResult = doc.back_image_path ? await client.storage.from("courier-identity").createSignedUrl(doc.back_image_path, 600) : null;
+      const frontUrl = frontResult.data?.signedUrl || "";
+      const backUrl = backResult?.data?.signedUrl || "";
+      const safeExpiry = doc.expires_on ? fmtDate(doc.expires_on) : "Non indiquée";
+      return '<tr><td><strong>' + esc(courier.full_name || courier.email || "Livreur") + '</strong><br><span class="small-note">' + esc(courier.email || "") + '</span></td>' +
+        '<td>' + esc(doc.document_type === "passport" ? "Passeport" : "Carte nationale d’identité") + '<br><strong>' + esc(doc.legal_name) + '</strong><br><span class="small-note">N° ' + esc(doc.document_number) + '</span><br><span class="small-note">' + esc(doc.issuing_country) + ' · Expire : ' + esc(safeExpiry) + '</span></td>' +
+        '<td>' + (frontUrl ? '<a target="_blank" rel="noopener noreferrer" href="' + esc(frontUrl) + '">Voir le recto</a>' : '<span class="small-note">Photo recto inaccessible</span>') +
+          (backUrl ? '<br><a target="_blank" rel="noopener noreferrer" href="' + esc(backUrl) + '">Voir le verso</a>' : '') + '</td>' +
+        '<td>' + esc(fmtDate(doc.submitted_at)) + '</td>' +
+        '<td><input class="input delivery-admin-collection-note" data-identity-review-note="' + esc(doc.courier_id) + '" maxlength="500" placeholder="Motif si rejet">' +
+        '<div class="delivery-admin-event-actions"><button type="button" class="btn small primary" data-identity-review="approved" data-courier-id="' + esc(doc.courier_id) + '">Valider</button>' +
+        '<button type="button" class="btn small danger" data-identity-review="rejected" data-courier-id="' + esc(doc.courier_id) + '">Rejeter</button></div></td></tr>';
+    }));
     const pendingOrderIds = [...new Set(pendingEvents.map(row => row.order_id))];
     let pendingOrders = [];
     if (pendingOrderIds.length) {
@@ -3051,7 +3077,9 @@
     }).join("") : "";
     return '<div class="panel"><div class="admin-panel-head"><div><h3>Gestion des livreurs (' + couriers.length + ')</h3><p class="small-note">Invitations nominatives. Le livreur se connecte avec son adresse e-mail et son mot de passe.</p></div><button class="btn small ghost" onclick="showAdminView(\'deliveries\')">Actualiser</button></div>' +
       '<form id="courierInviteForm" class="admin-form"><label>Nom complet<input class="input" name="full_name" required minlength="2" maxlength="120" placeholder="Nom du livreur"></label><label>Adresse e-mail<input class="input" name="email" type="email" required maxlength="254" placeholder="livreur@exemple.sn"></label><label>Téléphone<input class="input" name="phone" type="tel" maxlength="40" placeholder="+221 …"></label><button class="btn primary full" type="submit">Inviter un livreur</button></form>' +
-      '<div class="table-wrap"><table class="table"><thead><tr><th>Livreur</th><th>Téléphone</th><th>Dernière activité</th><th>Compte créé</th></tr></thead><tbody>' + (courierRows || '<tr><td colspan="4">Aucun livreur invité pour le moment.</td></tr>') + '</tbody></table></div></div>' +
+      '<div class="table-wrap"><table class="table"><thead><tr><th>Livreur</th><th>Téléphone</th><th>Pièce officielle</th><th>Dernière activité</th><th>Compte créé</th></tr></thead><tbody>' + (courierRows || '<tr><td colspan="5">Aucun livreur invité pour le moment.</td></tr>') + '</tbody></table></div></div>' +
+      '<div class="panel"><div class="admin-panel-head"><div><h3>Vérification des pièces officielles (' + pendingIdentityDocs.length + ')</h3><p class="small-note">Seul l’administrateur général peut consulter les informations et photos. Le livreur ne peut pas recevoir de commande avant validation.</p></div></div>' +
+      (pendingIdentityDocs.length ? '<div class="table-wrap"><table class="table"><thead><tr><th>Livreur</th><th>Pièce</th><th>Photos privées</th><th>Soumise le</th><th>Décision</th></tr></thead><tbody>' + identityRows.join("") + '</tbody></table></div>' : '<div class="empty">Aucun dossier en attente de vérification.</div>') + '</div>' +
       '<div class="panel"><div class="admin-panel-head"><div><h3>Attribution des livraisons (' + orders.length + ')</h3><p class="small-note">Les commandes doivent être prêtes avant attribution. Une livraison en cours ne peut être réattribuée qu’après un échec enregistré.</p></div></div>' +
       (orders.length ? '<div class="table-wrap"><table class="table"><thead><tr><th>Commande</th><th>Client / adresse</th><th>Montant</th><th>État livraison</th><th>Livreur affecté</th></tr></thead><tbody>' + assignmentRows + '</tbody></table></div>' : '<div class="empty">Aucune commande prête ou en cours de livraison.</div>') + '</div>' +
       '<div class="panel"><div class="admin-panel-head"><div><h3>Encaissements à rapprocher (' + pendingEvents.length + ')</h3><p class="small-note">Les montants déclarés par les livreurs ne deviennent pas des paiements confirmés avant validation.</p></div></div>' +
@@ -3838,6 +3866,26 @@
             toast(errorMessage(error), true);
           } finally {
             if (select.isConnected) select.disabled = false;
+          }
+        });
+      });
+      document.querySelectorAll("[data-identity-review]").forEach(button => {
+        button.addEventListener("click", async () => {
+          const decision = button.dataset.identityReview;
+          const courierId = button.dataset.courierId;
+          const noteInput = document.querySelector('[data-identity-review-note="' + courierId + '"]');
+          const note = String(noteInput?.value || "").trim();
+          if (decision === "rejected" && note.length < 5) return toast("Indique le motif du rejet pour permettre au livreur de corriger son dossier.", true);
+          if (!window.confirm(decision === "approved" ? "Valider cette pièce officielle et autoriser ce livreur à recevoir des commandes ?" : "Rejeter cette pièce officielle ?")) return;
+          try {
+            button.disabled = true;
+            const { data, error } = await client.functions.invoke("sama-courier-identity", { body: { action:"review", courier_id:courierId, decision, note }});
+            if (error || data?.error) throw new Error(data?.error || errorMessage(error));
+            toast(data?.message || "Dossier traité.");
+            await showAdminView("deliveries");
+          } catch (error) {
+            button.disabled = false;
+            toast(errorMessage(error), true);
           }
         });
       });
