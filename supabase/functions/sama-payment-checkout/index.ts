@@ -428,7 +428,47 @@ if (action === "send_payment_confirmation") {
     if (activeTxError) throw activeTxError;
     const activeAgeMs = activeTx ? Date.now() - new Date(activeTx.created_at).getTime() : 0;
     if (activeTx?.provider === "paydunya" && activeTx.status === "pending" && activeTx.checkout_url) {
-      return json({ ok: true, payment_url: activeTx.checkout_url, reused: true, amount: num(activeTx.amount), purpose, provider: "paydunya" });
+      // A pending local session can already be completed at the gateway.
+      // Always verify the existing invoice before sending the customer back
+      // to it, so a prior debit is reconciled instead of prompting another payment.
+      if (!activeTx.provider_token) {
+        return json({
+          error: "Une session de paiement existe déjà, mais sa référence PayDunya est absente. Ne paie pas à nouveau ; contacte SAMA-PACK pour vérification.",
+          verification_pending: true,
+        }, 409);
+      }
+      const existingInvoice = await verifyInvoice(cfg, text(activeTx.provider_token));
+      const existingResult = await settleTransaction(admin, activeTx, existingInvoice, cfg.mode);
+      const { data: refreshedOrder, error: refreshedOrderError } = await admin.from("orders")
+        .select("id,status,payment_status,amount_paid,total")
+        .eq("id", order.id).eq("user_id", user.id).maybeSingle();
+      if (refreshedOrderError) throw refreshedOrderError;
+
+      if (existingResult.gateway_status === "completed" && refreshedOrder?.status === "new") {
+        return json({
+          ok: true,
+          already_confirmed: true,
+          recovered_existing_payment: true,
+          order_status: refreshedOrder.status,
+          payment_status: refreshedOrder.payment_status,
+          amount_paid: refreshedOrder.amount_paid,
+        });
+      }
+      if (existingResult.gateway_status === "pending") {
+        return json({
+          ok: true,
+          payment_url: activeTx.checkout_url,
+          reused: true,
+          amount: num(activeTx.amount),
+          purpose,
+          provider: "paydunya",
+        });
+      }
+      return json({
+        error: "PayDunya indique que cette session ne peut pas être relancée automatiquement. Aucune nouvelle facture n'a été créée ; contacte SAMA-PACK pour vérifier la transaction.",
+        verification_pending: true,
+        gateway_status: existingResult.gateway_status,
+      }, 409);
     }
     if (activeTx?.status === "creating" && activeAgeMs < 180_000) {
       return json({ error: "La session de paiement est en cours de création. Réessaie dans quelques secondes." }, 409);
