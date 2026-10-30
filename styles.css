@@ -4338,7 +4338,7 @@ body.site-maintenance-active #modalRoot { position:relative; z-index:100002; }
 .info-floating-header .mobile-menu-icon{display:flex;flex-direction:column;gap:5px;width:22px}
 .info-floating-header .mobile-menu-icon i{display:block;width:22px;height:3px;border-radius:4px;background:#174b31}
 .info-floating-header .mobile-nav-menu{display:none;position:absolute;right:0;top:calc(100% + 12px);width:min(290px,calc(100vw - 34px));padding:9px;border:1px solid #e0e9e2;border-radius:17px;background:#fff;box-shadow:0 16px 42px rgba(12,45,26,.18);z-index:1002}
-.info-floating-header .mobile-nav-menu.is-open{display:grid}
+.info-floating-header .mobile-menu-shell.is-open .mobile-nav-menu{display:grid!important;visibility:visible!important;opacity:1!important;pointer-events:auto!important}
 .info-floating-header .mobile-nav-item{display:flex;align-items:center;gap:12px;padding:12px;border:0;border-radius:10px;background:transparent;color:#243b2d;text-align:left;text-decoration:none;font-size:14px;font-weight:700;cursor:pointer}
 .info-floating-header .mobile-nav-item:hover{background:#f0f8f2}
 .info-floating-header .mobile-nav-item small{font-size:13px}
