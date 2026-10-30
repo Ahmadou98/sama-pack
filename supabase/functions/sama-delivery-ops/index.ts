@@ -123,11 +123,43 @@ Deno.serve(async (req: Request) => {
       let targetId = "";
       let inviteMessage = "";
       if (existingUser) {
-        const { data: existingProfile } = await admin.from("profiles").select("role").eq("id", existingUser.id).maybeSingle();
-        if (existingProfile?.role === "courier") {
-          return json({ ok: true, already_courier: true, message: "Ce compte est déjà enregistré comme livreur." }, 200, origin);
+        const { data: existingProfile, error: existingProfileError } = await admin.from("profiles")
+          .select("role").eq("id", existingUser.id).maybeSingle();
+        if (existingProfileError) {
+          console.error("sama-delivery-ops existing profile lookup failed", existingProfileError.message);
+          return json({ error: "Impossible de vérifier le compte déjà associé à cette adresse : " + existingProfileError.message }, 500, origin);
         }
-        return json({ error: "Cette adresse e-mail est déjà associée à un autre compte. Utilise une adresse dédiée au livreur." }, 409, origin);
+        if (existingProfile?.role === "courier") {
+          return json({
+            ok: true,
+            already_courier: true,
+            invitation_pending: !existingUser.email_confirmed_at,
+            message: existingUser.email_confirmed_at
+              ? "Ce compte est déjà enregistré comme livreur. Il peut se connecter avec son mot de passe habituel."
+              : "Ce compte est déjà enregistré comme livreur. Le lien d’invitation initial a déjà été envoyé : vérifie la boîte de réception et les courriers indésirables."
+          }, 200, origin);
+        }
+        if (existingProfile?.role === "admin") {
+          return json({ error: "Cette adresse appartient à un compte administrateur et ne peut pas être convertie en compte livreur." }, 409, origin);
+        }
+
+        // Un compte client existant peut être promu explicitement par le propriétaire.
+        // Il conserve son identifiant et son mot de passe : aucun compte en doublon n'est créé.
+        const { error: promoteError } = await caller.rpc("sama_provision_courier_profile", {
+          p_user_id: existingUser.id,
+          p_email: email,
+          p_full_name: fullName,
+          p_phone: phone || null,
+        });
+        if (promoteError) {
+          console.error("sama-delivery-ops existing customer promotion failed", promoteError.message);
+          return json({ error: "Le compte existe déjà, mais sa conversion en livreur a échoué : " + promoteError.message }, 500, origin);
+        }
+        return json({
+          ok: true,
+          promoted_existing_account: true,
+          message: "Ce compte existait déjà : son rôle a été converti en livreur. La personne pourra se connecter avec son mot de passe habituel."
+        }, 200, origin);
       }
       const { data: invitation, error: inviteError } = await admin.auth.admin.inviteUserByEmail(email, {
         redirectTo: "https://sama-pack.store/livraisons.html",
