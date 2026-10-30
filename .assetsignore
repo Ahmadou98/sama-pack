@@ -16,3 +16,5 @@ wrangler.toml
 .env.*
 **/.env
 **/.env.*
+/supabase/
+/supabase/**
