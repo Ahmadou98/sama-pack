@@ -44,16 +44,42 @@
   </style>
 </head>
 <body>
-  <header class="topbar">
-    <div class="wrap nav">
-      <a class="brand" href="index.html" aria-label="SAMA-PACK, accueil"><span class="brand-mark">S</span><span>SAMA<span>-PACK</span></span></a>
-      <div class="nav-actions">
-        <a class="btn small ghost" href="index.html#catalogue">Catalogue</a>
-        <a class="btn small ghost" href="comment-ca-marche.html">Aide</a>
-        <a class="btn small primary" href="index.html">Retour à la boutique</a>
+  <header class="topbar info-floating-header">
+  <div class="wrap nav">
+    <a class="brand" href="/#home" aria-label="SAMA-PACK, accueil"><span class="brand-mark">S</span><span>SAMA<span>-PACK</span></span></a>
+    <div class="nav-actions">
+      <div class="mobile-menu-shell">
+        <button class="mobile-menu-toggle" type="button" aria-label="Ouvrir le menu" aria-controls="infoFloatingMenu" aria-expanded="false">
+          <span class="mobile-menu-icon" aria-hidden="true"><i></i><i></i><i></i></span>
+        </button>
+        <nav id="infoFloatingMenu" class="mobile-nav-menu" aria-label="Menu principal">
+          <a class="mobile-nav-item" href="/#home">⌂ <small>Accueil</small></a>
+          <a class="mobile-nav-item" href="/#catalogue">▦ <small>Catalogue et packs</small></a>
+          <a class="mobile-nav-item" href="produits.html">◫ <small>Produits</small></a>
+          <a class="mobile-nav-item" href="comment-ca-marche.html">ⓘ <small>Comment ça marche</small></a>
+          <a class="mobile-nav-item" href="/#b2b">▤ <small>Professionnels</small></a>
+          <a class="mobile-nav-item" href="contact.html">✉ <small>Contact</small></a>
+          <a class="mobile-nav-item" href="conditions-vente.html">▧ <small>Conditions de vente</small></a>
+          <a class="mobile-nav-item" href="livraison-retours.html">↗ <small>Livraison et retours</small></a>
+          <a class="mobile-nav-item" href="confidentialite.html">♧ <small>Confidentialité</small></a>
+        </nav>
       </div>
     </div>
-  </header>
+  </div>
+</header>
+<script>
+(() => {
+ const header=document.querySelector(".info-floating-header");
+ if(!header) return;
+ const button=header.querySelector(".mobile-menu-toggle");
+ const menu=header.querySelector(".mobile-nav-menu");
+ if(!button||!menu) return;
+ const close=()=>{menu.classList.remove("is-open");button.setAttribute("aria-expanded","false");button.setAttribute("aria-label","Ouvrir le menu");};
+ button.addEventListener("click",()=>{const open=!menu.classList.contains("is-open");menu.classList.toggle("is-open",open);button.setAttribute("aria-expanded",String(open));button.setAttribute("aria-label",open?"Fermer le menu":"Ouvrir le menu");});
+ document.addEventListener("click",event=>{if(!header.contains(event.target))close();});
+ document.addEventListener("keydown",event=>{if(event.key==="Escape")close();});
+})();
+</script>
   <main class="contact-page">
     <div class="wrap">
       <div class="contact-page-hero">
