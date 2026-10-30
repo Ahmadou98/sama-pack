@@ -18,3 +18,18 @@ wrangler.toml
 **/.env.*
 /supabase/
 /supabase/**
+
+# Exclude internal maintenance scripts, notes and local build artifacts
+*.py
+**/*.py
+*.pyc
+**/*.pyc
+__pycache__/
+**/__pycache__/
+README*
+readme.md
+*.backup
+*.backup-*
+*.bak
+*.tmp
+*.log
