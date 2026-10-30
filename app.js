@@ -27,6 +27,8 @@
   let profilePhotoPreviewUrl = null;
   let userNotifications = [];
   let notificationsChannel = null;
+  let notificationRefreshTimer = null;
+  let notificationVisibilityHandler = null;
   let authBusy = false;
   let editingProductId = null;
   let currentAdminView = "dashboard";
@@ -2138,8 +2140,17 @@
     const footerAdminSection = $("footerAdminSection");
     if (footerAdminSection) footerAdminSection.classList.toggle("hidden", !isAdmin());
     const adminFlag = $("adminFlag"); if (adminFlag) adminFlag.textContent = isAdmin() ? `Connecté : ${currentProfile?.full_name || currentUser?.email || "Administrateur"}` : "Espace réservé aux administrateurs";
-    const n = userNotifications.filter(x => !x.read_at).length; const badge = $("notificationCount");
-    if (badge) { badge.textContent = String(n > 99 ? "99+" : n); badge.classList.toggle("hidden", n === 0); }
+    const n = userNotifications.filter(x => !x.read_at).length;
+    const badge = $("notificationCount");
+    if (badge) {
+      badge.textContent = String(n > 99 ? "99+" : n);
+      badge.classList.toggle("hidden", n === 0);
+    }
+    const adminBadge = $("adminNotificationCount");
+    if (adminBadge) {
+      adminBadge.textContent = String(n > 99 ? "99+" : n);
+      adminBadge.classList.toggle("hidden", n === 0);
+    }
   }
 
   async function refreshAccountButtonAvatar() {
@@ -2164,25 +2175,97 @@
     updateAccountButtons();
   }
   async function loadNotifications() {
-    if (!client || !currentUser) { userNotifications = []; updateAccountButtons(); return; }
-    const { data, error } = await client.from("notifications").select("id,type,title,message,entity_type,entity_id,read_at,created_at").eq("recipient_user_id", currentUser.id).order("created_at", { ascending: false }).limit(30);
-    if (error) { console.warn("Notification load failed", error); return; }
-    userNotifications = data || []; updateAccountButtons();
+    if (!client || !currentUser) {
+      userNotifications = [];
+      updateAccountButtons();
+      return;
+    }
+    const userId = currentUser.id;
+    const { data, error } = await client.from("notifications")
+      .select("id,type,title,message,entity_type,entity_id,read_at,created_at")
+      .eq("recipient_user_id", userId)
+      .order("created_at", { ascending: false })
+      .limit(30);
+    if (error) {
+      console.warn("Notification load failed", error);
+      return;
+    }
+    if (currentUser?.id !== userId) return;
+    userNotifications = data || [];
+    updateAccountButtons();
   }
+
+  function announceNotification(notification) {
+    if (!notification?.id) return;
+    toast(notification.title || "Nouvelle notification");
+    if (document.visibilityState === "visible" && "Notification" in window && Notification.permission === "granted") {
+      try {
+        new Notification(notification.title || "SAMA-PACK", {
+          body: notification.message || "Nouvelle information",
+          icon: "/favicon.ico",
+          tag: "sama-pack-" + notification.id
+        });
+      } catch (error) {
+        console.warn("Notification navigateur indisponible", error);
+      }
+    }
+  }
+
+  async function refreshNotificationsWithAlert() {
+    if (!client || !currentUser || document.visibilityState !== "visible") return;
+    const previousIds = new Set(userNotifications.map(item => item.id));
+    await loadNotifications();
+    const newlyReceived = userNotifications.filter(item => !previousIds.has(item.id));
+    if (newlyReceived.length) announceNotification(newlyReceived[0]);
+  }
+
+  function stopNotificationsRealtime() {
+    if (notificationsChannel && client) {
+      client.removeChannel(notificationsChannel);
+      notificationsChannel = null;
+    }
+    if (notificationRefreshTimer) window.clearInterval(notificationRefreshTimer);
+    notificationRefreshTimer = null;
+    if (notificationVisibilityHandler) {
+      document.removeEventListener("visibilitychange", notificationVisibilityHandler);
+      notificationVisibilityHandler = null;
+    }
+  }
+
   function setupNotificationsRealtime() {
-    if (!client) return;
-    if (notificationsChannel) { client.removeChannel(notificationsChannel); notificationsChannel = null; }
-    if (!currentUser) return;
+    stopNotificationsRealtime();
+    if (!client || !currentUser) return;
+
     const userId = currentUser.id;
     notificationsChannel = client.channel(`sama-pack-notifications-${userId}`)
-      .on("postgres_changes", { event: "INSERT", schema: "public", table: "notifications", filter: `recipient_user_id=eq.${userId}` }, payload => {
-        if (!payload?.new?.id) return;
+      .on("postgres_changes", {
+        event: "INSERT",
+        schema: "public",
+        table: "notifications",
+        filter: `recipient_user_id=eq.${userId}`
+      }, payload => {
+        if (!payload?.new?.id || currentUser?.id !== userId) return;
         userNotifications = [payload.new, ...userNotifications.filter(n => n.id !== payload.new.id)].slice(0, 30);
-        updateAccountButtons(); toast(payload.new.title || "Nouvelle notification");
-        if (document.visibilityState === "visible" && window.Notification?.permission === "granted") {
-          try { new Notification(payload.new.title || "Sama-Pack", { body: payload.new.message || "Nouvelle information", icon: "/favicon.ico" }); } catch { /* Notifications du navigateur facultatives. */ }
+        updateAccountButtons();
+        announceNotification(payload.new);
+      })
+      .subscribe((status, error) => {
+        if (status === "SUBSCRIBED") {
+          console.info("Notifications temps réel actives pour", userId);
+        } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
+          console.warn("Canal temps réel notifications indisponible; actualisation de secours active.", status, error || "");
         }
-      }).subscribe();
+      });
+
+    // Filet de sécurité : si Realtime est interrompu, les alertes de l’administrateur
+    // général continuent d’être récupérées tant que l’espace SAMA-PACK est ouvert.
+    notificationRefreshTimer = window.setInterval(() => {
+      if (document.visibilityState === "visible") void refreshNotificationsWithAlert();
+    }, 15000);
+    notificationVisibilityHandler = () => {
+      if (document.visibilityState === "visible") void refreshNotificationsWithAlert();
+    };
+    document.addEventListener("visibilitychange", notificationVisibilityHandler);
   }
   async function enableBrowserNotifications() {
     if (!("Notification" in window)) return toast("Ce navigateur ne prend pas en charge les notifications du système.", true);
@@ -2194,13 +2277,21 @@
     if (!currentUser) { renderAuthForm("login", "Connecte-toi pour consulter tes notifications et suivre tes commandes."); return; }
     await loadNotifications();
     const html = userNotifications.length ? userNotifications.map(n => `<div class="notification-item ${n.read_at ? "read" : "unread"}"><div class="notification-title">${esc(n.title)}</div><div class="notification-message">${esc(n.message)}</div><div class="notification-meta">${esc(fmtDate(n.created_at))} ${n.read_at ? "· Lue" : `<button class="link-btn dark-link" onclick="markNotificationRead('${esc(n.id)}')">Marquer comme lue</button>`}</div></div>`).join("") : '<div class="empty">Aucune notification pour le moment.</div>';
+    const browserPermission = ("Notification" in window) ? Notification.permission : "unsupported";
+    const adminBrowserAlertControl = isGeneralAdmin()
+      ? (browserPermission === "granted"
+        ? '<div class="admin-notification-permission is-enabled"><strong>Alertes de cet appareil activées</strong><span>Les nouvelles notifications pourront aussi apparaître sous forme de fenêtres système lorsque SAMA-PACK est ouvert.</span></div>'
+        : browserPermission === "unsupported"
+          ? '<div class="admin-notification-permission"><strong>Alertes système indisponibles</strong><span>Les notifications restent accessibles dans cette cloche.</span></div>'
+          : '<div class="admin-notification-permission"><strong>Recevoir les alertes sur cet appareil</strong><span>Autorise le navigateur à afficher une alerte quand un nouveau signalement ou encaissement arrive.</span><button class="btn small primary" type="button" onclick="enableBrowserNotifications()">Activer les alertes de cet appareil</button></div>')
+      : "";
     const accountList = $("accountNotificationList");
     if (accountList) {
       accountList.innerHTML = html;
       document.querySelector('[data-account-tab="notifications"]')?.click();
       return;
     }
-    showModal(`<div class="modal-head"><div><div class="eyebrow">CENTRE DE NOTIFICATIONS</div><h2>Notifications</h2></div><button class="close" onclick="closeModal()">✕</button></div><div class="notification-list">${html}</div><div style="height:12px"></div><button class="btn ghost full" onclick="showAccountHome()">Retour à mon compte</button>`);
+    showModal(`<div class="modal-head"><div><div class="eyebrow">CENTRE DE NOTIFICATIONS</div><h2>Notifications</h2></div><button class="close" onclick="closeModal()">✕</button></div>${adminBrowserAlertControl}<div class="notification-list">${html}</div><div style="height:12px"></div><button class="btn ghost full" onclick="showAccountHome()">Retour à mon compte</button>`);
   }
   async function markNotificationRead(id) {
     if (!client || !currentUser) return toast("Connecte-toi pour modifier tes notifications.", true);
@@ -4199,6 +4290,17 @@
     if ($("adminGlobalSearch")) $("adminGlobalSearch").addEventListener("input", applyAdminResultSearch);
     if ($("accountBtn")) $("accountBtn").onclick = openAccountModal;
     if ($("notificationBtn")) $("notificationBtn").onclick = loadAndShowNotifications;
+    if ($("adminNotificationBtn")) $("adminNotificationBtn").onclick = async () => {
+      if (isGeneralAdmin() && "Notification" in window && Notification.permission === "default") {
+        try {
+          const permission = await Notification.requestPermission();
+          if (permission === "granted") toast("Alertes système activées pour l’administrateur général.");
+        } catch (error) {
+          console.warn("Demande de permission notifications refusée", error);
+        }
+      }
+      await loadAndShowNotifications();
+    };
     const adminMenuToggle = $("adminMenuToggle");
     if (adminMenuToggle) adminMenuToggle.onclick = () => setAdminMobileMenuOpen(!$("adminSidebar")?.classList.contains("is-open"));
     window.addEventListener("resize", () => {
