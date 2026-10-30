@@ -3204,7 +3204,7 @@
         return showAdminView("orders");
       }
       const currentOrder = currentResult.data;
-      if (currentOrder.status === "out_for_delivery" && currentOrder.delivery_attempt_status === "in_progress" && currentOrder.assigned_courier_id) {
+      if (currentOrder.status === "out_for_delivery" && ["in_progress","failed"].includes(currentOrder.delivery_attempt_status) && currentOrder.assigned_courier_id) {
         const confirmed = window.confirm(
           "Cette commande est déjà chez le livreur. L’annulation déclenchera un retour obligatoire du colis chez SAMA-PACK. Le livreur sera averti et un code de contrôle sera envoyé uniquement à l’administrateur général, qui le communiquera après réception du colis au dépôt. Continuer ?"
         );
