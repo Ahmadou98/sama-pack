@@ -14,27 +14,38 @@
 <meta property="og:url" content="https://sama-pack.store/outils.html">
 <script type="application/ld+json">{"@context":"https://schema.org","@type":"WebSite","name":"Sama-Pack","url":"https://sama-pack.store/","inLanguage":"fr-SN","description":"Packs de nettoyage et d’hygiène pour les familles et les professionnels à Dakar, Sénégal."}</script>
 <title>Outils de nettoyage | SAMA-PACK</title>
-<link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="styles.css?v=20261030-header-final">
 </head>
 <body data-catalog-type="tool">
 <div id="toast" class="toast"></div>
 
-<header class="topbar">
+<header class="topbar info-floating-header">
   <div class="wrap nav">
-    <a class="brand" href="/#home"><span class="brand-mark">S</span><span>SAMA<span>-PACK</span></span></a>
-    <nav class="desktop-nav">
-      <a href="/#catalogue">Packs</a>
-      <a href="produits.html">Produits</a>
-      
-      <a href="comment-ca-marche.html">Comment ça marche</a>
-      <a href="/#b2b">Professionnels</a>
-      <a href="/#contact">Contact</a>
-    </nav>
+    <a class="brand" href="/#home" aria-label="SAMA-PACK, accueil"><span class="brand-mark">S</span><span>SAMA<span>-PACK</span></span></a>
     <div class="nav-actions">
-      <button class="icon-btn" id="openCartBtn" aria-label="Panier">🛒 <span id="cartCount">0</span></button>
-      <button class="icon-btn notification-btn" id="notificationBtn" aria-label="Notifications" title="Notifications">🔔 <span id="notificationCount" class="notification-count hidden">0</span></button>
-      <button class="btn small ghost" id="accountBtn">Connexion</button>
-      <button class="btn small ghost hidden" id="adminBtn">Gestion</button>
+      <button class="icon-btn" id="openCartBtn" type="button" aria-label="Panier" title="Panier">🛒 <span id="cartCount">0</span></button>
+      <button class="icon-btn notification-btn" id="notificationBtn" type="button" aria-label="Notifications" title="Notifications">🔔 <span id="notificationCount" class="notification-count hidden">0</span></button>
+      <button class="btn small ghost" id="accountBtn" type="button">Connexion</button>
+      <div class="mobile-menu-shell">
+        <button class="mobile-menu-toggle" type="button" aria-label="Ouvrir le menu" aria-controls="infoFloatingMenu" aria-expanded="false">
+          <span class="mobile-menu-icon" aria-hidden="true"><i></i><i></i><i></i></span>
+        </button>
+        <nav id="infoFloatingMenu" class="mobile-nav-menu" aria-label="Menu principal">
+          <a class="mobile-nav-item" href="/#home">⌂ <small>Accueil</small></a>
+          <a class="mobile-nav-item" href="/#catalogue">▦ <small>Catalogue et packs</small></a>
+          <a class="mobile-nav-item" href="produits.html">◫ <small>Produits</small></a>
+          <a class="mobile-nav-item" href="comment-ca-marche.html">ⓘ <small>Comment ça marche</small></a>
+          <a class="mobile-nav-item" href="outils.html">▤ <small>Outils</small></a>
+          <a class="mobile-nav-item" href="/#b2b">▤ <small>Professionnels</small></a>
+          <a class="mobile-nav-item" href="contact.html">✉ <small>Contact</small></a>
+          <a class="mobile-nav-item" href="conditions-vente.html">▧ <small>Conditions de vente</small></a>
+          <a class="mobile-nav-item" href="livraison-retours.html">↗ <small>Livraison et retours</small></a>
+          <a class="mobile-nav-item" href="confidentialite.html">♧ <small>Confidentialité</small></a>
+          <a id="courierMobileLink" class="mobile-nav-item hidden" href="livraisons.html"><span aria-hidden="true">🚚</span><small>Mes livraisons</small></a>
+          <button type="button" id="mobileManageBtn" class="mobile-nav-item hidden" aria-label="Ouvrir la gestion"><span aria-hidden="true">⚙</span><small>Gestion</small></button>
+        </nav>
+      </div>
+      <button class="btn small ghost hidden" id="adminBtn" type="button">Gestion</button>
     </div>
   </div>
 </header>
@@ -48,14 +59,6 @@
   </div>
 </section>
 </main>
-
-<nav class="mobile-bottom-nav" aria-label="Navigation rapide">
-  <a href="/#catalogue" class="mobile-nav-item"><span aria-hidden="true">▦</span><small>Packs</small></a>
-  <a href="produits.html" class="mobile-nav-item"><span aria-hidden="true">◫</span><small>Produits</small></a>
-  <a href="comment-ca-marche.html" class="mobile-nav-item"><span aria-hidden="true">ⓘ</span><small>Aide</small></a>
-  <button type="button" class="mobile-nav-item" data-mobile-action="cart"><span aria-hidden="true">🛒</span><small>Panier</small></button>
-  <button type="button" class="mobile-nav-item" data-mobile-action="account"><span aria-hidden="true">♙</span><small>Compte</small></button>
-</nav>
 
 <footer class="footer"><div class="wrap footer-grid"><div><div class="brand footer-brand"><span class="brand-mark">S</span><span>SAMA<span>-PACK</span></span></div><p>Distribution de packs de nettoyage et d’hygiène.</p></div><div><strong>Navigation</strong><a href="/#catalogue">Catalogue</a><a href="comment-ca-marche.html">Comment ça marche</a><a href="/#b2b">Professionnels</a><a href="/#contact">Contact</a><a href="conditions-vente.html">Conditions de vente</a><a href="livraison-retours.html">Livraison et retours</a><a href="confidentialite.html">Confidentialité</a></div><div id="footerAdminSection" class="hidden"><strong>Espace administrateur</strong><a href="#" id="footerAdmin">Ouvrir la gestion</a><small>Réservé aux administrateurs.</small></div></div><div class="wrap footer-bottom">© <span id="year"></span> SAMA-PACK. Tous droits réservés.</div></footer>
 
