@@ -2430,6 +2430,47 @@
     window.location.assign(data.payment_url);
   }
 
+  async function retryPaymentVerification(orderId) {
+    if (!currentUser) { openAccountModal(); return toast("Connecte-toi avec le compte utilisé pour cette commande.", true); }
+    if (!orderId) {
+      try { orderId = localStorage.getItem("sama_pack_pending_payment_v1") || ""; } catch { orderId = ""; }
+    }
+    if (!orderId) return toast("Référence de commande manquante. Ouvre Mes commandes.", true);
+
+    toast("Vérification de la transaction auprès de PayDunya…");
+    const { data, error } = await client.functions.invoke("sama-payment-checkout", {
+      body: { action: "verify_return", order_id: String(orderId) },
+    });
+
+    if (error || data?.error) {
+      const message = data?.error || await paymentFunctionError(error, "La transaction n’a pas encore pu être vérifiée. Ne relance aucun paiement.");
+      showModal(`<div class="modal-head"><div><div class="eyebrow">VÉRIFICATION DU PAIEMENT</div><h2>Vérification toujours en cours</h2></div><button class="close" onclick="closeModal()">✕</button></div>
+        <p>Ne crée pas une nouvelle transaction. Vérifie d’abord l’historique de ton portefeuille et contacte SAMA-PACK en cas de débit confirmé.</p>
+        <div class="inline-message">${esc(message)}</div>
+        <button class="btn primary full" onclick="retryPaymentVerification('${esc(orderId)}')">Vérifier à nouveau</button>
+        <button class="btn ghost full" onclick="showAccountHome()">Voir mes commandes</button>`);
+      return;
+    }
+
+    if (data?.order_status === "new" && data?.order) {
+      try { localStorage.removeItem("sama_pack_pending_payment_v1"); } catch { /* stockage facultatif */ }
+      await loadNotifications();
+      await showAccountHome();
+      toast("Paiement vérifié. Ta commande est maintenant confirmée.");
+      return;
+    }
+
+    const gatewayStatus = String(data?.gateway_status || "en attente");
+    const notice = gatewayStatus === "completed"
+      ? "PayDunya confirme une transaction, mais la commande doit encore être rapprochée. Ne paie pas une deuxième fois ; contacte SAMA-PACK."
+      : "PayDunya n’a pas encore confirmé le paiement. Aucun nouveau paiement n’a été lancé.";
+    showModal(`<div class="modal-head"><div><div class="eyebrow">VÉRIFICATION DU PAIEMENT</div><h2>Statut : ${esc(gatewayStatus)}</h2></div><button class="close" onclick="closeModal()">✕</button></div>
+      <p>${esc(notice)}</p>
+      <button class="btn primary full" onclick="retryPaymentVerification('${esc(orderId)}')">Vérifier à nouveau</button>
+      <button class="btn ghost full" onclick="showAccountHome()">Voir mes commandes</button>`);
+    await loadNotifications();
+  }
+
   async function resendPaymentConfirmation(orderId) {
     if (!currentUser) { openAccountModal(); return toast("Connecte-toi pour recevoir ton reçu.", true); }
     if (!orderId) return toast("Référence de commande manquante.", true);
@@ -2504,7 +2545,7 @@
       showModal(`<div class="modal-head"><div><div class="eyebrow">VÉRIFICATION DU PAIEMENT</div><h2>Statut en cours de vérification</h2></div><button class="close" onclick="closeModal()">✕</button></div>
         <p>Ne relance pas un nouveau paiement si ton portefeuille a déjà été débité. Vérifie ton historique de transaction puis réessaie de vérifier ici.</p>
         <div class="inline-message">${esc(message)}</div>
-        ${orderId ? `<button class="btn primary full" onclick="retryOrderPayment('${esc(orderId)}')">Reprendre le paiement</button>` : ""}
+        ${orderId ? `<button class="btn primary full" onclick="retryPaymentVerification('${esc(orderId)}')">Vérifier le paiement</button>` : ""}
         <button class="btn ghost full" onclick="showAccountHome()">Voir mes commandes</button>`);
       return;
     }
