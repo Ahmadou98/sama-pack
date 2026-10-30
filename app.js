@@ -1168,8 +1168,23 @@
   function updateCartCount() { const el = $("cartCount"); if (el) el.textContent = String(cart.reduce((sum, i) => sum + i.qty, 0)); }
   function saveAndRenderCart() { saveCart(); updateCartCount(); renderCartModal(); }
   function cartTotals() { const subtotal = cart.reduce((sum, i) => sum + getEffectivePrice(getP(i.id)) * i.qty, 0); const delivery = Number(appSettings.deliveryFee || 0); return { subtotal, delivery, total: subtotal + delivery }; }
-  function showModal(body) { $("modalRoot").innerHTML = `<div class="modal" onclick="if(event.target===this)closeModal()"><div class="modal-card">${body}</div></div>`; }
-  function closeModal() { $("modalRoot").innerHTML = ""; }
+  function ensureModalRoot() {
+    let root = $("modalRoot");
+    if (!root) {
+      root = document.createElement("div");
+      root.id = "modalRoot";
+      document.body.appendChild(root);
+    }
+    return root;
+  }
+  function showModal(body) {
+    const root = ensureModalRoot();
+    root.innerHTML = `<div class="modal" onclick="if(event.target===this)closeModal()"><div class="modal-card">${body}</div></div>`;
+  }
+  function closeModal() {
+    const root = $("modalRoot");
+    if (root) root.innerHTML = "";
+  }
   function renderCartModal() {
     if (isGeneralAdmin()) return toast("Le panier client n’est pas disponible pour l’administrateur général.");
     if (!cart.length) { showModal(`<div class="modal-head"><h2>Ton panier</h2><button class="close" onclick="closeModal()">✕</button></div><div class="empty">Ton panier est vide.<br><br><a class="btn primary" href="#catalogue" onclick="closeModal()">Voir le catalogue</a></div>`); return; }
@@ -4356,44 +4371,11 @@
     if ($("year")) $("year").textContent = String(new Date().getFullYear());
     const search = $("searchBox"); if (search) search.addEventListener("input",() => { currentProductPage = 1; renderProducts(); });
     const category = $("categoryFilter"); if(category) category.addEventListener("change",() => { currentProductPage = 1; renderProducts(); });
-    if ($("openCartBtn")) $("openCartBtn").onclick = renderCartModal;
     if ($("budgetPackBuilderBtn")) $("budgetPackBuilderBtn").onclick = openBudgetPackBuilder;
-    document.querySelectorAll("[data-mobile-action=cart]").forEach(b => b.addEventListener("click", renderCartModal));
-    document.querySelectorAll("[data-mobile-action=account]").forEach(b => b.addEventListener("click", openAccountModal));
-    const mobileNav = $("mobileMenuShell");
-    const mobileMenuToggle = $("mobileMenuToggle");
-    const closeMobileNav = () => {
-      if (!mobileNav || !mobileMenuToggle) return;
-      mobileNav.classList.remove("is-open");
-      mobileMenuToggle.setAttribute("aria-expanded", "false");
-      mobileMenuToggle.setAttribute("aria-label", "Ouvrir le menu");
-    };
-    if (mobileNav && mobileMenuToggle) {
-      mobileMenuToggle.addEventListener("click", () => {
-        const isOpen = !mobileNav.classList.contains("is-open");
-        mobileNav.classList.toggle("is-open", isOpen);
-        mobileMenuToggle.setAttribute("aria-expanded", String(isOpen));
-        mobileMenuToggle.setAttribute("aria-label", isOpen ? "Fermer le menu" : "Ouvrir le menu");
-      });
-      mobileNav.querySelectorAll(".mobile-nav-menu .mobile-nav-item").forEach(item => {
-        item.addEventListener("click", closeMobileNav);
-      });
-      document.addEventListener("keydown", event => {
-        if (event.key === "Escape") closeMobileNav();
-      });
-      document.addEventListener("click", event => {
-        if (!mobileNav.contains(event.target)) closeMobileNav();
-      });
-      window.addEventListener("resize", () => {
-        if (!window.matchMedia("(max-width: 700px)").matches) closeMobileNav();
-      });
-    }
     if ($("heroWhatsApp")) $("heroWhatsApp").onclick = () => document.getElementById("catalogue").scrollIntoView({behavior:"smooth"});
     if ($("contactWhatsApp")) $("contactWhatsApp").onclick = () => openWA("Bonjour Sama-Pack, je souhaite avoir plus d’informations sur vos packs.");
     if ($("quoteBtn")) $("quoteBtn").onclick = openQuoteModal;
     if ($("businessSpaceBtn")) $("businessSpaceBtn").onclick = openB2BWorkspace;
-    if ($("adminBtn")) $("adminBtn").onclick = openAdmin;
-    if ($("mobileManageBtn")) $("mobileManageBtn").onclick = openAdmin;
     if ($("footerAdmin")) $("footerAdmin").onclick = e => { e.preventDefault(); openAdmin(); };
     if ($("viewShopBtn")) $("viewShopBtn").onclick = closeAdmin;
     if ($("viewShopBtnSide")) $("viewShopBtnSide").onclick = closeAdmin;
@@ -4402,8 +4384,6 @@
     if ($("adminAccountBtn")) $("adminAccountBtn").onclick = openAccountModal;
     if ($("adminNavSearch")) $("adminNavSearch").addEventListener("input", applyAdminNavigationSearch);
     if ($("adminGlobalSearch")) $("adminGlobalSearch").addEventListener("input", applyAdminResultSearch);
-    if ($("accountBtn")) $("accountBtn").onclick = openAccountModal;
-    if ($("notificationBtn")) $("notificationBtn").onclick = loadAndShowNotifications;
     if ($("adminNotificationBtn")) $("adminNotificationBtn").onclick = async () => {
       if (isGeneralAdmin() && "Notification" in window && Notification.permission === "default") {
         try {
@@ -4451,9 +4431,31 @@
     }
 
     client.auth.onAuthStateChange((_event, session) => { setTimeout(async () => { await syncAuth(session?.user || null); await handlePaymentReturn(); }, 0); });
+
+    const requestedAction = urlParams.get("spAction");
+    if (["cart","account","notifications","manage"].includes(requestedAction || "")) {
+      urlParams.delete("spAction");
+      const remainingQuery = urlParams.toString();
+      window.history.replaceState({}, "", window.location.pathname + (remainingQuery ? "?" + remainingQuery : "") + window.location.hash);
+      if (requestedAction === "cart") renderCartModal();
+      else if (requestedAction === "account") openAccountModal();
+      else if (requestedAction === "notifications") await loadAndShowNotifications();
+      else if (requestedAction === "manage") await openAdmin();
+    }
   }
 
   // Functions called by inline storefront/admin controls.
-  Object.assign(window,{updateContactMessageStatus,openProduct,addToCart,closeModal,changeQty,checkoutModal,retryOrderPayment,resendPaymentConfirmation,showAccountHome,reorderOrder,openBudgetPackBuilder,suggestBudgetPack,changeBudgetBuilderQty,addBudgetPackToCart,signOut,renderAuthForm,resetPassword,enableBrowserNotifications,loadAndShowNotifications,markNotificationRead,showAdminView,editPack,cancelPackEdit,togglePack,setOrderStatus,showOrder,setQuoteStatus,goToProductPage,movePromo,goToPromo,selectReviewRating,editProspect,deleteProspect,setProspectStatus,editCatalogItem,archiveCatalogItem,removeAdmin,openSubscriptionEditor,addSubscriptionLine,removeSubscriptionLine,toggleSubscriptionStatus,prepareSubscriptionOrder,advanceSubscriptionReminder,deleteSubscription,openOrderWhatsApp,openB2BWorkspace,addB2BLine,removeB2BLine,submitB2BQuantityOrder,submitB2BQuote,setOrderDeliveryCost,toggleSalesCode,deleteSalesCode,copySalesLink,showCustomerProfile,sendMonthlyMarketingNow});
+  Object.assign(window,{
+    updateContactMessageStatus,openProduct,addToCart,closeModal,changeQty,checkoutModal,retryOrderPayment,resendPaymentConfirmation,
+    showAccountHome,reorderOrder,openBudgetPackBuilder,suggestBudgetPack,changeBudgetBuilderQty,addBudgetPackToCart,signOut,
+    renderAuthForm,resetPassword,enableBrowserNotifications,loadAndShowNotifications,markNotificationRead,showAdminView,
+    editPack,cancelPackEdit,togglePack,setOrderStatus,showOrder,setQuoteStatus,goToProductPage,movePromo,goToPromo,
+    selectReviewRating,editProspect,deleteProspect,setProspectStatus,editCatalogItem,archiveCatalogItem,removeAdmin,
+    openSubscriptionEditor,addSubscriptionLine,removeSubscriptionLine,toggleSubscriptionStatus,prepareSubscriptionOrder,
+    advanceSubscriptionReminder,deleteSubscription,openOrderWhatsApp,openB2BWorkspace,addB2BLine,removeB2BLine,
+    submitB2BQuantityOrder,submitB2BQuote,setOrderDeliveryCost,toggleSalesCode,deleteSalesCode,copySalesLink,
+    showCustomerProfile,sendMonthlyMarketingNow,
+    SamaPackHeaderActions: { cart: renderCartModal, account: openAccountModal, notifications: loadAndShowNotifications, manage: openAdmin }
+  });
   start().catch(err => { console.error(err); toast("Initialisation impossible. Recharge la page ou contacte l’administrateur.",true); });
 })();
