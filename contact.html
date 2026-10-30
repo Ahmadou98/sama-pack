@@ -116,14 +116,14 @@
         el.className = "contact-form-status visible " + kind;
       }
       async function loadContacts() {
-        const [{data: setting, error: settingError}, {data: notificationSettings, error: notificationError}] = await Promise.all([
+        const [{data: setting, error: settingError}, {data: publicContactEmail, error: contactEmailError}] = await Promise.all([
           client.from("settings").select("company,whatsapp").eq("id", true).maybeSingle(),
-          client.from("notification_settings").select("id,order_notification_email").eq("id", true).maybeSingle()
+          client.rpc("sama_public_contact_email")
         ]);
         if (settingError) console.warn("Coordonnées WhatsApp indisponibles", settingError);
-        if (notificationError) console.warn("Adresse e-mail indisponible", notificationError);
+        if (contactEmailError) console.warn("Adresse e-mail publique indisponible", contactEmailError);
         whatsapp = normalizeWhatsApp(setting?.whatsapp || "");
-        email = String(notificationSettings?.order_notification_email || "").trim();
+        email = String(publicContactEmail || "").trim();
         const phoneText = $("contactWhatsAppValue"), phoneLink = $("contactWhatsAppLink");
         if (whatsapp) {
           phoneText.textContent = "+" + whatsapp;
