@@ -54,7 +54,11 @@
     .delivery-login { width:min(420px,92vw); margin:8vh auto; }
     .delivery-login h1 { font-size:26px; margin:0 0 8px; }
     .delivery-login p { color:#67786d; line-height:1.6; }
-    .delivery-login form { display:grid; gap:13px; margin-top:18px; }
+    .delivery-login form, .delivery-login-form { display:grid; gap:13px; margin-top:18px; }
+    .delivery-login-form label { display:grid; gap:6px; font-weight:800; font-size:13px; }
+    .identity-consent-label { display:flex!important; align-items:flex-start; gap:10px!important; font-size:12px!important; line-height:1.55; color:#53675b; }
+    .identity-consent-label input { margin-top:3px; flex:0 0 auto; width:18px; height:18px; }
+    #identityBackField[hidden] { display:none!important; }
     .delivery-login label { display:grid; gap:6px; font-weight:800; font-size:13px; }
     .delivery-alert { display:none; padding:12px 14px; border-radius:12px; margin:12px 0; line-height:1.5; font-size:13px; }
     .delivery-alert.visible { display:block; }
@@ -102,6 +106,25 @@
         <button id="deliveryLoginButton" class="btn primary full" type="submit">Se connecter</button>
       </form>
       <p class="small-note">Compte non encore activé ? Ouvre le lien d’invitation reçu par e-mail pour définir ton mot de passe.</p>
+    </section>
+
+    <section id="deliveryIdentity" class="delivery-panel delivery-login" hidden>
+      <div class="eyebrow">VÉRIFICATION D’IDENTITÉ OBLIGATOIRE</div>
+      <h1>Confirmer ton identité</h1>
+      <p>Avant de recevoir des commandes, chaque livreur doit renseigner une pièce officielle à son nom et transmettre une photo lisible. L’administrateur général vérifiera ton dossier.</p>
+      <div id="deliveryIdentityStatus" class="delivery-alert visible" role="status"></div>
+      <form id="deliveryIdentityForm" class="delivery-login-form">
+        <label>Type de pièce officielle *<select class="input" name="document_type" id="identityDocumentType" required><option value="national_id">Carte nationale d’identité (recto et verso)</option><option value="passport">Passeport (page d’identité)</option></select></label>
+        <label>Nom et prénoms tels qu’inscrits sur la pièce *<input class="input" name="legal_name" required minlength="2" maxlength="160" placeholder="Nom complet officiel"></label>
+        <label>Numéro de la pièce *<input class="input" name="document_number" required minlength="4" maxlength="50" placeholder="Numéro exactement comme imprimé" autocomplete="off"></label>
+        <label>Pays de délivrance *<input class="input" name="issuing_country" required minlength="2" maxlength="80" value="Sénégal"></label>
+        <label>Date d’expiration (si indiquée)<input class="input" name="expires_on" type="date"></label>
+        <label>Photo du recto / page d’identité *<input class="input" name="front_image" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" required><small class="small-note">Photo nette et lisible. JPG, PNG ou WEBP, 6 Mo maximum.</small></label>
+        <label id="identityBackField">Photo du verso de la carte *<input class="input" name="back_image" type="file" accept="image/jpeg,image/png,image/webp" capture="environment"><small class="small-note">Le recto et le verso doivent être entièrement visibles.</small></label>
+        <label class="identity-consent-label"><input type="checkbox" name="consent" required><span>Je confirme l’exactitude des informations et j’accepte leur utilisation pour vérifier mon identité et gérer mon accès livreur. L’accès aux pièces est réservé au titulaire du compte et à l’administrateur général.</span></label>
+        <button id="deliveryIdentitySubmit" class="btn primary full" type="submit">Envoyer ma pièce pour vérification</button>
+      </form>
+      <button id="deliveryIdentityRefresh" type="button" class="btn ghost full" hidden>Actualiser le statut</button>
     </section>
 
     <section id="deliveryWorkspace" class="delivery-main" hidden>
