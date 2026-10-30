@@ -2999,7 +2999,7 @@
     const [courierResult, orderResult, eventResult, identityResult, failureEventResult] = await Promise.all([
       client.from("profiles").select("id,full_name,email,phone,last_seen_at,created_at")
         .eq("role","courier").order("created_at",{ascending:false}),
-      client.from("orders").select("id,created_at,status,customer_name,customer_phone,delivery_address,delivery_zone,slot,total,amount_paid,payment_status,assigned_courier_id,delivery_attempt_status,delivery_failure_reason")
+      client.from("orders").select("id,created_at,updated_at,status,customer_name,customer_phone,delivery_address,delivery_zone,slot,total,amount_paid,payment_status,assigned_courier_id,delivery_attempt_status,delivery_failure_reason")
         .in("status",["prepared","out_for_delivery"]).order("created_at",{ascending:false}).limit(250),
       client.from("order_delivery_events").select("id,order_id,courier_id,actor_user_id,note,amount,payment_method,created_at")
         .eq("event_type","collection_recorded").eq("review_status","pending").order("created_at",{ascending:false}).limit(250),
