@@ -5,6 +5,7 @@
 <link rel="canonical" href="https://sama-pack.store/comment-ca-marche.html"><meta property="og:type" content="website"><meta property="og:site_name" content="SAMA-PACK"><meta property="og:title" content="Comment commander sur SAMA-PACK"><meta property="og:description" content="Les étapes pour choisir vos produits, commander, payer et suivre votre livraison."><meta property="og:url" content="https://sama-pack.store/comment-ca-marche.html">
 <title>Comment ça marche ? | SAMA-PACK</title><script>document.documentElement.classList.add("maintenance-checking");window.setTimeout(()=>document.documentElement.classList.remove("maintenance-checking"),7000);</script>
 <link rel="stylesheet" href="styles.css?v=20261030-header-final">
+<script src="header.js?v=20261030-unified-actions" defer></script>
 <style>
 .guide-hero{padding:58px 0 50px;background:radial-gradient(circle at 90% 5%,#d6f2de 0,transparent 32%),linear-gradient(135deg,#f8fafc 0,#fff 55%,#f0fdf4 100%)}.guide-hero-inner{max-width:900px}.guide-hero h1{font-size:clamp(34px,5vw,58px);line-height:1.05;letter-spacing:-.04em;margin:12px 0 16px}.guide-hero p{max-width:780px;color:#475569;font-size:17px;line-height:1.7;margin:0}.guide-points{display:flex;gap:10px;flex-wrap:wrap;margin-top:25px}.guide-pill{border:1px solid #dbe5dd;background:#fff;border-radius:999px;padding:9px 13px;color:#166534;font-size:13px;font-weight:700}
 .guide-content{padding:56px 0 72px}.guide-intro{max-width:800px;margin:0 auto 32px;text-align:center}.guide-intro h2{font-size:clamp(27px,3.4vw,38px);margin:0 0 10px;letter-spacing:-.035em}.guide-intro p{color:#64746a;font-size:15px;line-height:1.7;margin:0}.guide-step{display:grid;grid-template-columns:minmax(0,.85fr) minmax(0,1.15fr);gap:34px;align-items:center;margin:0 0 34px;padding:26px;border:1px solid #e1e9e3;border-radius:22px;background:#fff;box-shadow:0 10px 28px rgba(15,23,42,.035)}.guide-step:nth-of-type(even){grid-template-columns:minmax(0,1.15fr) minmax(0,.85fr)}.guide-step:nth-of-type(even) .guide-copy{order:2}.guide-step:nth-of-type(even) figure{order:1}.guide-step-number{display:inline-flex;align-items:center;justify-content:center;width:42px;height:42px;border-radius:13px;background:#dcfce7;color:#166534;font-size:15px;font-weight:900}.guide-copy h2{font-size:clamp(24px,3vw,32px);line-height:1.18;letter-spacing:-.03em;margin:14px 0 12px}.guide-copy p{color:#475569;font-size:15px;line-height:1.75;margin:0 0 12px}.guide-copy ul{padding-left:20px;margin:12px 0 0;color:#475569;font-size:14px;line-height:1.8}.guide-step figure{margin:0;min-width:0}.guide-step figure img{display:block;width:100%;height:auto;border:1px solid #dbe5dd;border-radius:14px;box-shadow:0 10px 25px rgba(22,101,52,.08)}.guide-step figcaption{margin:9px 2px 0;color:#64746a;font-size:11px;line-height:1.5}.guide-note{background:#f0fdf4;border:1px solid #dbe5dd;border-radius:14px;padding:14px 16px;margin-top:16px;color:#365b43;font-size:13px;line-height:1.65}
@@ -17,11 +18,11 @@
   <div class="wrap nav">
     <a class="brand" href="/#home" aria-label="SAMA-PACK, accueil"><span class="brand-mark">S</span><span>SAMA<span>-PACK</span></span></a>
     <div class="nav-actions">
-      <button class="icon-btn" id="openCartBtn" type="button" aria-label="Panier" title="Panier">🛒 <span id="cartCount">0</span></button>
-      <button class="icon-btn notification-btn" id="notificationBtn" type="button" aria-label="Notifications" title="Notifications">🔔 <span id="notificationCount" class="notification-count hidden">0</span></button>
-            <button class="btn small ghost" id="accountBtn" type="button">Connexion</button>
-      <div class="mobile-menu-shell">
-        <button class="mobile-menu-toggle" type="button" aria-label="Ouvrir le menu" aria-controls="infoFloatingMenu" aria-expanded="false">
+      <button class="icon-btn" id="openCartBtn" data-header-action="cart" type="button" aria-label="Panier" title="Panier">🛒 <span id="cartCount">0</span></button>
+      <button class="icon-btn notification-btn" id="notificationBtn" data-header-action="notifications" type="button" aria-label="Notifications" title="Notifications">🔔 <span id="notificationCount" class="notification-count hidden">0</span></button>
+      <button class="btn small ghost" id="accountBtn" data-header-action="account" type="button">Connexion</button>
+      <div class="mobile-menu-shell" id="mobileMenuShell">
+        <button class="mobile-menu-toggle" id="mobileMenuToggle" type="button" aria-label="Ouvrir le menu" aria-controls="infoFloatingMenu" aria-expanded="false">
           <span class="mobile-menu-icon" aria-hidden="true"><i></i><i></i><i></i></span>
         </button>
         <nav id="infoFloatingMenu" class="mobile-nav-menu" aria-label="Menu principal">
@@ -29,39 +30,22 @@
           <a class="mobile-nav-item" href="/#catalogue">▦ <small>Catalogue et packs</small></a>
           <a class="mobile-nav-item" href="produits.html">◫ <small>Produits</small></a>
           <a class="mobile-nav-item" href="comment-ca-marche.html">ⓘ <small>Comment ça marche</small></a>
+          <a class="mobile-nav-item" href="outils.html">▤ <small>Outils de nettoyage</small></a>
           <a class="mobile-nav-item" href="/#b2b">▤ <small>Professionnels</small></a>
           <a class="mobile-nav-item" href="contact.html">✉ <small>Contact</small></a>
           <a class="mobile-nav-item" href="conditions-vente.html">▧ <small>Conditions de vente</small></a>
           <a class="mobile-nav-item" href="livraison-retours.html">↗ <small>Livraison et retours</small></a>
           <a class="mobile-nav-item" href="confidentialite.html">♧ <small>Confidentialité</small></a>
+          <a id="courierMobileLink" class="mobile-nav-item hidden" href="livraisons.html"><span aria-hidden="true">🚚</span><small>Mes livraisons</small></a>
+          <button type="button" id="mobileManageBtn" data-header-action="manage" class="mobile-nav-item hidden" aria-label="Ouvrir la gestion"><span aria-hidden="true">⚙</span><small>Gestion</small></button>
+          
         </nav>
       </div>
+      <button class="btn small ghost hidden" id="adminBtn" data-header-action="manage" type="button">Gestion</button>
     </div>
   </div>
 </header>
-<script>
-(() => {
- const header=document.querySelector(".info-floating-header");
- if(!header || header.dataset.menuReady==="true") return;
- const shell=header.querySelector(".mobile-menu-shell");
- const button=header.querySelector(".mobile-menu-toggle");
- const menu=header.querySelector(".mobile-nav-menu");
- if(!shell || !button || !menu) return;
- header.dataset.menuReady="true";
- const close=()=>{shell.classList.remove("is-open");button.setAttribute("aria-expanded","false");button.setAttribute("aria-label","Ouvrir le menu");};
- button.addEventListener("click",event=>{
-   event.preventDefault();
-   event.stopPropagation();
-   const open=!shell.classList.contains("is-open");
-   shell.classList.toggle("is-open",open);
-   button.setAttribute("aria-expanded",String(open));
-   button.setAttribute("aria-label",open?"Fermer le menu":"Ouvrir le menu");
- });
- menu.querySelectorAll("a").forEach(link=>link.addEventListener("click",close));
- document.addEventListener("click",event=>{if(!shell.contains(event.target))close();});
- document.addEventListener("keydown",event=>{if(event.key==="Escape")close();});
-})();
-</script>
+
 <main><section class="guide-hero"><div class="wrap guide-hero-inner"><div class="eyebrow">GUIDE CLIENT SAMA-PACK</div><h1>Votre commande, de la sélection à la livraison.</h1><p>Retrouvez les étapes pour choisir les bons articles, passer commande en ligne, régler votre achat et suivre son avancement depuis votre compte.</p><div class="guide-points"><span class="guide-pill">Catalogue consultable</span><span class="guide-pill">Paiement vérifié</span><span class="guide-pill">Suivi depuis votre compte</span></div></div></section>
 <section class="guide-content"><div class="wrap"><div class="guide-intro"><h2>Comment se déroule une commande ?</h2><p>Suivez ces quatre étapes. Les illustrations montrent les principales zones de la boutique sans utiliser de données personnelles.</p></div>
 <article class="guide-step"><div class="guide-copy"><span class="guide-step-number">01</span><h2>Choisissez vos packs ou vos produits</h2><p>Parcourez <strong>Packs</strong> pour découvrir nos sélections prêtes à commander ou <strong>Produits</strong> pour acheter des articles à l’unité. Le prix et la disponibilité figurent sur les fiches.</p><ul><li>Utilisez la recherche ou le filtre par catégorie.</li><li>Ouvrez <strong>Détails</strong> pour consulter la description et les caractéristiques.</li><li>Ajoutez au panier les articles disponibles dont le prix est confirmé.</li></ul></div><figure><img src="images/guide-catalogue.svg" alt="Aperçu visuel du catalogue, des prix et des actions Détails et Ajouter"><figcaption>Aperçu illustratif du catalogue : prix, disponibilité et accès aux fiches.</figcaption></figure></article>
