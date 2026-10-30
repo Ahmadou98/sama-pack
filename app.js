@@ -814,15 +814,15 @@
       catalogLoadFailed = true;
       console.warn("Catalogue distant indisponible; les prix de secours ne sont pas utilisés.", error);
     }
-    const [{ data: setting, error: settingError }, { data: notificationSettings, error: notificationError }] = await Promise.all([
+    const [{ data: setting, error: settingError }, { data: publicContactEmail, error: contactEmailError }] = await Promise.all([
       client.from("settings").select("id,company,whatsapp,delivery_fee,currency,homepage_background_url").eq("id", true).maybeSingle(),
-      client.from("notification_settings").select("id,order_notification_email").eq("id", true).maybeSingle()
+      client.rpc("sama_public_contact_email")
     ]);
     if (!settingError && setting) {
-      appSettings = { company: setting.company || "SAMA-PACK", whatsapp: String(setting.whatsapp || ""), contactEmail: String(notificationSettings?.order_notification_email || ""), deliveryFee: Number(setting.delivery_fee || 0), currency: setting.currency || "FCFA", homepageBackgroundUrl: String(setting.homepage_background_url || "") };
+      appSettings = { company: setting.company || "SAMA-PACK", whatsapp: String(setting.whatsapp || ""), contactEmail: String(publicContactEmail || "").trim(), deliveryFee: Number(setting.delivery_fee || 0), currency: setting.currency || "FCFA", homepageBackgroundUrl: String(setting.homepage_background_url || "") };
       applyHomepageBackground();
     } else if (settingError) console.warn("Paramètres distants indisponibles.", settingError);
-    if (notificationError) console.warn("Adresse e-mail de contact indisponible.", notificationError);
+    if (contactEmailError) console.warn("Adresse e-mail publique indisponible.", contactEmailError);
     await loadProductReviewStats();
     const count = $("packCount"); if (count) count.textContent = String(products.filter(p => p.active && p.catalog_type === "pack").length);
     updateContact(); updateCategoryFilter(); renderTop(); renderProducts(); renderPromoCarousel(); updateCartCount();
@@ -1908,11 +1908,6 @@
     currentBusinessAccount = businessResult.error ? null : (businessResult.data || null);
     const { data: activeSalesCode } = await client.from("sales_referral_codes").select("code,label").eq("owner_user_id", currentUser.id).eq("active", true).maybeSingle();
     const salesLinkHtml = activeSalesCode?.code ? '<div class="panel account-referral-launch"><div><strong>Ton code commercial : </strong><code>' + esc(activeSalesCode.code) + '</code><p class="small-note">Partage ton lien pour rattacher les commandes et devis que tu apportes à ton activité.</p></div><button class="btn secondary" onclick="copySalesLink(\'' + esc(activeSalesCode.code) + '\')">Copier mon lien</button></div>' : "";
-    // Le rafraîchissement des rappels tourne en arrière-plan : une erreur ou un délai
-    // sur cette fonction ne doit pas empêcher l'affichage de Mon compte.
-    client.rpc("sama_notify_due_replenishment_reminders")
-      .then(({ error }) => { if (error) console.warn("Due replenishment reminder check failed", error); })
-      .catch(error => console.warn("Due replenishment reminder check failed", error));
     await loadNotifications();
     const { data: rows, error } = await client.from("orders").select("id,created_at,status,total,subtotal,delivery,customer_name,customer_phone,delivery_address,delivery_zone,slot,payment_choice,payment_status,amount_paid").eq("user_id", currentUser.id).order("created_at", { ascending: false }).limit(15);
     const orders = error ? [] : (rows || []);
@@ -2461,9 +2456,11 @@
     }
 
     const gatewayStatus = String(data?.gateway_status || "en attente");
-    const notice = gatewayStatus === "completed"
-      ? "PayDunya confirme une transaction, mais la commande doit encore être rapprochée. Ne paie pas une deuxième fois ; contacte SAMA-PACK."
-      : "PayDunya n’a pas encore confirmé le paiement. Aucun nouveau paiement n’a été lancé.";
+    const notice = data?.manual_review_required
+      ? "Le prestataire confirme un paiement total supérieur au montant attendu (" + money(data.expected_online_amount) + "). La commande est bloquée pour vérification par SAMA-PACK. Ne paie pas une deuxième fois."
+      : gatewayStatus === "completed"
+        ? "PayDunya confirme une transaction, mais la commande doit encore être rapprochée. Ne paie pas une deuxième fois ; contacte SAMA-PACK."
+        : "PayDunya n’a pas encore confirmé le paiement. Aucun nouveau paiement n’a été lancé.";
     showModal(`<div class="modal-head"><div><div class="eyebrow">VÉRIFICATION DU PAIEMENT</div><h2>Statut : ${esc(gatewayStatus)}</h2></div><button class="close" onclick="closeModal()">✕</button></div>
       <p>${esc(notice)}</p>
       <button class="btn primary full" onclick="retryPaymentVerification('${esc(orderId)}')">Vérifier à nouveau</button>
