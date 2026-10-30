@@ -60,6 +60,11 @@
     .identity-consent-label input { margin-top:3px; flex:0 0 auto; width:18px; height:18px; }
     #identityBackField[hidden] { display:none!important; }
     .delivery-login label { display:grid; gap:6px; font-weight:800; font-size:13px; }
+    .delivery-password-wrap { display:flex; align-items:center; gap:8px; }
+    .delivery-password-wrap .input { min-width:0; flex:1; }
+    .delivery-password-toggle { flex:0 0 auto; border:1px solid #d9e4db; border-radius:10px; background:#fff; color:#176b43; font-size:12px; font-weight:800; padding:10px 12px; cursor:pointer; }
+    .identity-password-fields { border:1px solid #dce9df; border-radius:14px; background:#f7fbf8; padding:13px; display:grid; gap:12px; }
+    .identity-password-fields[hidden] { display:none!important; }
     .delivery-alert { display:none; padding:12px 14px; border-radius:12px; margin:12px 0; line-height:1.5; font-size:13px; }
     .delivery-alert.visible { display:block; }
     .delivery-alert.error { background:#fff0f0; color:#9b2424; }
@@ -105,7 +110,8 @@
         <label>Mot de passe<input class="input" name="password" type="password" autocomplete="current-password" required placeholder="Mot de passe"></label>
         <button id="deliveryLoginButton" class="btn primary full" type="submit">Se connecter</button>
       </form>
-      <p class="small-note">Compte non encore activé ? Ouvre le lien d’invitation reçu par e-mail pour définir ton mot de passe.</p>
+      <p class="small-note">Après validation de ton identité, tu pourras accéder aux tournées. Tu peux aussi te connecter depuis la boutique pour acheter avec ce même compte.</p>
+      <a class="btn ghost full" href="index.html?connexion=1">Connexion depuis la boutique / Acheter</a>
     </section>
 
     <section id="deliveryIdentity" class="delivery-panel delivery-login" hidden>
@@ -114,6 +120,22 @@
       <p>Avant de recevoir des commandes, chaque livreur doit renseigner une pièce officielle à son nom et transmettre une photo lisible. L’administrateur général vérifiera ton dossier.</p>
       <div id="deliveryIdentityStatus" class="delivery-alert visible" role="status"></div>
       <form id="deliveryIdentityForm" class="delivery-login-form">
+        <div id="identityPasswordFields" class="identity-password-fields">
+          <strong>Créer ton mot de passe de connexion</strong>
+          <p class="small-note">Ce mot de passe te servira pour l’espace livreur et pour acheter sur la boutique SAMA-PACK. Minimum 8 caractères.</p>
+          <label>Mot de passe *
+            <span class="delivery-password-wrap">
+              <input class="input" id="identityPassword" name="password" type="password" minlength="8" autocomplete="new-password" required placeholder="Créer un mot de passe">
+              <button type="button" class="delivery-password-toggle" data-delivery-password-toggle="identityPassword" aria-controls="identityPassword" aria-pressed="false">Afficher</button>
+            </span>
+          </label>
+          <label>Confirmer le mot de passe *
+            <span class="delivery-password-wrap">
+              <input class="input" id="identityPasswordConfirmation" name="password_confirmation" type="password" minlength="8" autocomplete="new-password" required placeholder="Confirmer le mot de passe">
+              <button type="button" class="delivery-password-toggle" data-delivery-password-toggle="identityPasswordConfirmation" aria-controls="identityPasswordConfirmation" aria-pressed="false">Afficher</button>
+            </span>
+          </label>
+        </div>
         <label>Type de pièce officielle *<select class="input" name="document_type" id="identityDocumentType" required><option value="national_id">Carte nationale d’identité (recto et verso)</option><option value="passport">Passeport (page d’identité)</option></select></label>
         <label>Nom et prénoms tels qu’inscrits sur la pièce *<input class="input" name="legal_name" required minlength="2" maxlength="160" placeholder="Nom complet officiel"></label>
         <label>Numéro de la pièce *<input class="input" name="document_number" required minlength="4" maxlength="50" placeholder="Numéro exactement comme imprimé" autocomplete="off"></label>
@@ -125,6 +147,15 @@
         <button id="deliveryIdentitySubmit" class="btn primary full" type="submit">Envoyer ma pièce pour vérification</button>
       </form>
       <button id="deliveryIdentityRefresh" type="button" class="btn ghost full" hidden>Actualiser le statut</button>
+    </section>
+
+    <section id="deliveryPending" class="delivery-panel delivery-login" hidden>
+      <div class="eyebrow">DOSSIER EN COURS DE VÉRIFICATION</div>
+      <h1>Ton dossier a bien été reçu</h1>
+      <div id="deliveryPendingStatus" class="delivery-alert visible success" role="status"></div>
+      <p>Tu peux déjà utiliser ton compte pour acheter sur la boutique SAMA-PACK. Les livraisons seront activées dès que l’administrateur général aura validé ta pièce officielle.</p>
+      <a class="btn primary full" href="index.html?connexion=1">Accéder à la boutique et acheter</a>
+      <button id="deliveryPendingRefresh" type="button" class="btn ghost full">Actualiser le statut du dossier</button>
     </section>
 
     <section id="deliveryWorkspace" class="delivery-main" hidden>
@@ -267,34 +298,42 @@
           .eq("courier_id",currentUser.id).maybeSingle();
         if(error) throw new Error("Impossible de charger l’état de la vérification : "+error.message);
         identityRecord=data||null;
+        $("deliveryLogin").hidden=true;
+        $("deliveryIdentity").hidden=true;
+        $("deliveryPending").hidden=true;
+        $("deliveryWorkspace").hidden=true;
+        $("deliveryDenied").hidden=true;
+        $("deliverySignOut").hidden=false;
+
         if(identityRecord?.verification_status==="approved") {
-          $("deliveryIdentity").hidden=true;
           await openWorkspace();
           return;
         }
-        $("deliveryLogin").hidden=true;
-        $("deliveryWorkspace").hidden=true;
-        $("deliveryDenied").hidden=true;
+        if(identityRecord?.verification_status==="pending") {
+          $("deliveryPending").hidden=false;
+          $("deliveryPendingStatus").textContent="Dossier transmis le "+fmtDate(identityRecord.submitted_at)+". La vérification est en attente de l’administrateur général. Tu ne peux pas encore recevoir de livraisons.";
+          return;
+        }
+
         $("deliveryIdentity").hidden=false;
-        $("deliverySignOut").hidden=false;
         const form=$("deliveryIdentityForm");
         const status=$("deliveryIdentityStatus");
         const refresh=$("deliveryIdentityRefresh");
-        if(identityRecord?.verification_status==="pending") {
-          status.textContent="Ton dossier a été envoyé le "+fmtDate(identityRecord.submitted_at)+". Il est en attente de vérification par l’administrateur général. Tu ne peux pas encore recevoir ni effectuer de livraison.";
-          status.className="delivery-alert visible";
-          form.hidden=true;
-          refresh.hidden=false;
-        } else {
-          status.textContent=identityRecord?.verification_status==="rejected"
-            ? "Ton dossier a été refusé. Motif : "+(identityRecord.rejection_reason||"Pièce à corriger.")+" Tu peux envoyer une nouvelle photo et corriger les informations."
-            : "Aucune pièce officielle n’a encore été envoyée. Ce dépôt est obligatoire pour activer ton espace livreur.";
-          status.className="delivery-alert visible "+(identityRecord?.verification_status==="rejected"?"error":"");
-          form.hidden=false;
-          refresh.hidden=true;
-          const legalName=form.elements.namedItem("legal_name");
-          if(legalName && !legalName.value) legalName.value=currentProfile.full_name||"";
-        }
+        const passwordFields=$("identityPasswordFields");
+        const passwordRequired=!identityRecord;
+        if(passwordFields) passwordFields.hidden=!passwordRequired;
+        ["identityPassword","identityPasswordConfirmation"].forEach(id=>{
+          const input=$(id);
+          if(input) { input.required=passwordRequired; if(!passwordRequired) input.value=""; }
+        });
+        status.textContent=identityRecord?.verification_status==="rejected"
+          ? "Ton dossier a été refusé. Motif : "+(identityRecord.rejection_reason||"Pièce à corriger.")+" Tu peux corriger les informations et renvoyer les photos. Ton mot de passe reste inchangé."
+          : "Avant ta première connexion, crée ton mot de passe. Complète ensuite les informations de ta pièce officielle : l’administrateur général vérifiera ton dossier.";
+        status.className="delivery-alert visible "+(identityRecord?.verification_status==="rejected"?"error":"");
+        form.hidden=false;
+        refresh.hidden=true;
+        const legalName=form.elements.namedItem("legal_name");
+        if(legalName && !legalName.value) legalName.value=currentProfile.full_name||"";
       }
       function identityFileExtension(file) {
         return ({"image/jpeg":"jpg","image/png":"png","image/webp":"webp"})[file?.type]||"";
@@ -336,16 +375,35 @@
           try { await refreshIdentityState(); }
           catch(error) { alertBox("deliveryIdentityStatus",error.message,"error"); }
         });
+        $("deliveryPendingRefresh").addEventListener("click",async()=>{
+          try { await refreshIdentityState(); }
+          catch(error) { alertBox("deliveryPendingStatus",error.message,"error"); }
+        });
+        document.querySelectorAll("[data-delivery-password-toggle]").forEach(toggle=>{
+          toggle.addEventListener("click",()=>{
+            const input=$(toggle.dataset.deliveryPasswordToggle);
+            if(!input) return;
+            const visible=input.type==="password";
+            input.type=visible?"text":"password";
+            toggle.textContent=visible?"Masquer":"Afficher";
+            toggle.setAttribute("aria-pressed",visible?"true":"false");
+          });
+        });
         $("deliveryIdentityForm").addEventListener("submit",async event=>{
           event.preventDefault();
           const form=event.currentTarget,fd=new FormData(form),button=$("deliveryIdentitySubmit");
           const documentType=String(fd.get("document_type")||"");
           const front=fd.get("front_image"),back=fd.get("back_image");
+          const password=String(fd.get("password")||"");
+          const passwordConfirmation=String(fd.get("password_confirmation")||"");
+          const needsPassword=!identityRecord;
           const validFile=file=>file instanceof File && file.size>0 && ["image/jpeg","image/png","image/webp"].includes(file.type) && file.size<=6*1024*1024;
+          if(needsPassword && password.length<8) return alertBox("deliveryIdentityStatus","Crée un mot de passe d’au moins 8 caractères.","error");
+          if(needsPassword && password!==passwordConfirmation) return alertBox("deliveryIdentityStatus","Les deux mots de passe ne correspondent pas.","error");
           if(!validFile(front)) return alertBox("deliveryIdentityStatus","Ajoute une photo du recto au format JPG, PNG ou WEBP (6 Mo maximum).","error");
           if(documentType==="national_id" && !validFile(back)) return alertBox("deliveryIdentityStatus","Ajoute également la photo du verso de ta carte nationale (6 Mo maximum).","error");
           if(!fd.get("consent")) return alertBox("deliveryIdentityStatus","Confirme la notice de traitement des données personnelles.","error");
-          button.disabled=true; button.textContent="Envoi des photos…";
+          button.disabled=true; button.textContent=needsPassword?"Création du mot de passe…":"Envoi des photos…";
           try {
             // Le portail livreur possède sa propre session Supabase, séparée de la boutique.
             // Vérifier à nouveau l'identité côté serveur juste avant tout envoi de document.
@@ -361,7 +419,15 @@
             }
             currentUser=verifiedAuth.user;
             currentProfile=verifiedProfile;
-            const makePath=(side,file)=>verifiedAuth.user.id+"/"+crypto.randomUUID()+"_"+side+"."+identityFileExtension(file);
+            if(needsPassword) {
+              const {error:passwordError}=await client.auth.updateUser({password});
+              if(passwordError) throw new Error("Le mot de passe n’a pas pu être enregistré : "+passwordError.message);
+            }
+            const {data:authAfterPassword,error:authAfterPasswordError}=await client.auth.getUser();
+            if(authAfterPasswordError || !authAfterPassword?.user || authAfterPassword.user.id!==verifiedAuth.user.id) {
+              throw new Error("La session a changé pendant la création du mot de passe. Reconnecte-toi puis recommence.");
+            }
+            const makePath=(side,file)=>authAfterPassword.user.id+"/"+crypto.randomUUID()+"_"+side+"."+identityFileExtension(file);
             const frontPath=makePath("front",front),backPath=documentType==="national_id"?makePath("back",back):"";
             const frontUpload=await client.storage.from("courier-identity").upload(frontPath,front,{upsert:false,contentType:front.type,cacheControl:"3600"});
             if(frontUpload.error) throw frontUpload.error;
@@ -376,8 +442,20 @@
               expires_on:String(fd.get("expires_on")||"").trim(),front_image_path:frontPath,back_image_path:backPath,consent:true
             }});
             if(error || data?.error) throw new Error(data?.error||error.message||"Envoi du dossier impossible.");
-            alertBox("deliveryIdentityStatus",data.message||"Pièce envoyée pour vérification.","success");
-            await refreshIdentityState();
+
+            const submittedEmail=authAfterPassword.user.email||verifiedProfile.email||"";
+            await client.auth.signOut({scope:"local"});
+            currentUser=null; currentProfile=null; identityRecord=null;
+            $("deliveryIdentity").hidden=true;
+            $("deliveryPending").hidden=true;
+            $("deliveryWorkspace").hidden=true;
+            $("deliveryDenied").hidden=true;
+            $("deliveryLogin").hidden=false;
+            $("deliverySignOut").hidden=true;
+            if(submittedEmail) $("deliveryLoginForm").elements.namedItem("email").value=submittedEmail;
+            form.reset();
+            toggleIdentityBackField();
+            alertBox("deliveryLoginAlert","Dossier transmis avec succès. Ton mot de passe a été créé. Connecte-toi pour retrouver le statut « En attente de vérification » et utiliser la boutique en tant que client.","success");
           } catch(error) {
             const raw=String(error?.message||"");
             const message=/row-level security|new row violates|AccessDenied/i.test(raw)
@@ -393,7 +471,7 @@
           catch(error) { alertBox("deliveryWorkspaceAlert",error.message,"error"); }
         });
         $("deliverySignOut").addEventListener("click",async()=>{
-          await client.auth.signOut(); currentUser=null; currentProfile=null; $("deliverySignOut").hidden=true; $("deliveryWorkspace").hidden=true; $("deliveryDenied").hidden=true; $("deliveryLogin").hidden=false; $("deliveryIdentity").hidden=true;
+          await client.auth.signOut({scope:"local"}); currentUser=null; currentProfile=null; identityRecord=null; $("deliverySignOut").hidden=true; $("deliveryWorkspace").hidden=true; $("deliveryDenied").hidden=true; $("deliveryPending").hidden=true; $("deliveryLogin").hidden=false; $("deliveryIdentity").hidden=true; clearAlert("deliveryLoginAlert");
         });
         const {data}=await client.auth.getSession();
         if(data.session?.user) {
