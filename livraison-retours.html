@@ -17,13 +17,42 @@
 <link rel="stylesheet" href="styles.css">
 </head>
 <body class="legal-page">
-<header class="topbar"><div class="wrap nav">
-<a class="brand" href="/#home"><span class="brand-mark">S</span><span>SAMA<span>-PACK</span></span></a>
-<nav class="desktop-nav" aria-label="Navigation principale">
-<a href="/#catalogue">Packs</a><a href="produits.html">Produits</a><a href="comment-ca-marche.html">Comment ça marche</a><a href="/#b2b">Professionnels</a><a href="/#contact">Contact</a>
-</nav>
-<div class="nav-actions"><a class="btn small primary" href="/#catalogue">Voir le catalogue</a></div>
-</div></header>
+<header class="topbar info-floating-header">
+  <div class="wrap nav">
+    <a class="brand" href="/#home" aria-label="SAMA-PACK, accueil"><span class="brand-mark">S</span><span>SAMA<span>-PACK</span></span></a>
+    <div class="nav-actions">
+      <div class="mobile-menu-shell">
+        <button class="mobile-menu-toggle" type="button" aria-label="Ouvrir le menu" aria-controls="infoFloatingMenu" aria-expanded="false">
+          <span class="mobile-menu-icon" aria-hidden="true"><i></i><i></i><i></i></span>
+        </button>
+        <nav id="infoFloatingMenu" class="mobile-nav-menu" aria-label="Menu principal">
+          <a class="mobile-nav-item" href="/#home">⌂ <small>Accueil</small></a>
+          <a class="mobile-nav-item" href="/#catalogue">▦ <small>Catalogue et packs</small></a>
+          <a class="mobile-nav-item" href="produits.html">◫ <small>Produits</small></a>
+          <a class="mobile-nav-item" href="comment-ca-marche.html">ⓘ <small>Comment ça marche</small></a>
+          <a class="mobile-nav-item" href="/#b2b">▤ <small>Professionnels</small></a>
+          <a class="mobile-nav-item" href="contact.html">✉ <small>Contact</small></a>
+          <a class="mobile-nav-item" href="conditions-vente.html">▧ <small>Conditions de vente</small></a>
+          <a class="mobile-nav-item" href="livraison-retours.html">↗ <small>Livraison et retours</small></a>
+          <a class="mobile-nav-item" href="confidentialite.html">♧ <small>Confidentialité</small></a>
+        </nav>
+      </div>
+    </div>
+  </div>
+</header>
+<script>
+(() => {
+ const header=document.querySelector(".info-floating-header");
+ if(!header) return;
+ const button=header.querySelector(".mobile-menu-toggle");
+ const menu=header.querySelector(".mobile-nav-menu");
+ if(!button||!menu) return;
+ const close=()=>{menu.classList.remove("is-open");button.setAttribute("aria-expanded","false");button.setAttribute("aria-label","Ouvrir le menu");};
+ button.addEventListener("click",()=>{const open=!menu.classList.contains("is-open");menu.classList.toggle("is-open",open);button.setAttribute("aria-expanded",String(open));button.setAttribute("aria-label",open?"Fermer le menu":"Ouvrir le menu");});
+ document.addEventListener("click",event=>{if(!header.contains(event.target))close();});
+ document.addEventListener("keydown",event=>{if(event.key==="Escape")close();});
+})();
+</script>
 <main>
 <section class="hero"><div class="wrap"><div class="eyebrow">APRÈS VOTRE COMMANDE</div><h1>Livraison, réclamations et retours</h1><p>Les informations affichées dans le récapitulatif de commande font foi pour les frais applicables et le montant à régler. En cas de problème, contacte l’équipe avec ta référence de commande pour que la situation soit vérifiée.</p><p class="legal-updated">Mise à jour : 29 octobre 2026</p></div></section>
 <section class="section"><div class="wrap legal-content">
@@ -40,13 +69,7 @@
 <p>Consulte les coordonnées à jour sur <a href="contact.html">la page de contact de la boutique</a>.</p>
 </div></section>
 </main>
-<nav class="mobile-bottom-nav" aria-label="Navigation rapide">
-<a href="/#catalogue" class="mobile-nav-item"><span aria-hidden="true">▦</span><small>Packs</small></a>
-<a href="produits.html" class="mobile-nav-item"><span aria-hidden="true">◫</span><small>Produits</small></a>
-<a href="comment-ca-marche.html" class="mobile-nav-item"><span aria-hidden="true">ⓘ</span><small>Aide</small></a>
-<a href="/#contact" class="mobile-nav-item"><span aria-hidden="true">✉</span><small>Contact</small></a>
-<a href="/#home" class="mobile-nav-item"><span aria-hidden="true">⌂</span><small>Accueil</small></a>
-</nav>
+
 <footer class="footer"><div class="wrap footer-grid"><div><div class="brand footer-brand"><span class="brand-mark">S</span><span>SAMA<span>-PACK</span></span></div><p>Distribution de packs de nettoyage et d’hygiène à Dakar.</p></div><div><strong>Informations</strong><a href="conditions-vente.html">Conditions de vente</a><a href="livraison-retours.html">Livraison et retours</a><a href="confidentialite.html">Confidentialité</a><a href="comment-ca-marche.html">Guide client</a></div><div><strong>Contact</strong><a href="contact.html">Coordonnées officielles et contact</a></div></div><div class="wrap footer-bottom">© <span id="year">2026</span> SAMA-PACK. Tous droits réservés.</div></footer>
 <script>document.getElementById('year').textContent=String(new Date().getFullYear());</script>
   <script src="maintenance.js" defer></script>
