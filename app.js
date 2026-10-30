@@ -42,7 +42,7 @@
   let currentSalesReferralCode = "";
   let cachedExpenses = [];
   let cachedSuppliers = [];
-  let appSettings = { company: "SAMA-PACK", whatsapp: "", contactEmail: "", deliveryFee: 1500, currency: "FCFA", homepageBackgroundUrl: "" };
+  let appSettings = { company: "SAMA-PACK", whatsapp: "", contactEmail: "", deliveryFee: 1500, currency: "FCFA", homepageBackgroundUrl: "", maintenanceMode: false, maintenanceMessage: "Notre site est temporairement indisponible pour une opération de maintenance. Nous serons de retour très bientôt." };
   let cart = loadCart();
   let budgetBuilderState = { budget: 5000, category: "all", items: [] };
 
@@ -814,14 +814,23 @@
       catalogLoadFailed = true;
       console.warn("Catalogue distant indisponible; les prix de secours ne sont pas utilisés.", error);
     }
-    const [{ data: setting, error: settingError }, { data: publicContactEmail, error: contactEmailError }] = await Promise.all([
+    const [
+      { data: setting, error: settingError },
+      { data: publicContactEmail, error: contactEmailError },
+      { data: siteControl, error: siteControlError }
+    ] = await Promise.all([
       client.from("settings").select("id,company,whatsapp,delivery_fee,currency,homepage_background_url").eq("id", true).maybeSingle(),
-      client.rpc("sama_public_contact_email")
+      client.rpc("sama_public_contact_email"),
+      client.from("site_control").select("id,maintenance_mode,maintenance_message").eq("id", true).maybeSingle()
     ]);
     if (!settingError && setting) {
-      appSettings = { company: setting.company || "SAMA-PACK", whatsapp: String(setting.whatsapp || ""), contactEmail: String(publicContactEmail || "").trim(), deliveryFee: Number(setting.delivery_fee || 0), currency: setting.currency || "FCFA", homepageBackgroundUrl: String(setting.homepage_background_url || "") };
+      appSettings = { ...appSettings, company: setting.company || "SAMA-PACK", whatsapp: String(setting.whatsapp || ""), contactEmail: String(publicContactEmail || "").trim(), deliveryFee: Number(setting.delivery_fee || 0), currency: setting.currency || "FCFA", homepageBackgroundUrl: String(setting.homepage_background_url || "") };
       applyHomepageBackground();
     } else if (settingError) console.warn("Paramètres distants indisponibles.", settingError);
+    if (!siteControlError && siteControl) {
+      appSettings.maintenanceMode = siteControl.maintenance_mode === true;
+      appSettings.maintenanceMessage = String(siteControl.maintenance_message || "").trim() || "Notre site est temporairement indisponible pour une opération de maintenance. Nous serons de retour très bientôt.";
+    } else if (siteControlError) console.warn("État de maintenance indisponible; le site reste accessible.", siteControlError);
     if (contactEmailError) console.warn("Adresse e-mail publique indisponible.", contactEmailError);
     await loadProductReviewStats();
     const count = $("packCount"); if (count) count.textContent = String(products.filter(p => p.active && p.catalog_type === "pack").length);
@@ -884,6 +893,51 @@
       `url("${safeSrc}")`
     );
     hero.classList.add("has-custom-bg");
+  }
+
+  function applySiteMaintenance() {
+    const active = appSettings.maintenanceMode === true && !isGeneralAdmin();
+    let screen = $("siteMaintenanceScreen");
+    if (!active) {
+      screen?.remove();
+      document.body.classList.remove("site-maintenance-active");
+      return;
+    }
+    if (!screen) {
+      screen = document.createElement("main");
+      screen.id = "siteMaintenanceScreen";
+      screen.className = "site-maintenance-screen";
+      screen.setAttribute("role", "status");
+      screen.setAttribute("aria-live", "polite");
+      const card = document.createElement("section");
+      card.className = "site-maintenance-card";
+      const mark = document.createElement("div");
+      mark.className = "site-maintenance-mark";
+      mark.setAttribute("aria-hidden", "true");
+      mark.textContent = "S";
+      const eyebrow = document.createElement("span");
+      eyebrow.className = "site-maintenance-eyebrow";
+      eyebrow.textContent = "SAMA-PACK";
+      const title = document.createElement("h1");
+      title.textContent = "Site temporairement en maintenance";
+      const message = document.createElement("p");
+      message.id = "siteMaintenanceMessage";
+      message.className = "site-maintenance-message";
+      const note = document.createElement("p");
+      note.className = "site-maintenance-note";
+      note.textContent = "Notre équipe travaille à rétablir le service. Merci de votre patience.";
+      const adminAccess = document.createElement("button");
+      adminAccess.type = "button";
+      adminAccess.className = "site-maintenance-admin-access";
+      adminAccess.textContent = "Accès équipe";
+      adminAccess.addEventListener("click", () => openAccountModal());
+      card.append(mark, eyebrow, title, message, note, adminAccess);
+      screen.append(card);
+      document.body.append(screen);
+    }
+    const message = $("siteMaintenanceMessage");
+    if (message) message.textContent = appSettings.maintenanceMessage || "Notre site est temporairement indisponible pour une opération de maintenance. Nous serons de retour très bientôt.";
+    document.body.classList.add("site-maintenance-active");
   }
 
   function renderTop() {
@@ -2088,6 +2142,7 @@
     setupNotificationsRealtime();
     if (isAdmin()) { updateCategoryFilter(); renderProducts(); }
     if (document.body?.dataset?.productDetail === "true") renderSEOProductPage();
+    applySiteMaintenance();
   }
   function updateAccountButtons() {
     document.body.classList.toggle("general-admin-mode", isGeneralAdmin());
@@ -3998,13 +4053,20 @@
   window.setQuoteAssigned = setQuoteAssigned;
 
   async function adminSettings() {
-    const [{ data, error }, { data: notificationSettings, error: notificationError }] = await Promise.all([
+    const [
+      { data, error },
+      { data: notificationSettings, error: notificationError },
+      { data: siteControl, error: siteControlError }
+    ] = await Promise.all([
       client.from("settings").select("id,company,whatsapp,delivery_fee,currency,homepage_background_url,payment_fee_percent").eq("id",true).maybeSingle(),
-      client.from("notification_settings").select("id,order_notification_email").eq("id",true).maybeSingle()
+      client.from("notification_settings").select("id,order_notification_email").eq("id",true).maybeSingle(),
+      client.from("site_control").select("id,maintenance_mode,maintenance_message").eq("id",true).maybeSingle()
     ]);
     if (error) throw error;
     if (notificationError) console.warn("Impossible de lire les paramètres e-mail.", notificationError);
+    if (siteControlError) throw siteControlError;
     const s = data || appSettings;
+    const control = siteControl || {};
     const notificationEmail = notificationSettings?.order_notification_email || "";
     const backgroundUrl = String(s.homepage_background_url || "");
     return `<div class="panel"><h3>Paramètres de Sama-Pack</h3><form id="settingsForm" class="admin-form">
@@ -4018,7 +4080,14 @@
       ${backgroundUrl ? `<div class="homepage-bg-preview-wrap full"><span class="small-note">Image actuellement enregistrée</span><img class="homepage-bg-preview" src="${esc(backgroundUrl)}" alt="Aperçu du fond de l’accueil"></div>` : '<p class="small-note full">Aucune image personnalisée : le fond vert clair par défaut sera utilisé.</p>'}
       <p class="small-note full">Si tu sélectionnes un fichier, il remplace l’URL ci-dessus. Pour revenir au fond par défaut, vide l’URL et enregistre sans choisir de fichier.</p>
       <label class="full">E-mail de contact officiel et de réception des commandes/devis<input class="input" name="order_notification_email" type="email" placeholder="Adresse e-mail professionnelle" value="${esc(notificationEmail)}"></label>
-      <button class="btn primary full" type="submit">Enregistrer les paramètres</button>
+      <div class="settings-maintenance-card full">
+         <div class="eyebrow">DISPONIBILITÉ DU SITE</div>
+         <h3>Mode maintenance</h3>
+         <label class="check-label"><input type="checkbox" name="maintenance_mode" ${control.maintenance_mode === true ? "checked" : ""}> Désactiver temporairement l’accès public à la boutique</label>
+         <label class="full">Message affiché aux visiteurs<textarea class="input" name="maintenance_message" rows="3" maxlength="320" placeholder="Explique brièvement la maintenance en cours">${esc(control.maintenance_message || "Notre site est temporairement indisponible pour une opération de maintenance. Nous serons de retour très bientôt.")}</textarea></label>
+         <p class="small-note">Les visiteurs verront uniquement cette page. Le compte administrateur général conserve l’accès à la gestion et peut réactiver le site.</p>
+       </div>
+       <button class="btn primary full" type="submit">Enregistrer les paramètres</button>
     </form><p class="small-note">Pour activer les e-mails, configure aussi RESEND_API_KEY et RESEND_FROM_EMAIL dans Supabase → Edge Functions → Secrets.</p></div>`;
   }
   function bindAdmin(view) {
@@ -4226,11 +4295,18 @@
           homepage_background_url: homepageBackgroundUrl
         }).eq("id",true);
         if (error) { setBusy(form,false); return toast(errorMessage(error),true); }
+        const { error: siteControlError } = await client.from("site_control").update({
+          maintenance_mode: f.get("maintenance_mode") === "on",
+          maintenance_message: String(f.get("maintenance_message") || "").trim().slice(0, 320) || "Notre site est temporairement indisponible pour une opération de maintenance. Nous serons de retour très bientôt.",
+          updated_at: new Date().toISOString()
+        }).eq("id", true);
+        if (siteControlError) { setBusy(form,false); return toast("Les paramètres boutique sont enregistrés, mais le mode maintenance n’a pas été mis à jour : " + errorMessage(siteControlError), true); }
         const emailResult = await client.from("notification_settings").update({order_notification_email:String(f.get("order_notification_email")||"").trim()}).eq("id",true);
         setBusy(form,false);
         if (emailResult.error) { await loadPublicData(); return toast("Paramètres boutique enregistrés, mais l’e-mail n’a pas pu être enregistré : "+errorMessage(emailResult.error),true); }
         toast("Paramètres enregistrés. Le WhatsApp et l’e-mail de contact sont mis à jour sur la boutique.");
         await loadPublicData();
+        applySiteMaintenance();
         await showAdminView("settings");
       };
     }
@@ -4353,12 +4429,14 @@
 
   async function start() {
     initShop();
-    if (!window.supabase?.createClient) { toast("La bibliothèque de connexion n’a pas pu charger. Recharge la page.",true); return; }
+    if (!window.supabase?.createClient) { document.documentElement.classList.remove("maintenance-checking"); toast("La bibliothèque de connexion n’a pas pu charger. Recharge la page.",true); return; }
     client = window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}});
     await loadPublicData();
     const {data,error}=await client.auth.getSession();
     if(error) console.warn("Session check:",error);
     await syncAuth(data?.session?.user || null);
+    applySiteMaintenance();
+    document.documentElement.classList.remove("maintenance-checking");
     await handlePaymentReturn();
 
     // Lien de retour depuis l’espace livreur : ouvrir la connexion de la boutique
