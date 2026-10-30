@@ -129,8 +129,12 @@ Deno.serve(async (req: Request) => {
       const { data: target, error: targetError } = await admin.from("profiles").select("id,role,full_name,email").eq("id", courierId).maybeSingle();
       if (targetError || !target || target.role !== "courier") return json({ error: "Compte livreur introuvable." }, 404, origin);
       const { data: document, error: documentError } = await admin.from("courier_identity_documents")
-        .select("courier_id,verification_status").eq("courier_id", courierId).maybeSingle();
+        .select("courier_id,verification_status,expires_on").eq("courier_id", courierId).maybeSingle();
       if (documentError || !document) return json({ error: "Dossier d’identité introuvable." }, 404, origin);
+      if (document.verification_status !== "pending") return json({ error: "Ce dossier a déjà été traité. Actualise la liste des vérifications." }, 409, origin);
+      if (decision === "approved" && document.expires_on && new Date(document.expires_on + "T23:59:59Z").getTime() < Date.now()) {
+        return json({ error: "Cette pièce est arrivée à expiration. Demande au livreur une pièce valide." }, 409, origin);
+      }
       const now = new Date().toISOString();
       const { error: updateError } = await admin.from("courier_identity_documents").update({
         verification_status: decision,
