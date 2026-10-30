@@ -158,6 +158,11 @@ Deno.serve(async (req: Request) => {
       if (courierId) {
         const { data, error } = await admin.from("profiles").select("id,full_name,email,phone,role").eq("id", courierId).maybeSingle();
         if (error || !data || data.role !== "courier") return json({ error: "Compte livreur invalide." }, 400, origin);
+        const { data: identity, error: identityError } = await admin.from("courier_identity_documents")
+          .select("verification_status").eq("courier_id", courierId).maybeSingle();
+        if (identityError || identity?.verification_status !== "approved") {
+          return json({ error: "Ce livreur n’a pas encore une pièce d’identité validée. Vérifie son dossier dans Gestion → Livraisons." }, 409, origin);
+        }
         courier = data;
       }
       const oldCourierId = order.assigned_courier_id;
@@ -190,6 +195,11 @@ Deno.serve(async (req: Request) => {
       if (!isCourier) return json({ error: "Accès réservé aux livreurs." }, 403, origin);
       const orderId = text(payload.order_id);
       const order = await getAssignedOrder(orderId);
+      const { data: identity, error: identityError } = await admin.from("courier_identity_documents")
+        .select("verification_status").eq("courier_id", user.id).maybeSingle();
+      if (identityError || identity?.verification_status !== "approved") {
+        return json({ error: "Ton identité doit être validée par l’administrateur avant de démarrer une livraison." }, 403, origin);
+      }
       if (!(order.status === "prepared" || (order.status === "out_for_delivery" && order.delivery_attempt_status === "failed"))) {
         return json({ error: "La commande doit être prête ou avoir un échec de livraison enregistré." }, 409, origin);
       }
