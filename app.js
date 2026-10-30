@@ -3089,7 +3089,7 @@
       return '<tr><td><strong>' + esc(order.id) + '</strong><br><span class="small-note">' + esc(order.customer_name || "Client") + '</span></td>' +
         '<td>' + esc(courierNames[order.assigned_courier_id] || "Livreur") + '</td>' +
         '<td>' + esc([order.delivery_address,order.delivery_zone].filter(Boolean).join(" · ") || "Adresse non renseignée") + '</td>' +
-        '<td><span class="status cancelled">Retour attendu</span><br><span class="small-note">' + esc(fmtDate(order.updated_at || order.created_at)) + '</span></td></tr>';
+        '<td><span class="status cancelled">Retour attendu</span><br><span class="small-note">' + esc(fmtDate(order.updated_at || order.created_at)) + '</span><br><button type="button" class="btn small ghost" data-return-renew="' + esc(order.id) + '">Renouveler le code</button></td></tr>';
     }).join("") : "";
     const returnCompletedRows = returnCompletedOrders.length ? returnCompletedOrders.map(order => {
       return '<tr><td><strong>' + esc(order.id) + '</strong><br><span class="small-note">' + esc(order.customer_name || "Client") + '</span></td>' +
@@ -3959,6 +3959,24 @@
             toast(errorMessage(error), true);
           } finally {
             if (select.isConnected) select.disabled = false;
+          }
+        });
+      });
+      document.querySelectorAll("[data-return-renew]").forEach(button => {
+        button.addEventListener("click", async () => {
+          const orderId = button.dataset.returnRenew;
+          if (!window.confirm("Générer un nouveau code de retour pour la commande " + orderId + " ? L’ancien code deviendra invalide. Le nouveau code sera envoyé uniquement à l’administrateur général.")) return;
+          try {
+            button.disabled = true;
+            const { data, error } = await client.functions.invoke("sama-delivery-ops", {
+              body: { action:"renew_delivery_return_code", order_id:orderId }
+            });
+            if (error || data?.error) throw new Error(data?.error || errorMessage(error));
+            toast(data?.message || "Nouveau code envoyé à l’administrateur général.");
+            await showAdminView("deliveries");
+          } catch (error) {
+            toast(errorMessage(error), true);
+            if (button.isConnected) button.disabled = false;
           }
         });
       });
