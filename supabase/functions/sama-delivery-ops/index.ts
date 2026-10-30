@@ -163,7 +163,7 @@ Deno.serve(async (req: Request) => {
       if (!owners?.length) throw new Error("Aucun administrateur général n’est configuré pour recevoir le code de retour.");
       for (const owner of owners) {
         await notify(owner.id, "delivery_return_code", "Code de contrôle du retour — " + orderId,
-          "Commande " + orderId + " annulée pendant la livraison. Livre​​ur concerné : " + profile.full_name +
+          "Commande " + orderId + " annulée pendant la livraison. Livreur concerné : " + profile.full_name +
             ". Le colis doit être reçu et contrôlé physiquement chez SAMA-PACK avant de communiquer ce code au livreur : " + code +
             ". Code valable 24 heures. Ne le communique qu’après avoir récupéré et vérifié le colis.",
           orderId);
@@ -178,7 +178,7 @@ Deno.serve(async (req: Request) => {
       if (!isCourier) return json({ error: "Accès réservé aux livreurs." }, 403, origin);
       const orderId = text(payload.order_id);
       const code = text(payload.code);
-      if (!/^\\d{6}$/.test(code)) return json({ error: "Saisis le code à six chiffres remis par l’administrateur au dépôt." }, 400, origin);
+      if (!/^\d{6}$/.test(code)) return json({ error: "Saisis le code à six chiffres remis par l’administrateur au dépôt." }, 400, origin);
       const order = await getAssignedOrder(orderId);
       if (order.status !== "cancelled" || order.delivery_attempt_status !== "return_pending") {
         return json({ error: "Cette commande n’attend pas de confirmation de retour au dépôt." }, 409, origin);
@@ -554,6 +554,27 @@ Deno.serve(async (req: Request) => {
       if (record.courier_id) await notify(record.courier_id, "delivery_collection_reviewed",
         decision === "validated" ? "Encaissement validé" : "Encaissement rejeté",
         Math.round(num(record.amount)).toLocaleString("fr-FR") + " FCFA pour la commande " + record.order_id + " : " + (decision === "validated" ? "validation confirmée." : "validation refusée."), record.order_id);
+
+      if (decision === "validated") {
+        const { data: updatedPayment, error: refreshedPaymentError } = await admin.from("orders")
+          .select("id,user_id,total,amount_paid,payment_status,status")
+          .eq("id", record.order_id).maybeSingle();
+        if (refreshedPaymentError) throw new Error("Impossible de relire le solde après validation : " + refreshedPaymentError.message);
+        if (updatedPayment?.user_id) {
+          const balance = Math.max(0, num(updatedPayment.total) - num(updatedPayment.amount_paid));
+          const fullyPaid = balance <= 0.01;
+          await notify(updatedPayment.user_id, "delivery_payment_validated",
+            fullyPaid ? "Solde intégral validé" : "Encaissement validé",
+            "Un encaissement de " + Math.round(num(record.amount)).toLocaleString("fr-FR") +
+              " FCFA a été vérifié par SAMA-PACK pour la commande " + record.order_id +
+              ". Total de la commande : " + Math.round(num(updatedPayment.total)).toLocaleString("fr-FR") +
+              " FCFA. Total encaissé et validé : " + Math.round(num(updatedPayment.amount_paid)).toLocaleString("fr-FR") +
+              " FCFA. Solde restant : " + Math.round(balance).toLocaleString("fr-FR") + " FCFA." +
+              (fullyPaid && updatedPayment.status === "out_for_delivery"
+                ? " Le livreur peut maintenant confirmer la remise avec ton code client."
+                : ""), record.order_id);
+        }
+      }
       return json({ ok: true, message: decision === "validated" ? "Encaissement validé et ajouté au montant payé de la commande." : "Encaissement rejeté." }, 200, origin);
     }
 
