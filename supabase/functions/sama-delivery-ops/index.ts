@@ -163,8 +163,8 @@ Deno.serve(async (req: Request) => {
       const oldCourierId = order.assigned_courier_id;
       const { error: updateError } = await admin.from("orders").update({
         assigned_courier_id: courier?.id || null,
-        delivery_attempt_status: "not_started",
-        delivery_failure_reason: "",
+        delivery_attempt_status: order.status === "out_for_delivery" ? "failed" : "not_started",
+        delivery_failure_reason: order.status === "out_for_delivery" ? (order.delivery_failure_reason || "Livraison à reprogrammer.") : "",
         updated_at: new Date().toISOString(),
       }).eq("id", orderId);
       if (updateError) return json({ error: "Attribution impossible : " + updateError.message }, 500, origin);
