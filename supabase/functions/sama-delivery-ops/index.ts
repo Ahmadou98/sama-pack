@@ -183,7 +183,7 @@ Deno.serve(async (req: Request) => {
           invitation_sent: true,
         }, 500, origin);
       }
-      return json({ ok: true, message: "Invitation envoyée. Le livreur doit ouvrir le lien reçu par e-mail pour définir son mot de passe.", email }, 200, origin);
+      return json({ ok: true, message: "Invitation envoyée. Le livreur doit ouvrir le lien reçu, renseigner sa pièce officielle et créer son mot de passe dans le formulaire.", email }, 200, origin);
     }
 
     if (action === "assign_courier") {
