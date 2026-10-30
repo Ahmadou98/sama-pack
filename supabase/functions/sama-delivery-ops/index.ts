@@ -120,8 +120,8 @@ Deno.serve(async (req: Request) => {
         .select("id,user_id,customer_name,status,assigned_courier_id,delivery_attempt_status,total,amount_paid")
         .eq("id", orderId).maybeSingle();
       if (orderError || !order) return json({ error: "Commande introuvable." }, 404, origin);
-      if (order.status !== "out_for_delivery" || order.delivery_attempt_status !== "in_progress") {
-        return json({ error: "Seule une commande actuellement en cours de livraison peut déclencher cette procédure de retour." }, 409, origin);
+      if (order.status !== "out_for_delivery" || !["in_progress","failed"].includes(order.delivery_attempt_status)) {
+        return json({ error: "Seule une commande confiée au livreur et non encore retournée peut déclencher cette procédure de retour." }, 409, origin);
       }
       if (!order.assigned_courier_id) return json({ error: "Aucun livreur n’est affecté à cette commande." }, 409, origin);
       const { data: assignedCourier, error: assignedCourierError } = await admin.from("profiles")
@@ -145,7 +145,7 @@ Deno.serve(async (req: Request) => {
         delivery_failure_reason: "Commande annulée pendant la livraison. Retour physique du colis chez SAMA-PACK requis.",
         updated_at: new Date().toISOString(),
       }).eq("id", orderId).eq("status", "out_for_delivery")
-        .eq("delivery_attempt_status", "in_progress")
+        .in("delivery_attempt_status", ["in_progress","failed"])
         .select("id").maybeSingle();
       if (updateError) throw new Error("Annulation et retour non enregistrés : " + updateError.message);
       if (!updatedOrder) return json({ error: "La commande a changé d’état. Actualise la liste avant de réessayer." }, 409, origin);
