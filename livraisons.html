@@ -284,7 +284,25 @@
           const button=form.querySelector("button[type=submit]");
           if(kind==="confirm") await act(button,"confirm_delivery",{order_id:orderId,code:String(fd.get("code")||"").trim()});
           if(kind==="collect") await act(button,"record_collection",{order_id:orderId,amount:Number(fd.get("amount")),payment_method:String(fd.get("payment_method")||"")});
-          if(kind==="fail") await act(button,"fail_delivery",{order_id:orderId,reason:String(fd.get("reason")||"").trim()});
+          if(kind==="fail") {
+            const reason=String(fd.get("reason")||"").trim();
+            if(reason.length<3) return alertBox("deliveryWorkspaceAlert","Décris brièvement la raison de l’échec avant de l’envoyer.","error");
+            button.disabled=true;
+            const original=button.textContent;
+            button.textContent="Enregistrement du signalement…";
+            try {
+              const result=await invoke("fail_delivery",{order_id:orderId,reason});
+              // Vider le champ immédiatement après confirmation serveur, même si
+              // l'actualisation de la liste rencontre ensuite un problème.
+              form.reset();
+              alertBox("deliveryWorkspaceAlert",result.message||"Échec de livraison signalé à SAMA-PACK.","success");
+              await refreshOrders();
+            } catch(error) {
+              alertBox("deliveryWorkspaceAlert",error.message||"Le signalement n’a pas pu être enregistré.","error");
+            } finally {
+              if(button.isConnected) { button.disabled=false; button.textContent=original; }
+            }
+          }
         });
       }
       async function openWorkspace() {
