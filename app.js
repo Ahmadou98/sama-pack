@@ -150,18 +150,20 @@
     return data;
   }
   function isAdmin() { return currentProfile?.role === "admin"; }
+  function isCourier() { return currentProfile?.role === "courier"; }
   function isGeneralAdmin() { return isAdmin() && currentProfile?.is_super_admin === true; }
   function hasAdminPermission(permission) { return isGeneralAdmin() || (isAdmin() && currentProfile?.admin_permissions?.[permission] === true); }
   const ADMIN_VIEW_PERMISSION = {
     dashboard: "dashboard.view", orders: "orders.view", customers: "customers.view",
     prospects: "prospects.view", quotes: "quotes.view", sales_codes: "sales_codes.view",
     packs: "catalog.view", products: "catalog.view", catalogs: "catalog.view",
-    stock: "stock.view", expenses: "expenses.submit"
+    stock: "stock.view", expenses: "expenses.submit", deliveries: "orders.view"
   };
   function canViewAdminView(view) {
     if (isGeneralAdmin()) return true;
     // Any authenticated administrator can always return to the dashboard.
     // Dashboard queries remain scoped by database RLS and permission-aware reads.
+    if (view === "deliveries") return isGeneralAdmin();
     if (view === "contacts" && isAdmin()) return true;
     if (view === "dashboard" && isAdmin()) return true;
     const permission = ADMIN_VIEW_PERMISSION[view];
@@ -2125,6 +2127,10 @@
         }
       }
     }
+    const courierDesktopLink = $("courierDesktopLink");
+    if (courierDesktopLink) courierDesktopLink.classList.toggle("hidden", !isCourier());
+    const courierMobileLink = $("courierMobileLink");
+    if (courierMobileLink) courierMobileLink.classList.toggle("hidden", !isCourier());
     const adminBtn = $("adminBtn");
     if (adminBtn) { adminBtn.textContent = "Gestion"; adminBtn.classList.toggle("hidden", !isAdmin()); }
     const mobileManageBtn = $("mobileManageBtn");
@@ -2796,7 +2802,7 @@
     });
     const globalSearch = $("adminGlobalSearch"); if (globalSearch) globalSearch.value = "";
     updateAdminContext();
-    const titles = {dashboard:"Tableau de bord",orders:"Commandes",customers:"Clients",stock:"Stock",products:"Packs",packs:"Packs",catalogs:"Produits & outils",prospects:"Prospection",admins:"Comptes administrateurs",activity:"Journal des actions",suppliers:"Fournisseurs",expenses:"Dépenses",quotes:"Devis professionnels",settings:"Paramètres",profitability:"Rentabilité",sales_codes:"Codes commerciaux",marketing:"Campagnes e-mail",contacts:"Messages de contact"};
+    const titles = {dashboard:"Tableau de bord",orders:"Commandes",customers:"Clients",stock:"Stock",products:"Packs",packs:"Packs",catalogs:"Produits & outils",prospects:"Prospection",admins:"Comptes administrateurs",activity:"Journal des actions",suppliers:"Fournisseurs",expenses:"Dépenses",quotes:"Devis professionnels",settings:"Paramètres",profitability:"Rentabilité",sales_codes:"Codes commerciaux",marketing:"Campagnes e-mail",contacts:"Messages de contact",deliveries:"SAMA-PACK Livraison"};
     $("adminTitle").textContent = titles[view] || "Gestion";
     $("adminContent").innerHTML = '<div class="panel loading-panel">Chargement des données…</div>';
     try {
@@ -2815,6 +2821,7 @@
       else if (view === "quotes") html = await adminQuotes();
       else if (view === "marketing") html = await adminMarketing();
       else if (view === "contacts") html = await adminContacts();
+      else if (view === "deliveries") html = await adminDeliveries();
       else if (view === "profitability") html = await adminProfitability();
       else if (view === "sales_codes") html = await adminSalesCodes();
       else if (view === "settings") html = await adminSettings();
@@ -2987,6 +2994,70 @@
       return { ...o, customer_name: o.customer_name || customer.name || "Client", customer_phone: o.customer_phone || customer.phone || "", delivery_address: o.delivery_address || customer.address || "", delivery_zone: o.delivery_zone || customer.zone || "", items: items.filter(i => i.order_id === o.id) };
     });
   }
+  async function adminDeliveries() {
+    if (!isGeneralAdmin()) throw new Error("Seul l’administrateur général peut gérer les livreurs.");
+    const [courierResult, orderResult, eventResult] = await Promise.all([
+      client.from("profiles").select("id,full_name,email,phone,last_seen_at,created_at")
+        .eq("role","courier").order("created_at",{ascending:false}),
+      client.from("orders").select("id,created_at,status,customer_name,customer_phone,delivery_address,delivery_zone,slot,total,amount_paid,payment_status,assigned_courier_id,delivery_attempt_status,delivery_failure_reason")
+        .in("status",["prepared","out_for_delivery"]).order("created_at",{ascending:false}).limit(250),
+      client.from("order_delivery_events").select("id,order_id,courier_id,actor_user_id,note,amount,payment_method,created_at")
+        .eq("event_type","collection_recorded").eq("review_status","pending").order("created_at",{ascending:false}).limit(250)
+    ]);
+    if (courierResult.error) throw courierResult.error;
+    if (orderResult.error) throw orderResult.error;
+    if (eventResult.error) throw eventResult.error;
+    const couriers = courierResult.data || [];
+    const orders = orderResult.data || [];
+    const pendingEvents = eventResult.data || [];
+    const courierNames = Object.fromEntries(couriers.map(row => [row.id, row.full_name || row.email || "Livreur"]));
+    const courierRows = couriers.length ? couriers.map(row =>
+      '<tr><td><strong>' + esc(row.full_name || "Sans nom") + '</strong><br><span class="small-note">' + esc(row.email || "") + '</span></td>' +
+      '<td>' + esc(row.phone || "—") + '</td><td>' + esc(row.last_seen_at ? fmtDate(row.last_seen_at) : "Jamais connecté") + '</td>' +
+      '<td>' + esc(fmtDate(row.created_at)) + '</td></tr>'
+    ).join("") : "";
+    const assignmentRows = orders.length ? orders.map(order => {
+      const eligible = order.status === "prepared" || (order.status === "out_for_delivery" && order.delivery_attempt_status === "failed");
+      const options = '<option value="">Non attribuée</option>' + couriers.map(c =>
+        '<option value="' + esc(c.id) + '"' + (order.assigned_courier_id === c.id ? " selected" : "") + '>' + esc(c.full_name || c.email || "Livreur") + '</option>'
+      ).join("");
+      const statusLabelText = order.delivery_attempt_status === "failed" ? "Échec à reprogrammer"
+        : order.status === "out_for_delivery" ? "En cours de livraison"
+        : "Prête pour livraison";
+      return '<tr><td><strong>' + esc(order.id) + '</strong><br><span class="small-note">' + esc(fmtDate(order.created_at)) + '</span></td>' +
+        '<td>' + esc(order.customer_name || "Client") + '<br><span class="small-note">' + esc(order.customer_phone || "") + '</span><br><span class="small-note">' + esc([order.delivery_address,order.delivery_zone].filter(Boolean).join(" · ")) + '</span></td>' +
+        '<td>' + money(order.total) + '<br><span class="small-note">Payé : ' + money(order.amount_paid || 0) + '</span></td>' +
+        '<td><span class="status">' + esc(statusLabelText) + '</span>' +
+          (order.delivery_failure_reason ? '<p class="small-note">' + esc(order.delivery_failure_reason) + '</p>' : '') + '</td>' +
+        '<td><select class="input delivery-assignment-select" data-order-id="' + esc(order.id) + '" data-previous-value="' + esc(order.assigned_courier_id || "") + '"' + (!eligible || !couriers.length ? " disabled" : "") + '>' + options + '</select></td></tr>';
+    }).join("") : "";
+    const pendingOrderIds = [...new Set(pendingEvents.map(row => row.order_id))];
+    let pendingOrders = [];
+    if (pendingOrderIds.length) {
+      const result = await client.from("orders").select("id,customer_name,total,amount_paid").in("id",pendingOrderIds);
+      if (result.error) throw result.error;
+      pendingOrders = result.data || [];
+    }
+    const orderById = Object.fromEntries(pendingOrders.map(row => [row.id,row]));
+    const pendingRows = pendingEvents.length ? pendingEvents.map(item => {
+      const order = orderById[item.order_id] || {};
+      return '<tr><td><strong>' + esc(item.order_id) + '</strong><br><span class="small-note">' + esc(order.customer_name || "Client") + '</span></td>' +
+        '<td>' + esc(courierNames[item.courier_id] || "Livreur") + '</td>' +
+        '<td><strong>' + money(item.amount) + '</strong><br><span class="small-note">' + esc(({cash:"Espèces",wave:"Wave",orange_money:"Orange Money",other:"Autre"})[item.payment_method] || item.payment_method) + '</span></td>' +
+        '<td>' + esc(fmtDate(item.created_at)) + '<br><span class="small-note">Solde avant validation : ' + money(Math.max(0,Number(order.total||0)-Number(order.amount_paid||0))) + '</span></td>' +
+        '<td><input class="input" data-delivery-review-note="' + esc(item.id) + '" maxlength="500" placeholder="Note (facultative)"><div class="account-order-actions">' +
+        '<button type="button" class="btn small primary" data-event-id="' + esc(item.id) + '" data-delivery-review="validated">Valider</button>' +
+        '<button type="button" class="btn small danger" data-event-id="' + esc(item.id) + '" data-delivery-review="rejected">Rejeter</button></div></td></tr>';
+    }).join("") : "";
+    return '<div class="panel"><div class="admin-panel-head"><div><h3>Gestion des livreurs (' + couriers.length + ')</h3><p class="small-note">Invitations nominatives. Le livreur se connecte avec son adresse e-mail et son mot de passe.</p></div><button class="btn small ghost" onclick="showAdminView(\'deliveries\')">Actualiser</button></div>' +
+      '<form id="courierInviteForm" class="admin-form"><label>Nom complet<input class="input" name="full_name" required minlength="2" maxlength="120" placeholder="Nom du livreur"></label><label>Adresse e-mail<input class="input" name="email" type="email" required maxlength="254" placeholder="livreur@exemple.sn"></label><label>Téléphone<input class="input" name="phone" type="tel" maxlength="40" placeholder="+221 …"></label><button class="btn primary full" type="submit">Inviter un livreur</button></form>' +
+      '<div class="table-wrap"><table class="table"><thead><tr><th>Livreur</th><th>Téléphone</th><th>Dernière activité</th><th>Compte créé</th></tr></thead><tbody>' + (courierRows || '<tr><td colspan="4">Aucun livreur invité pour le moment.</td></tr>') + '</tbody></table></div></div>' +
+      '<div class="panel"><div class="admin-panel-head"><div><h3>Attribution des livraisons (' + orders.length + ')</h3><p class="small-note">Les commandes doivent être prêtes avant attribution. Une livraison en cours ne peut être réattribuée qu’après un échec enregistré.</p></div></div>' +
+      (orders.length ? '<div class="table-wrap"><table class="table"><thead><tr><th>Commande</th><th>Client / adresse</th><th>Montant</th><th>État livraison</th><th>Livreur affecté</th></tr></thead><tbody>' + assignmentRows + '</tbody></table></div>' : '<div class="empty">Aucune commande prête ou en cours de livraison.</div>') + '</div>' +
+      '<div class="panel"><div class="admin-panel-head"><div><h3>Encaissements à rapprocher (' + pendingEvents.length + ')</h3><p class="small-note">Les montants déclarés par les livreurs ne deviennent pas des paiements confirmés avant validation.</p></div></div>' +
+      (pendingEvents.length ? '<div class="table-wrap"><table class="table"><thead><tr><th>Commande / client</th><th>Livreur</th><th>Montant reçu</th><th>Date</th><th>Décision</th></tr></thead><tbody>' + pendingRows + '</tbody></table></div>' : '<div class="empty">Aucun encaissement en attente de validation.</div>') + '</div>';
+  }
+
   async function adminOrders() {
     const orders = await loadOrdersWithItems();
     let assignableAdmins = [];
@@ -3728,6 +3799,69 @@
         const wasEditing = Boolean(editingProductId); editingProductId = null; toast(wasEditing ? "Pack modifié." : "Nouveau pack ajouté."); await loadPublicData(); await showAdminView("packs");
       };
       }
+    }
+    if (view === "deliveries") {
+      const inviteForm = $("courierInviteForm");
+      if (inviteForm) inviteForm.onsubmit = async event => {
+        event.preventDefault();
+        if (!isGeneralAdmin()) return toast("Seul l’administrateur général peut inviter un livreur.", true);
+        const fd = new FormData(inviteForm);
+        setBusy(inviteForm, true, "Invitation…");
+        try {
+          const { data, error } = await client.functions.invoke("sama-delivery-ops", { body: {
+            action:"invite_courier", full_name:String(fd.get("full_name")||"").trim(),
+            email:String(fd.get("email")||"").trim(), phone:String(fd.get("phone")||"").trim()
+          }});
+          if (error || data?.error) throw new Error(data?.error || errorMessage(error));
+          inviteForm.reset();
+          toast(data?.message || "Invitation envoyée.");
+          await showAdminView("deliveries");
+        } catch (error) {
+          toast(errorMessage(error), true);
+        } finally {
+          if (inviteForm.isConnected) setBusy(inviteForm, false);
+        }
+      };
+      document.querySelectorAll(".delivery-assignment-select").forEach(select => {
+        select.addEventListener("change", async () => {
+          const previous = select.dataset.previousValue || "";
+          try {
+            select.disabled = true;
+            const { data, error } = await client.functions.invoke("sama-delivery-ops", { body: {
+              action:"assign_courier", order_id:select.dataset.orderId, courier_id:select.value
+            }});
+            if (error || data?.error) throw new Error(data?.error || errorMessage(error));
+            toast(data?.message || "Attribution mise à jour.");
+            await showAdminView("deliveries");
+          } catch (error) {
+            select.value = previous;
+            toast(errorMessage(error), true);
+          } finally {
+            if (select.isConnected) select.disabled = false;
+          }
+        });
+      });
+      document.querySelectorAll("[data-delivery-review]").forEach(button => {
+        button.addEventListener("click", async () => {
+          const decision = button.dataset.deliveryReview;
+          const eventId = button.dataset.eventId;
+          const noteInput = document.querySelector('[data-delivery-review-note="' + eventId + '"]');
+          const note = String(noteInput?.value || "").trim();
+          if (!window.confirm(decision === "validated" ? "Confirmer que cet encaissement a bien été reçu ?" : "Rejeter cet encaissement déclaré ?")) return;
+          try {
+            button.disabled = true;
+            const { data, error } = await client.functions.invoke("sama-delivery-ops", { body: {
+              action:"review_collection", event_id:eventId, decision, note
+            }});
+            if (error || data?.error) throw new Error(data?.error || errorMessage(error));
+            toast(data?.message || "Encaissement traité.");
+            await showAdminView("deliveries");
+          } catch (error) {
+            button.disabled = false;
+            toast(errorMessage(error), true);
+          }
+        });
+      });
     }
     if (view === "contacts") {
       document.querySelectorAll(".contact-message-status").forEach(select => {
