@@ -234,7 +234,40 @@ async function settleTransaction(admin: ReturnType<typeof createClient>, tx: any
   const { data: completed, error: completedError } = await admin.from("payment_transactions").select("id,amount").eq("order_id", tx.order_id).eq("status", "completed");
   if (completedError) throw completedError;
 
-  const amountPaid = Math.min(num(order.total), (completed || []).reduce((sum: number, row: any) => sum + num(row.amount), 0));
+  const completedAmount = (completed || []).reduce((sum: number, row: any) => sum + num(row.amount), 0);
+  const expectedOnlineAmount = order.payment_choice === "pay_now" ? num(order.total) : num(order.delivery);
+  if (order.status !== "cancelled" && expectedOnlineAmount > 0 && completedAmount > expectedOnlineAmount + 0.5) {
+    const { data: existingAlert, error: alertCheckError } = await admin.from("notifications")
+      .select("id").eq("type", "payment_overpayment_review").eq("entity_type", "order").eq("entity_id", order.id).limit(1);
+    if (alertCheckError) throw alertCheckError;
+    if (!existingAlert?.length) {
+      const { data: admins, error: adminsError } = await admin.from("profiles").select("id").eq("role", "admin");
+      if (adminsError) throw adminsError;
+      if (admins?.length) {
+        const overpaymentAmount = completedAmount - expectedOnlineAmount;
+        const { error: alertError } = await admin.from("notifications").insert(admins.map((profile: any) => ({
+          recipient_user_id: profile.id,
+          type: "payment_overpayment_review",
+          title: "Écart de paiement à examiner",
+          message: `Les transactions confirmées de la commande ${order.id} totalisent ${Math.round(completedAmount)} FCFA au lieu de ${Math.round(expectedOnlineAmount)} FCFA. Écart : ${Math.round(overpaymentAmount)} FCFA. La commande n'a pas été réglée automatiquement.`,
+          entity_type: "order",
+          entity_id: order.id,
+        })));
+        if (alertError) throw alertError;
+      }
+    }
+    return {
+      gateway_status: "completed",
+      order_id: order.id,
+      order_status: order.status,
+      payment_status: order.payment_status,
+      amount_paid: num(order.amount_paid),
+      expected_online_amount: expectedOnlineAmount,
+      overpayment_amount: completedAmount - expectedOnlineAmount,
+      manual_review_required: true,
+    };
+  }
+  const amountPaid = Math.min(num(order.total), completedAmount);
   const fullyPaid = amountPaid >= num(order.total);
   const isPendingOrder = ["awaiting_payment", "awaiting_delivery_payment"].includes(order.status);
   let nextStatus = order.status;
