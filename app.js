@@ -2996,7 +2996,7 @@
   }
   async function adminDeliveries() {
     if (!isGeneralAdmin()) throw new Error("Seul l’administrateur général peut gérer les livreurs.");
-    const [courierResult, orderResult, eventResult, identityResult] = await Promise.all([
+    const [courierResult, orderResult, eventResult, identityResult, failureEventResult] = await Promise.all([
       client.from("profiles").select("id,full_name,email,phone,last_seen_at,created_at")
         .eq("role","courier").order("created_at",{ascending:false}),
       client.from("orders").select("id,created_at,status,customer_name,customer_phone,delivery_address,delivery_zone,slot,total,amount_paid,payment_status,assigned_courier_id,delivery_attempt_status,delivery_failure_reason")
@@ -3004,16 +3004,20 @@
       client.from("order_delivery_events").select("id,order_id,courier_id,actor_user_id,note,amount,payment_method,created_at")
         .eq("event_type","collection_recorded").eq("review_status","pending").order("created_at",{ascending:false}).limit(250),
       client.from("courier_identity_documents").select("courier_id,document_type,legal_name,document_number,issuing_country,expires_on,front_image_path,back_image_path,verification_status,rejection_reason,submitted_at")
-        .order("submitted_at",{ascending:false})
+        .order("submitted_at",{ascending:false}),
+      client.from("order_delivery_events").select("id,order_id,courier_id,actor_user_id,note,created_at")
+        .eq("event_type","delivery_failed").order("created_at",{ascending:false}).limit(150)
     ]);
     if (courierResult.error) throw courierResult.error;
     if (orderResult.error) throw orderResult.error;
     if (eventResult.error) throw eventResult.error;
     if (identityResult.error) throw identityResult.error;
+    if (failureEventResult.error) throw failureEventResult.error;
     const couriers = courierResult.data || [];
     const orders = orderResult.data || [];
     const pendingEvents = eventResult.data || [];
     const identityDocs = identityResult.data || [];
+    const failureEvents = failureEventResult.data || [];
     const identityByCourier = Object.fromEntries(identityDocs.map(row => [row.courier_id,row]));
     const courierNames = Object.fromEntries(couriers.map(row => [row.id, row.full_name || row.email || "Livreur"]));
     const identityLabel = status => ({pending:"À vérifier",approved:"Validée",rejected:"À corriger"})[status] || "Non fournie";
@@ -3040,6 +3044,39 @@
           (order.delivery_failure_reason ? '<p class="small-note">' + esc(order.delivery_failure_reason) + '</p>' : '') + '</td>' +
         '<td><select class="input delivery-assignment-select" data-order-id="' + esc(order.id) + '" data-previous-value="' + esc(order.assigned_courier_id || "") + '"' + (!eligible || !verifiedCouriers.length ? " disabled" : "") + '>' + options + '</select></td></tr>';
     }).join("") : "";
+
+    const failureOrderIds = [...new Set(failureEvents.map(row => row.order_id))];
+    let failureOrders = [];
+    if (failureOrderIds.length) {
+      const failureOrderResult = await client.from("orders")
+        .select("id,created_at,status,customer_name,customer_phone,delivery_address,delivery_zone,assigned_courier_id,delivery_attempt_status,delivery_failure_reason")
+        .in("id", failureOrderIds);
+      if (failureOrderResult.error) throw failureOrderResult.error;
+      failureOrders = failureOrderResult.data || [];
+    }
+    const failureOrderById = Object.fromEntries([...orders,...failureOrders].map(row => [row.id,row]));
+    const failureEventOrderIds = new Set(failureEvents.map(row => row.order_id));
+    const fallbackFailureEvents = orders
+      .filter(row => row.delivery_attempt_status === "failed" && !failureEventOrderIds.has(row.id))
+      .map(row => ({
+        id: "current-" + row.id,
+        order_id: row.id,
+        courier_id: row.assigned_courier_id,
+        note: row.delivery_failure_reason || "Motif non renseigné dans l’historique.",
+        created_at: row.updated_at || row.created_at,
+        is_fallback: true
+      }));
+    const allFailureReports = [...failureEvents,...fallbackFailureEvents];
+    const failureRows = allFailureReports.length ? allFailureReports.map(report => {
+      const order = failureOrderById[report.order_id] || {};
+      const needsReschedule = order.delivery_attempt_status === "failed";
+      const courierName = courierNames[report.courier_id] || "Livreur";
+      return '<tr><td><strong>' + esc(report.order_id) + '</strong><br><span class="small-note">' + esc(order.customer_name || "Client") + '</span><br><span class="small-note">' + esc(fmtDate(report.created_at)) + '</span></td>' +
+        '<td>' + esc(courierName) + '</td>' +
+        '<td><span class="status ' + (needsReschedule ? "cancelled" : "processing") + '">' + (needsReschedule ? "À reprogrammer" : "Signalement historique") + '</span></td>' +
+        '<td><div class="delivery-failure-message"><strong>Motif communiqué par le livreur</strong><p>' + esc(report.note || order.delivery_failure_reason || "Aucun motif enregistré.") + '</p></div></td></tr>';
+    }).join("") : "";
+
     const pendingIdentityDocs = identityDocs.filter(row => row.verification_status === "pending");
     const identityRows = await Promise.all(pendingIdentityDocs.map(async doc => {
       const courier = couriers.find(row => row.id === doc.courier_id) || {};
@@ -3082,6 +3119,8 @@
       (pendingIdentityDocs.length ? '<div class="table-wrap"><table class="table"><thead><tr><th>Livreur</th><th>Pièce</th><th>Photos privées</th><th>Soumise le</th><th>Décision</th></tr></thead><tbody>' + identityRows.join("") + '</tbody></table></div>' : '<div class="empty">Aucun dossier en attente de vérification.</div>') + '</div>' +
       '<div class="panel"><div class="admin-panel-head"><div><h3>Attribution des livraisons (' + orders.length + ')</h3><p class="small-note">Les commandes doivent être prêtes avant attribution. Une livraison en cours ne peut être réattribuée qu’après un échec enregistré.</p></div></div>' +
       (orders.length ? '<div class="table-wrap"><table class="table"><thead><tr><th>Commande</th><th>Client / adresse</th><th>Montant</th><th>État livraison</th><th>Livreur affecté</th></tr></thead><tbody>' + assignmentRows + '</tbody></table></div>' : '<div class="empty">Aucune commande prête ou en cours de livraison.</div>') + '</div>' +
+      '<div class="panel"><div class="admin-panel-head"><div><h3>Signalements d’échec de livraison (' + allFailureReports.length + ')</h3><p class="small-note">Historique des échecs déclarés par les livreurs. Le motif reste consultable même après réattribution ou nouvelle tentative.</p></div></div>' +
+      (allFailureReports.length ? '<div class="table-wrap"><table class="table"><thead><tr><th>Commande / client / date</th><th>Livreur</th><th>État</th><th>Motif détaillé</th></tr></thead><tbody>' + failureRows + '</tbody></table></div>' : '<div class="empty">Aucun échec de livraison n’a été signalé.</div>') + '</div>' +
       '<div class="panel"><div class="admin-panel-head"><div><h3>Encaissements à rapprocher (' + pendingEvents.length + ')</h3><p class="small-note">Les montants déclarés par les livreurs ne deviennent pas des paiements confirmés avant validation.</p></div></div>' +
       (pendingEvents.length ? '<div class="table-wrap"><table class="table"><thead><tr><th>Commande / client</th><th>Livreur</th><th>Montant reçu</th><th>Date</th><th>Décision</th></tr></thead><tbody>' + pendingRows + '</tbody></table></div>' : '<div class="empty">Aucun encaissement en attente de validation.</div>') + '</div>';
   }
