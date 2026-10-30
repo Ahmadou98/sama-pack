@@ -4208,3 +4208,15 @@ body.general-admin-mode .general-admin-account-modal {
 @media(max-width:700px) {
   .contact-message-body { min-width:220px; }
 }
+
+
+/* SAMA-PACK Livraison — back-office assignment and reconciliation */
+.delivery-assignment-select { min-width: 165px; }
+.delivery-admin-collection-note { min-width: 170px; }
+.delivery-admin-event-actions { display:flex; flex-wrap:wrap; gap:6px; margin-top:7px; }
+.delivery-admin-event-actions .btn { white-space:nowrap; }
+@media(max-width:700px) {
+  .delivery-assignment-select { min-width: 145px; }
+  .delivery-admin-event-actions { flex-direction:column; }
+  .delivery-admin-event-actions .btn { width:100%; justify-content:center; }
+}
