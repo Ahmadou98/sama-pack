@@ -2996,7 +2996,7 @@
   }
   async function adminDeliveries() {
     if (!isGeneralAdmin()) throw new Error("Seul l’administrateur général peut gérer les livreurs.");
-    const [courierResult, orderResult, eventResult, identityResult, failureEventResult] = await Promise.all([
+    const [courierResult, orderResult, eventResult, identityResult, failureEventResult, returnPendingResult, returnCompletedResult] = await Promise.all([
       client.from("profiles").select("id,full_name,email,phone,last_seen_at,created_at")
         .eq("role","courier").order("created_at",{ascending:false}),
       client.from("orders").select("id,created_at,updated_at,status,customer_name,customer_phone,delivery_address,delivery_zone,slot,total,amount_paid,payment_status,assigned_courier_id,delivery_attempt_status,delivery_failure_reason")
@@ -3006,18 +3006,26 @@
       client.from("courier_identity_documents").select("courier_id,document_type,legal_name,document_number,issuing_country,expires_on,front_image_path,back_image_path,verification_status,rejection_reason,submitted_at")
         .order("submitted_at",{ascending:false}),
       client.from("order_delivery_events").select("id,order_id,courier_id,actor_user_id,note,created_at")
-        .eq("event_type","delivery_failed").order("created_at",{ascending:false}).limit(150)
+        .eq("event_type","delivery_failed").order("created_at",{ascending:false}).limit(150),
+      client.from("orders").select("id,created_at,updated_at,customer_name,customer_phone,delivery_address,delivery_zone,assigned_courier_id,delivery_failure_reason")
+        .eq("status","cancelled").eq("delivery_attempt_status","return_pending").order("updated_at",{ascending:false}).limit(150),
+      client.from("orders").select("id,created_at,updated_at,customer_name,customer_phone,delivery_address,delivery_zone,assigned_courier_id")
+        .eq("status","cancelled").eq("delivery_attempt_status","returned").order("updated_at",{ascending:false}).limit(150)
     ]);
     if (courierResult.error) throw courierResult.error;
     if (orderResult.error) throw orderResult.error;
     if (eventResult.error) throw eventResult.error;
     if (identityResult.error) throw identityResult.error;
     if (failureEventResult.error) throw failureEventResult.error;
+    if (returnPendingResult.error) throw returnPendingResult.error;
+    if (returnCompletedResult.error) throw returnCompletedResult.error;
     const couriers = courierResult.data || [];
     const orders = orderResult.data || [];
     const pendingEvents = eventResult.data || [];
     const identityDocs = identityResult.data || [];
     const failureEvents = failureEventResult.data || [];
+    const returnPendingOrders = returnPendingResult.data || [];
+    const returnCompletedOrders = returnCompletedResult.data || [];
     const identityByCourier = Object.fromEntries(identityDocs.map(row => [row.courier_id,row]));
     const courierNames = Object.fromEntries(couriers.map(row => [row.id, row.full_name || row.email || "Livreur"]));
     const identityLabel = status => ({pending:"À vérifier",approved:"Validée",rejected:"À corriger"})[status] || "Non fournie";
@@ -3077,6 +3085,19 @@
         '<td><div class="delivery-failure-message"><strong>Motif communiqué par le livreur</strong><p>' + esc(report.note || order.delivery_failure_reason || "Aucun motif enregistré.") + '</p></div></td></tr>';
     }).join("") : "";
 
+    const returnPendingRows = returnPendingOrders.length ? returnPendingOrders.map(order => {
+      return '<tr><td><strong>' + esc(order.id) + '</strong><br><span class="small-note">' + esc(order.customer_name || "Client") + '</span></td>' +
+        '<td>' + esc(courierNames[order.assigned_courier_id] || "Livreur") + '</td>' +
+        '<td>' + esc([order.delivery_address,order.delivery_zone].filter(Boolean).join(" · ") || "Adresse non renseignée") + '</td>' +
+        '<td><span class="status cancelled">Retour attendu</span><br><span class="small-note">' + esc(fmtDate(order.updated_at || order.created_at)) + '</span></td></tr>';
+    }).join("") : "";
+    const returnCompletedRows = returnCompletedOrders.length ? returnCompletedOrders.map(order => {
+      return '<tr><td><strong>' + esc(order.id) + '</strong><br><span class="small-note">' + esc(order.customer_name || "Client") + '</span></td>' +
+        '<td>' + esc(courierNames[order.assigned_courier_id] || "Livreur") + '</td>' +
+        '<td>' + esc([order.delivery_address,order.delivery_zone].filter(Boolean).join(" · ") || "Adresse non renseignée") + '</td>' +
+        '<td><span class="status delivered">Retour confirmé par code</span><br><span class="small-note">' + esc(fmtDate(order.updated_at || order.created_at)) + '</span></td></tr>';
+    }).join("") : "";
+
     const pendingIdentityDocs = identityDocs.filter(row => row.verification_status === "pending");
     const identityRows = await Promise.all(pendingIdentityDocs.map(async doc => {
       const courier = couriers.find(row => row.id === doc.courier_id) || {};
@@ -3119,6 +3140,9 @@
       (pendingIdentityDocs.length ? '<div class="table-wrap"><table class="table"><thead><tr><th>Livreur</th><th>Pièce</th><th>Photos privées</th><th>Soumise le</th><th>Décision</th></tr></thead><tbody>' + identityRows.join("") + '</tbody></table></div>' : '<div class="empty">Aucun dossier en attente de vérification.</div>') + '</div>' +
       '<div class="panel"><div class="admin-panel-head"><div><h3>Attribution des livraisons (' + orders.length + ')</h3><p class="small-note">Les commandes doivent être prêtes avant attribution. Une livraison en cours ne peut être réattribuée qu’après un échec enregistré.</p></div></div>' +
       (orders.length ? '<div class="table-wrap"><table class="table"><thead><tr><th>Commande</th><th>Client / adresse</th><th>Montant</th><th>État livraison</th><th>Livreur affecté</th></tr></thead><tbody>' + assignmentRows + '</tbody></table></div>' : '<div class="empty">Aucune commande prête ou en cours de livraison.</div>') + '</div>' +
+      '<div class="panel"><div class="admin-panel-head"><div><h3>Retours au dépôt à contrôler (' + returnPendingOrders.length + ')</h3><p class="small-note">Une commande annulée pendant sa livraison reste ouverte ici jusqu’à la confirmation du code remis au livreur après réception physique du colis.</p></div></div>' +
+      (returnPendingOrders.length ? '<div class="table-wrap"><table class="table"><thead><tr><th>Commande / client</th><th>Livreur attendu</th><th>Adresse</th><th>État du retour</th></tr></thead><tbody>' + returnPendingRows + '</tbody></table></div>' : '<div class="empty">Aucun retour de colis en attente au dépôt.</div>') +
+      (returnCompletedOrders.length ? '<details class="delivery-history"><summary>Retours déjà confirmés (' + returnCompletedOrders.length + ')</summary><div class="table-wrap"><table class="table"><thead><tr><th>Commande / client</th><th>Livreur</th><th>Adresse</th><th>Confirmation</th></tr></thead><tbody>' + returnCompletedRows + '</tbody></table></div></details>' : '') + '</div>' +
       '<div class="panel"><div class="admin-panel-head"><div><h3>Signalements d’échec de livraison (' + allFailureReports.length + ')</h3><p class="small-note">Historique des échecs déclarés par les livreurs. Le motif reste consultable même après réattribution ou nouvelle tentative.</p></div></div>' +
       (allFailureReports.length ? '<div class="table-wrap"><table class="table"><thead><tr><th>Commande / client / date</th><th>Livreur</th><th>État</th><th>Motif détaillé</th></tr></thead><tbody>' + failureRows + '</tbody></table></div>' : '<div class="empty">Aucun échec de livraison n’a été signalé.</div>') + '</div>' +
       '<div class="panel"><div class="admin-panel-head"><div><h3>Encaissements à rapprocher (' + pendingEvents.length + ')</h3><p class="small-note">Les montants déclarés par les livreurs ne deviennent pas des paiements confirmés avant validation.</p></div></div>' +
@@ -3170,6 +3194,36 @@
       toast("Préparation bloquée : attends la confirmation du paiement requis.", true);
       return showAdminView("orders");
     }
+
+    if (status === "cancelled") {
+      const currentResult = await client.from("orders")
+        .select("id,status,assigned_courier_id,delivery_attempt_status")
+        .eq("id", id).maybeSingle();
+      if (currentResult.error || !currentResult.data) {
+        toast(errorMessage(currentResult.error || new Error("Commande introuvable.")), true);
+        return showAdminView("orders");
+      }
+      const currentOrder = currentResult.data;
+      if (currentOrder.status === "out_for_delivery" && currentOrder.delivery_attempt_status === "in_progress" && currentOrder.assigned_courier_id) {
+        const confirmed = window.confirm(
+          "Cette commande est déjà chez le livreur. L’annulation déclenchera un retour obligatoire du colis chez SAMA-PACK. Le livreur sera averti et un code de contrôle sera envoyé uniquement à l’administrateur général, qui le communiquera après réception du colis au dépôt. Continuer ?"
+        );
+        if (!confirmed) return;
+        try {
+          const { data, error } = await client.functions.invoke("sama-delivery-ops", {
+            body: { action: "cancel_delivery_return", order_id: id }
+          });
+          if (error || data?.error) throw new Error(data?.error || errorMessage(error));
+          toast(data?.message || "Annulation enregistrée. Retour au dépôt requis.");
+          await showAdminView("orders");
+          return;
+        } catch (error) {
+          toast(errorMessage(error), true);
+          return showAdminView("orders");
+        }
+      }
+    }
+
     const { error } = await client.from("orders").update({ status }).eq("id", id);
     if (error) { toast(errorMessage(error), true); return showAdminView("orders"); }
     toast(status === "cancelled" ? "Commande annulée. La notification est ajoutée au compte du client." : "Statut modifié. Le client reçoit une notification dans son compte ; utilise le bouton WhatsApp pour lui préparer aussi un message.");
