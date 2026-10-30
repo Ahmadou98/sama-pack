@@ -124,6 +124,9 @@ Deno.serve(async (req: Request) => {
         return json({ error: "Seule une commande actuellement en cours de livraison peut déclencher cette procédure de retour." }, 409, origin);
       }
       if (!order.assigned_courier_id) return json({ error: "Aucun livreur n’est affecté à cette commande." }, 409, origin);
+      const { data: assignedCourier, error: assignedCourierError } = await admin.from("profiles")
+        .select("id,full_name,email").eq("id", order.assigned_courier_id).eq("role", "courier").maybeSingle();
+      if (assignedCourierError || !assignedCourier) return json({ error: "Le profil du livreur affecté est introuvable." }, 409, origin);
 
       const code = String(crypto.getRandomValues(new Uint32Array(1))[0] % 1000000).padStart(6, "0");
       const salt = randomHex(16);
@@ -172,6 +175,48 @@ Deno.serve(async (req: Request) => {
         ok: true,
         message: "Commande annulée. Le livreur a reçu l’ordre de retour et le code de contrôle a été envoyé à l’administrateur général."
       }, 200, origin);
+    }
+
+    if (action === "renew_delivery_return_code") {
+      if (!isOwner) return json({ error: "Seul l’administrateur général peut renouveler le code de retour." }, 403, origin);
+      const orderId = text(payload.order_id);
+      const { data: order, error: orderError } = await admin.from("orders")
+        .select("id,assigned_courier_id,status,delivery_attempt_status")
+        .eq("id", orderId).maybeSingle();
+      if (orderError || !order) return json({ error: "Commande introuvable." }, 404, origin);
+      if (order.status !== "cancelled" || order.delivery_attempt_status !== "return_pending" || !order.assigned_courier_id) {
+        return json({ error: "Cette commande n’attend pas de confirmation de retour au dépôt." }, 409, origin);
+      }
+      const { data: assignedCourier, error: courierError } = await admin.from("profiles")
+        .select("id,full_name,email").eq("id", order.assigned_courier_id).eq("role", "courier").maybeSingle();
+      if (courierError || !assignedCourier) return json({ error: "Profil du livreur introuvable." }, 404, origin);
+
+      const code = String(crypto.getRandomValues(new Uint32Array(1))[0] % 1000000).padStart(6, "0");
+      const salt = randomHex(16);
+      const codeHash = await digest(salt + ":return:" + orderId + ":" + code);
+      const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+      const { error: codeError } = await admin.from("delivery_return_confirmation_codes").upsert({
+        order_id: orderId, courier_id: order.assigned_courier_id, code_hash: codeHash,
+        salt, expires_at: expiresAt, attempts: 0, created_at: new Date().toISOString(),
+        last_attempt_at: null, verified_at: null,
+      }, { onConflict: "order_id" });
+      if (codeError) throw new Error("Renouvellement du code impossible : " + codeError.message);
+
+      const { data: owners, error: ownersError } = await admin.from("profiles")
+        .select("id").eq("role", "admin").eq("is_super_admin", true);
+      if (ownersError) throw new Error("Impossible de charger les administrateurs généraux.");
+      for (const owner of owners || []) {
+        await notify(owner.id, "delivery_return_code", "Nouveau code de contrôle du retour — " + orderId,
+          "Nouveau code pour la commande " + orderId + ". Livreur concerné : " +
+            (assignedCourier.full_name || assignedCourier.email || "Livreur") +
+            ". Code à communiquer uniquement après réception et contrôle physique du colis chez SAMA-PACK : " +
+            code + ". Code valable 24 heures. Le code précédent est désormais invalide.", orderId);
+      }
+      await notify(order.assigned_courier_id, "delivery_return_code_renewed", "Code de retour renouvelé",
+        "Un nouveau code de retour a été préparé pour la commande " + orderId +
+          ". Après réception et contrôle physique du colis chez SAMA-PACK, demande le nouveau code à l’administrateur général. Le code précédent n’est plus valide.",
+        orderId);
+      return json({ ok: true, message: "Nouveau code généré. Il a été envoyé uniquement à l’administrateur général." }, 200, origin);
     }
 
     if (action === "confirm_return") {
