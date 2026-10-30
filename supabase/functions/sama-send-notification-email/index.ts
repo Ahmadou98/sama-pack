@@ -176,6 +176,7 @@ Deno.serve(async (req: Request) => {
           "Authorization": "Bearer " + RESEND_API_KEY,
           "Content-Type": "application/json",
           "Accept": "application/json",
+          "Idempotency-Key": "sama-notification-" + job.notification_id,
         },
         body: JSON.stringify({
           from: RESEND_FROM_EMAIL,
