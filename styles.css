@@ -4220,3 +4220,33 @@ body.general-admin-mode .general-admin-account-modal {
   .delivery-admin-event-actions { flex-direction:column; }
   .delivery-admin-event-actions .btn { width:100%; justify-content:center; }
 }
+
+
+/* Delivery failure reports — readable, persistent admin history */
+.delivery-failure-message {
+  min-width: 240px;
+  max-width: 560px;
+  padding: 12px 14px;
+  border: 1px solid #f0d8b7;
+  border-left: 4px solid #c17a22;
+  border-radius: 10px;
+  background: #fffaf3;
+  color: #563b1b;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.delivery-failure-message strong {
+  display: block;
+  margin-bottom: 5px;
+  font-size: 12px;
+}
+.delivery-failure-message p {
+  margin: 0;
+  color: #604c32;
+  font-size: 13px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+}
+@media (max-width: 700px) {
+  .delivery-failure-message { min-width: 180px; }
+}
