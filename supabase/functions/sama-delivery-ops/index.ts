@@ -318,16 +318,47 @@ Deno.serve(async (req: Request) => {
       if (reason.length < 3) return json({ error: "Précise la raison de l’échec de livraison." }, 400, origin);
       const order = await getAssignedOrder(orderId);
       if (order.status !== "out_for_delivery" || order.delivery_attempt_status !== "in_progress") return json({ error: "Cette commande n’est pas en cours de livraison." }, 409, origin);
+
+      // Charger le ou les administrateurs généraux avant le changement d'état.
+      // Chaque destinataire reçoit une notification personnelle dans l'interface.
+      const { data: owners, error: ownersError } = await admin.from("profiles")
+        .select("id").eq("role", "admin").eq("is_super_admin", true);
+      if (ownersError) throw new Error("Impossible de préparer la notification de l’administrateur général : " + ownersError.message);
+      if (!owners?.length) throw new Error("Aucun administrateur général n’est configuré pour recevoir ce signalement.");
+
       const now = new Date().toISOString();
       const { error } = await admin.from("orders").update({
         delivery_attempt_status: "failed", delivery_failure_reason: reason, updated_at: now,
       }).eq("id", orderId).eq("assigned_courier_id", user.id);
       if (error) throw new Error("Impossible d’enregistrer l’échec : " + error.message);
+
       await admin.from("delivery_confirmation_codes").delete().eq("order_id", orderId);
       await event({ order_id: orderId, courier_id: user.id, actor_user_id: user.id, event_type: "delivery_failed", note: reason });
-      if (order.user_id) await notify(order.user_id, "delivery_failed", "Livraison à reprogrammer",
-        "La livraison de ta commande " + orderId + " n’a pas pu être effectuée. Motif : " + reason + ". SAMA-PACK te contactera pour convenir d’un nouveau passage.", orderId);
-      return json({ ok: true, message: "Échec de livraison enregistré. L’administrateur pourra reprogrammer le passage." }, 200, origin);
+
+      const courierLabel = profile.full_name || user.email || "Le livreur";
+      const notificationRows = owners.map(owner => ({
+        recipient_user_id: owner.id,
+        type: "delivery_failed_admin",
+        title: "Échec de livraison signalé",
+        message: courierLabel + " a signalé un échec pour la commande " + orderId + " (client : " +
+          (order.customer_name || "Client") + "). Motif communiqué : " + reason,
+        entity_type: "order",
+        entity_id: orderId,
+      }));
+      if (order.user_id && !owners.some(owner => owner.id === order.user_id)) {
+        notificationRows.push({
+          recipient_user_id: order.user_id,
+          type: "delivery_failed",
+          title: "Livraison à reprogrammer",
+          message: "La livraison de ta commande " + orderId + " n’a pas pu être effectuée. Motif : " + reason + ". SAMA-PACK te contactera pour convenir d’un nouveau passage.",
+          entity_type: "order",
+          entity_id: orderId,
+        });
+      }
+      const { error: notificationsError } = await admin.from("notifications").insert(notificationRows);
+      if (notificationsError) throw new Error("Échec enregistré, mais les notifications n’ont pas pu être créées : " + notificationsError.message);
+
+      return json({ ok: true, message: "Échec de livraison enregistré. L’administrateur général a été notifié et pourra reprogrammer le passage." }, 200, origin);
     }
 
     if (action === "record_collection") {
