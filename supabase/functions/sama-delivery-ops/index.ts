@@ -135,10 +135,22 @@ Deno.serve(async (req: Request) => {
       });
       if (inviteError || !invitation.user) return json({ error: inviteError?.message || "L’invitation n’a pas pu être envoyée." }, 400, origin);
       targetId = invitation.user.id;
-      const { error: profileUpsertError } = await admin.from("profiles").upsert({
-        id: targetId, email, full_name: fullName, phone, role: "courier", is_super_admin: false, invited_by: user.id,
-      }, { onConflict: "id" });
-      if (profileUpsertError) return json({ error: "Le compte a été invité, mais le rôle livreur n’a pas pu être attribué : " + profileUpsertError.message }, 500, origin);
+      // Le rôle est attribué via une RPC sécurisée qui vérifie le super-administrateur
+      // dans le contexte JWT de l'appelant. Éviter l'upsert service-role ici :
+      // le garde-fou des profils exige une session propriétaire pour changer le rôle.
+      const { error: profileProvisionError } = await caller.rpc("sama_provision_courier_profile", {
+        p_user_id: targetId,
+        p_email: email,
+        p_full_name: fullName,
+        p_phone: phone || null,
+      });
+      if (profileProvisionError) {
+        console.error("sama-delivery-ops courier profile provisioning failed", profileProvisionError.message);
+        return json({
+          error: "L’invitation e-mail a été envoyée, mais la création du profil livreur a échoué : " + profileProvisionError.message,
+          invitation_sent: true,
+        }, 500, origin);
+      }
       return json({ ok: true, message: "Invitation envoyée. Le livreur doit ouvrir le lien reçu par e-mail pour définir son mot de passe.", email }, 200, origin);
     }
 
