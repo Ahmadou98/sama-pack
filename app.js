@@ -1932,7 +1932,7 @@
     const subscriptionsHtml = renderSubscriptionsHtml(cachedSubscriptions);
     const accountNotificationsHtml = userNotifications.length ? userNotifications.map(n => '<article class="notification-item ' + (n.read_at ? 'read' : 'unread') + '"><div class="notification-title">' + esc(n.title) + '</div><div class="notification-message">' + esc(n.message) + '</div><div class="notification-meta">' + esc(fmtDate(n.created_at)) + (n.read_at ? ' · Lue' : ' · <button class="link-btn dark-link" onclick="markNotificationRead(\'' + esc(n.id) + '\')">Marquer comme lue</button>') + '</div></article>').join("") : '<div class="empty compact-empty">Aucune notification pour le moment.</div>';
     showModal(
-      '<div class="modal-head account-modal-header"><div><div class="eyebrow">ESPACE CLIENT</div><h2>Mon compte</h2><p class="small-note">Retrouve tes commandes et paramètres ici.</p></div><div class="account-header-actions"><button type="button" class="account-menu-toggle" id="accountMenuToggle" aria-expanded="false" aria-controls="accountTabsMenu" aria-label="Ouvrir le menu du compte"><span></span><span></span><span></span></button><button class="close" onclick="closeModal()" aria-label="Fermer">✕</button></div></div>' +
+      '<div class="modal-head account-modal-header"><div><div class="eyebrow">ESPACE CLIENT</div><h2>Mon compte</h2><p class="small-note">' + (isCourier() ? "Ton compte livreur te permet aussi d’acheter sur SAMA-PACK. Tes commandes et tes livraisons restent accessibles avec cette même adresse e-mail." : "Retrouve tes commandes et paramètres ici.") + '</p></div><div class="account-header-actions"><button type="button" class="account-menu-toggle" id="accountMenuToggle" aria-expanded="false" aria-controls="accountTabsMenu" aria-label="Ouvrir le menu du compte"><span></span><span></span><span></span></button><button class="close" onclick="closeModal()" aria-label="Fermer">✕</button></div></div>' +
       '<div class="account-workspace">' +
         '<nav id="accountTabsMenu" class="account-tabs" role="tablist" aria-label="Rubriques du compte">' +
           '<button type="button" class="account-tab is-active" role="tab" aria-selected="true" data-account-tab="profile"><span class="account-tab-icon">◉</span><span>Mon profil</span></button>' +
@@ -4109,6 +4109,18 @@
     if(error) console.warn("Session check:",error);
     await syncAuth(data?.session?.user || null);
     await handlePaymentReturn();
+
+    // Lien de retour depuis l’espace livreur : ouvrir la connexion de la boutique
+    // même si un autre compte est déjà présent dans la session du navigateur.
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get("connexion") === "1") {
+      urlParams.delete("connexion");
+      const remainingQuery = urlParams.toString();
+      const cleanUrl = window.location.pathname + (remainingQuery ? "?" + remainingQuery : "") + window.location.hash;
+      window.history.replaceState({}, "", cleanUrl);
+      renderAuthForm("login", "Connecte-toi avec l’adresse e-mail et le mot de passe créés dans ton espace livreur. Tu pourras ensuite commander comme client avec ce même compte.");
+    }
+
     client.auth.onAuthStateChange((_event, session) => { setTimeout(async () => { await syncAuth(session?.user || null); await handlePaymentReturn(); }, 0); });
   }
 
