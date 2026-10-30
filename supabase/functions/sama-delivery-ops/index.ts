@@ -138,7 +138,6 @@ Deno.serve(async (req: Request) => {
         id: targetId, email, full_name: fullName, phone, role: "courier", is_super_admin: false, invited_by: user.id,
       }, { onConflict: "id" });
       if (profileUpsertError) return json({ error: "Le compte a été invité, mais le rôle livreur n’a pas pu être attribué : " + profileUpsertError.message }, 500, origin);
-      await event({ order_id: "INVITE-" + targetId, courier_id: targetId, actor_user_id: user.id, event_type: "assigned", note: "Invitation du livreur " + fullName + " (" + email + ")." }).catch(() => {});
       return json({ ok: true, message: "Invitation envoyée. Le livreur doit ouvrir le lien reçu par e-mail pour définir son mot de passe.", email }, 200, origin);
     }
 
@@ -286,7 +285,7 @@ Deno.serve(async (req: Request) => {
       if (!Number.isFinite(amount) || amount <= 0) return json({ error: "Montant encaissé invalide." }, 400, origin);
       if (!["cash", "wave", "orange_money", "other"].includes(method)) return json({ error: "Mode d’encaissement invalide." }, 400, origin);
       const { data: collections, error: readError } = await admin.from("order_delivery_events")
-        .select("amount").eq("order_id", orderId).eq("event_type", "collection_recorded").in("review_status", ["pending", "validated"]);
+        .select("amount").eq("order_id", orderId).eq("event_type", "collection_recorded").eq("review_status", "pending");
       if (readError) throw new Error("Vérification du solde impossible.");
       const alreadyRecorded = (collections || []).reduce((sum, row) => sum + num(row.amount), 0);
       const remaining = Math.max(0, num(order.total) - num(order.amount_paid) - alreadyRecorded);
@@ -309,7 +308,7 @@ Deno.serve(async (req: Request) => {
       const note = text(payload.note).slice(0, 1000);
       if (!eventId || !["validated", "rejected"].includes(decision)) return json({ error: "Décision ou référence invalide." }, 400, origin);
       const { data: record, error: recordError } = await admin.from("order_delivery_events")
-        .select("id,order_id,courier_id,amount,payment_method,review_status")
+        .select("id,order_id,courier_id,amount,payment_method,review_status,note")
         .eq("id", eventId).eq("event_type", "collection_recorded").maybeSingle();
       if (recordError || !record) return json({ error: "Encaissement introuvable." }, 404, origin);
       if (record.review_status !== "pending") return json({ error: "Cet encaissement a déjà été traité." }, 409, origin);
@@ -326,7 +325,7 @@ Deno.serve(async (req: Request) => {
       }
       const now = new Date().toISOString();
       const { error: updateError } = await admin.from("order_delivery_events").update({
-        review_status: decision, reviewed_by: user.id, reviewed_at: now, note: [record ? "" : "", note].filter(Boolean).join(" ").slice(0,1000),
+        review_status: decision, reviewed_by: user.id, reviewed_at: now, note: [text(record.note), note].filter(Boolean).join(" · ").slice(0,1000),
       }).eq("id", eventId);
       if (updateError) throw new Error("Décision d’encaissement impossible : " + updateError.message);
       await event({ order_id: record.order_id, courier_id: record.courier_id, actor_user_id: user.id,
