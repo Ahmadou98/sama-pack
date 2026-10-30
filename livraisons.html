@@ -196,6 +196,8 @@
       }
       function clearAlert(id) { const el=$(id); el.textContent=""; el.className="delivery-alert"; }
       function statusLabel(order) {
+        if(order.status==="cancelled" && order.delivery_attempt_status==="return_pending") return "Retour au dépôt requis";
+        if(order.status==="cancelled" && order.delivery_attempt_status==="returned") return "Retour au dépôt confirmé";
         if(order.status==="delivered") return "Livrée";
         if(order.delivery_attempt_status==="failed") return "Passage à reprogrammer";
         if(order.status==="out_for_delivery") return "En cours de livraison";
@@ -208,13 +210,19 @@
         return data;
       }
       async function refreshOrders() {
-        const {data,error}=await client.from("orders")
-          .select("id,created_at,status,customer_name,customer_phone,delivery_address,delivery_zone,slot,total,delivery,amount_paid,payment_status,payment_choice,assigned_courier_id,delivery_attempt_status,delivery_failure_reason")
-          .eq("assigned_courier_id",currentUser.id)
-          .in("status",["prepared","out_for_delivery","delivered"])
-          .order("created_at",{ascending:false}).limit(100);
-        if(error) throw error;
-        orders=data||[];
+        const columns="id,created_at,updated_at,status,customer_name,customer_phone,delivery_address,delivery_zone,slot,total,delivery,amount_paid,payment_status,payment_choice,assigned_courier_id,delivery_attempt_status,delivery_failure_reason";
+        const [activeResult,returnResult]=await Promise.all([
+          client.from("orders").select(columns).eq("assigned_courier_id",currentUser.id)
+            .in("status",["prepared","out_for_delivery","delivered"])
+            .order("created_at",{ascending:false}).limit(100),
+          client.from("orders").select(columns).eq("assigned_courier_id",currentUser.id)
+            .eq("status","cancelled").in("delivery_attempt_status",["return_pending","returned"])
+            .order("updated_at",{ascending:false}).limit(100)
+        ]);
+        if(activeResult.error) throw activeResult.error;
+        if(returnResult.error) throw returnResult.error;
+        orders=[...(activeResult.data||[]),...(returnResult.data||[])]
+          .sort((a,b)=>new Date(b.updated_at||b.created_at)-new Date(a.updated_at||a.created_at));
         const ids=orders.map(o=>o.id);
         if(ids.length) {
           const result=await client.from("order_delivery_events")
@@ -239,17 +247,23 @@
           const isPrepared=order.status==="prepared";
           const isActive=order.status==="out_for_delivery" && order.delivery_attempt_status==="in_progress";
           const isFailed=order.status==="out_for_delivery" && order.delivery_attempt_status==="failed";
-          const badgeClass=isFailed?"delivery-badge failed":"delivery-badge";
-          const orderEvents=events.filter(e=>e.order_id===order.id).slice(0,6);
-          const history=orderEvents.length?'<details class="delivery-history"><summary>Historique de livraison</summary><ul>'+orderEvents.map(e=>'<li>'+esc(fmtDate(e.created_at))+' · '+esc(({assigned:"Livreur attribué",out_for_delivery:"Départ en livraison",delivery_confirmed:"Remise confirmée",delivery_failed:"Échec de livraison",collection_recorded:"Encaissement déclaré",collection_validated:"Encaissement validé",collection_rejected:"Encaissement rejeté"})[e.event_type]||e.event_type)+(e.amount?": "+esc(fmtMoney(e.amount)):"")+(e.note?" — "+esc(e.note):"")+'</li>').join("")+'</ul></details>':'';
+          const isReturnPending=order.status==="cancelled" && order.delivery_attempt_status==="return_pending";
+          const isReturnConfirmed=order.status==="cancelled" && order.delivery_attempt_status==="returned";
+          const badgeClass=(isFailed||isReturnPending)?"delivery-badge failed":"delivery-badge";
+          const orderEvents=events.filter(e=>e.order_id===order.id).slice(0,8);
+          const history=orderEvents.length?'<details class="delivery-history"><summary>Historique de livraison</summary><ul>'+orderEvents.map(e=>'<li>'+esc(fmtDate(e.created_at))+' · '+esc(({assigned:"Livreur attribué",out_for_delivery:"Départ en livraison",delivery_confirmed:"Remise confirmée",delivery_failed:"Échec de livraison",delivery_return_requested:"Retour au dépôt demandé",delivery_return_confirmed:"Retour au dépôt confirmé",collection_recorded:"Encaissement déclaré",collection_validated:"Encaissement validé",collection_rejected:"Encaissement rejeté"})[e.event_type]||e.event_type)+(e.amount?": "+esc(fmtMoney(e.amount)):"")+(e.note?" — "+esc(e.note):"")+'</li>').join("")+'</ul></details>':'';
           const mapsAddress=[order.delivery_address,order.delivery_zone].filter(Boolean).join(", ");
-          const actions=isPrepared||isFailed
-            ? '<button class="btn primary full" type="button" data-delivery-action="start" data-order-id="'+esc(order.id)+'">'+(isFailed?"Relancer la livraison":"Démarrer la livraison")+'</button>'
-            : isActive
-              ? '<div class="delivery-action-panel"><h3>Confirmer la remise</h3><form data-delivery-form="confirm" data-order-id="'+esc(order.id)+'"><input class="input" name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" minlength="6" pattern="[0-9]{6}" placeholder="Code à 6 chiffres" required><button class="btn primary" type="submit">Confirmer la livraison</button></form><p class="delivery-note">Le code se trouve dans les notifications privées du client. Ne le demande qu’au moment de la remise.</p></div>'+
-                '<div class="delivery-action-panel"><h3>Enregistrer un paiement reçu</h3><form data-delivery-form="collect" data-order-id="'+esc(order.id)+'"><input class="input" name="amount" type="number" min="1" step="1" max="'+Math.ceil(remaining)+'" placeholder="Montant encaissé (FCFA)" required><select class="input" name="payment_method" required><option value="">Mode de paiement</option><option value="cash">Espèces</option><option value="wave">Wave</option><option value="orange_money">Orange Money</option><option value="other">Autre</option></select><button class="btn secondary" type="submit">Déclarer l’encaissement</button></form><p class="delivery-note">L’encaissement sera vérifié par l’administrateur avant d’être ajouté au montant payé.</p></div>'+
-                '<div class="delivery-action-panel"><h3>Signaler une livraison impossible</h3><form data-delivery-form="fail" data-order-id="'+esc(order.id)+'"><textarea class="input" name="reason" required minlength="3" maxlength="1000" placeholder="Ex. client absent, adresse introuvable…"></textarea><button class="btn ghost" type="submit">Signaler l’échec</button></form></div>'
-              : '<span class="delivery-badge">Livraison terminée</span>';
+          const actions=isReturnPending
+            ? '<div class="delivery-action-panel"><h3>Retour obligatoire chez SAMA-PACK</h3><p class="delivery-note">La commande a été annulée pendant ta tournée. Rapporte tous les articles au dépôt. Après réception et contrôle physique du colis, l’administrateur général te communiquera un code à six chiffres.</p><form data-delivery-form="return" data-order-id="'+esc(order.id)+'"><input class="input" name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" minlength="6" pattern="[0-9]{6}" placeholder="Code remis par le dépôt" required><button class="btn primary" type="submit">Confirmer le retour au dépôt</button></form><p class="delivery-note">Ne saisis le code qu’après avoir remis le colis à SAMA-PACK et obtenu le code de confirmation.</p></div>'
+            : isReturnConfirmed
+              ? '<div class="delivery-action-panel"><h3>Retour confirmé</h3><p class="delivery-note">Le retour du colis a été confirmé par code et enregistré chez SAMA-PACK.</p></div>'
+              : isPrepared||isFailed
+                ? '<button class="btn primary full" type="button" data-delivery-action="start" data-order-id="'+esc(order.id)+'">'+(isFailed?"Relancer la livraison":"Démarrer la livraison")+'</button>'
+                : isActive
+                  ? '<div class="delivery-action-panel"><h3>Confirmer la remise</h3><form data-delivery-form="confirm" data-order-id="'+esc(order.id)+'"><input class="input" name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" minlength="6" pattern="[0-9]{6}" placeholder="Code à 6 chiffres" required><button class="btn primary" type="submit">Confirmer la livraison</button></form><p class="delivery-note">Le code se trouve dans les notifications privées du client. Ne le demande qu’au moment de la remise.</p></div>'+
+                    '<div class="delivery-action-panel"><h3>Enregistrer un paiement reçu</h3><form data-delivery-form="collect" data-order-id="'+esc(order.id)+'"><input class="input" name="amount" type="number" min="1" step="1" max="'+Math.ceil(remaining)+'" placeholder="Montant encaissé (FCFA)" required><select class="input" name="payment_method" required><option value="">Mode de paiement</option><option value="cash">Espèces</option><option value="wave">Wave</option><option value="orange_money">Orange Money</option><option value="other">Autre</option></select><button class="btn secondary" type="submit">Déclarer l’encaissement</button></form><p class="delivery-note">Le montant est ajouté au paiement uniquement après validation par l’administrateur général. La remise finale ne pourra être confirmée qu’après validation de la totalité du solde.</p></div>'+
+                    '<div class="delivery-action-panel"><h3>Signaler une livraison impossible</h3><form data-delivery-form="fail" data-order-id="'+esc(order.id)+'"><textarea class="input" name="reason" required minlength="3" maxlength="1000" placeholder="Ex. client absent, adresse introuvable…"></textarea><button class="btn ghost" type="submit">Signaler l’échec</button></form></div>'
+                  : '<span class="delivery-badge">Livraison terminée</span>';
           return '<article class="delivery-card"><div class="delivery-card-head"><div><h2>Commande '+esc(order.id)+'</h2><p>Créée le '+esc(fmtDate(order.created_at))+'</p></div><span class="'+badgeClass+'">'+esc(statusLabel(order))+'</span></div>'+
             '<div class="delivery-details"><div class="delivery-detail"><span>Client</span><strong>'+esc(order.customer_name||"Client")+'</strong></div><div class="delivery-detail"><span>Téléphone</span><strong>'+(order.customer_phone?'<a href="tel:'+esc(order.customer_phone)+'">'+esc(order.customer_phone)+'</a>':"Non renseigné")+'</strong></div>'+
             '<div class="delivery-detail full"><span>Adresse de livraison</span><strong>'+esc(order.delivery_address||"Adresse à confirmer")+' · '+esc(order.delivery_zone||"Zone non précisée")+'</strong>'+(mapsAddress?'<a href="https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(mapsAddress)+'" target="_blank" rel="noopener noreferrer">Ouvrir dans Maps</a>':"")+'</div>'+
@@ -284,6 +298,7 @@
           const button=form.querySelector("button[type=submit]");
           if(kind==="confirm") await act(button,"confirm_delivery",{order_id:orderId,code:String(fd.get("code")||"").trim()});
           if(kind==="collect") await act(button,"record_collection",{order_id:orderId,amount:Number(fd.get("amount")),payment_method:String(fd.get("payment_method")||"")});
+          if(kind==="return") await act(button,"confirm_return",{order_id:orderId,code:String(fd.get("code")||"").trim()});
           if(kind==="fail") {
             const reason=String(fd.get("reason")||"").trim();
             if(reason.length<3) return alertBox("deliveryWorkspaceAlert","Décris brièvement la raison de l’échec avant de l’envoyer.","error");
