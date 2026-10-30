@@ -156,7 +156,7 @@
       const SUPABASE_URL = "https://tbxxrnhcfuaeaatlrdtr.supabase.co";
       const SUPABASE_KEY = "sb_publishable_lDAKRHFWyUYZ-tb23hbbnQ_96zF9Iwo";
       const $ = id => document.getElementById(id);
-      let client = null, currentUser = null, currentProfile = null, orders = [], events = [];
+      let client = null, currentUser = null, currentProfile = null, orders = [], events = [], identityRecord = null;
       const fmtMoney = value => new Intl.NumberFormat("fr-FR",{maximumFractionDigits:0}).format(Number(value)||0) + " FCFA";
       const esc = value => String(value ?? "").replace(/[&<>"']/g, ch => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[ch]));
       const fmtDate = value => value ? new Date(value).toLocaleString("fr-FR",{dateStyle:"short",timeStyle:"short"}) : "—";
@@ -261,15 +261,60 @@
         $("deliveryWelcome").textContent="Bonjour "+(currentProfile.full_name||currentUser.email||"livreur")+". Voici les commandes qui te sont attribuées.";
         await refreshOrders();
       }
+      async function refreshIdentityState() {
+        const {data,error}=await client.from("courier_identity_documents")
+          .select("courier_id,document_type,legal_name,document_number,issuing_country,expires_on,verification_status,rejection_reason,submitted_at")
+          .eq("courier_id",currentUser.id).maybeSingle();
+        if(error) throw new Error("Impossible de charger l’état de la vérification : "+error.message);
+        identityRecord=data||null;
+        if(identityRecord?.verification_status==="approved") {
+          $("deliveryIdentity").hidden=true;
+          await openWorkspace();
+          return;
+        }
+        $("deliveryLogin").hidden=true;
+        $("deliveryWorkspace").hidden=true;
+        $("deliveryDenied").hidden=true;
+        $("deliveryIdentity").hidden=false;
+        $("deliverySignOut").hidden=false;
+        const form=$("deliveryIdentityForm");
+        const status=$("deliveryIdentityStatus");
+        const refresh=$("deliveryIdentityRefresh");
+        if(identityRecord?.verification_status==="pending") {
+          status.textContent="Ton dossier a été envoyé le "+fmtDate(identityRecord.submitted_at)+". Il est en attente de vérification par l’administrateur général. Tu ne peux pas encore recevoir ni effectuer de livraison.";
+          status.className="delivery-alert visible";
+          form.hidden=true;
+          refresh.hidden=false;
+        } else {
+          status.textContent=identityRecord?.verification_status==="rejected"
+            ? "Ton dossier a été refusé. Motif : "+(identityRecord.rejection_reason||"Pièce à corriger.")+" Tu peux envoyer une nouvelle photo et corriger les informations."
+            : "Aucune pièce officielle n’a encore été envoyée. Ce dépôt est obligatoire pour activer ton espace livreur.";
+          status.className="delivery-alert visible "+(identityRecord?.verification_status==="rejected"?"error":"");
+          form.hidden=false;
+          refresh.hidden=true;
+          const legalName=form.elements.namedItem("legal_name");
+          if(legalName && !legalName.value) legalName.value=currentProfile.full_name||"";
+        }
+      }
+      function identityFileExtension(file) {
+        return ({"image/jpeg":"jpg","image/png":"png","image/webp":"webp"})[file?.type]||"";
+      }
+      function toggleIdentityBackField() {
+        const isNationalId=$("identityDocumentType").value==="national_id";
+        const field=$("identityBackField"),input=field.querySelector('input[name="back_image"]');
+        field.hidden=!isNationalId;
+        input.required=isNationalId;
+        if(!isNationalId) input.value="";
+      }
       async function acceptSession(user) {
         currentUser=user;
         const {data,error}=await client.from("profiles").select("id,full_name,email,role,phone").eq("id",user.id).maybeSingle();
         if(error || !data) throw new Error("Impossible de charger ton profil.");
         currentProfile=data;
         if(data.role!=="courier") {
-          $("deliveryLogin").hidden=true; $("deliveryWorkspace").hidden=true; $("deliveryDenied").hidden=false; $("deliverySignOut").hidden=false; return;
+          $("deliveryLogin").hidden=true; $("deliveryIdentity").hidden=true; $("deliveryWorkspace").hidden=true; $("deliveryDenied").hidden=false; $("deliverySignOut").hidden=false; return;
         }
-        await openWorkspace();
+        await refreshIdentityState();
       }
       async function start() {
         if(!window.supabase?.createClient) throw new Error("La connexion n’a pas pu charger. Recharge la page.");
@@ -285,12 +330,52 @@
           } catch(error) { alertBox("deliveryLoginAlert",error.message||"Connexion impossible.","error"); }
           finally { button.disabled=false; button.textContent="Se connecter"; }
         });
+        $("identityDocumentType").addEventListener("change",toggleIdentityBackField);
+        toggleIdentityBackField();
+        $("deliveryIdentityRefresh").addEventListener("click",async()=>{
+          try { await refreshIdentityState(); }
+          catch(error) { alertBox("deliveryIdentityStatus",error.message,"error"); }
+        });
+        $("deliveryIdentityForm").addEventListener("submit",async event=>{
+          event.preventDefault();
+          const form=event.currentTarget,fd=new FormData(form),button=$("deliveryIdentitySubmit");
+          const documentType=String(fd.get("document_type")||"");
+          const front=fd.get("front_image"),back=fd.get("back_image");
+          const validFile=file=>file instanceof File && file.size>0 && ["image/jpeg","image/png","image/webp"].includes(file.type) && file.size<=6*1024*1024;
+          if(!validFile(front)) return alertBox("deliveryIdentityStatus","Ajoute une photo du recto au format JPG, PNG ou WEBP (6 Mo maximum).","error");
+          if(documentType==="national_id" && !validFile(back)) return alertBox("deliveryIdentityStatus","Ajoute également la photo du verso de ta carte nationale (6 Mo maximum).","error");
+          if(!fd.get("consent")) return alertBox("deliveryIdentityStatus","Confirme la notice de traitement des données personnelles.","error");
+          button.disabled=true; button.textContent="Envoi des photos…";
+          try {
+            const makePath=(side,file)=>currentUser.id+"/"+crypto.randomUUID()+"_"+side+"."+identityFileExtension(file);
+            const frontPath=makePath("front",front),backPath=documentType==="national_id"?makePath("back",back):"";
+            const frontUpload=await client.storage.from("courier-identity").upload(frontPath,front,{upsert:false,contentType:front.type,cacheControl:"3600"});
+            if(frontUpload.error) throw frontUpload.error;
+            if(backPath) {
+              const backUpload=await client.storage.from("courier-identity").upload(backPath,back,{upsert:false,contentType:back.type,cacheControl:"3600"});
+              if(backUpload.error) throw backUpload.error;
+            }
+            button.textContent="Envoi du dossier…";
+            const {data,error}=await client.functions.invoke("sama-courier-identity",{body:{
+              action:"submit",document_type:documentType,legal_name:String(fd.get("legal_name")||"").trim(),
+              document_number:String(fd.get("document_number")||"").trim(),issuing_country:String(fd.get("issuing_country")||"").trim(),
+              expires_on:String(fd.get("expires_on")||"").trim(),front_image_path:frontPath,back_image_path:backPath,consent:true
+            }});
+            if(error || data?.error) throw new Error(data?.error||error.message||"Envoi du dossier impossible.");
+            alertBox("deliveryIdentityStatus",data.message||"Pièce envoyée pour vérification.","success");
+            await refreshIdentityState();
+          } catch(error) {
+            alertBox("deliveryIdentityStatus",error.message||"Le dossier n’a pas pu être envoyé. Réessaie.","error");
+          } finally {
+            button.disabled=false; button.textContent="Envoyer ma pièce pour vérification";
+          }
+        });
         $("deliveryRefresh").addEventListener("click",async()=>{
           try { await refreshOrders(); alertBox("deliveryWorkspaceAlert","Liste actualisée.","success"); }
           catch(error) { alertBox("deliveryWorkspaceAlert",error.message,"error"); }
         });
         $("deliverySignOut").addEventListener("click",async()=>{
-          await client.auth.signOut(); currentUser=null; currentProfile=null; $("deliverySignOut").hidden=true; $("deliveryWorkspace").hidden=true; $("deliveryDenied").hidden=true; $("deliveryLogin").hidden=false;
+          await client.auth.signOut(); currentUser=null; currentProfile=null; $("deliverySignOut").hidden=true; $("deliveryWorkspace").hidden=true; $("deliveryDenied").hidden=true; $("deliveryLogin").hidden=false; $("deliveryIdentity").hidden=true;
         });
         const {data}=await client.auth.getSession();
         if(data.session?.user) {
