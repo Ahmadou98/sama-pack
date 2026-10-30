@@ -49,6 +49,8 @@ const labels: Record<string, string> = {
   collection_recorded: "Encaissement déclaré",
   collection_validated: "Encaissement validé",
   collection_rejected: "Encaissement rejeté",
+  delivery_return_requested: "Retour au dépôt demandé",
+  delivery_return_confirmed: "Retour au dépôt confirmé",
 };
 Deno.serve(async (req: Request) => {
   const origin = req.headers.get("origin");
@@ -110,6 +112,127 @@ Deno.serve(async (req: Request) => {
   };
 
   try {
+    if (action === "cancel_delivery_return") {
+      if (!isOwner) return json({ error: "Seul l’administrateur général peut annuler une livraison en cours et déclencher un retour au dépôt." }, 403, origin);
+      const orderId = text(payload.order_id);
+      if (!orderId) return json({ error: "Référence de commande manquante." }, 400, origin);
+      const { data: order, error: orderError } = await admin.from("orders")
+        .select("id,user_id,customer_name,status,assigned_courier_id,delivery_attempt_status,total,amount_paid")
+        .eq("id", orderId).maybeSingle();
+      if (orderError || !order) return json({ error: "Commande introuvable." }, 404, origin);
+      if (order.status !== "out_for_delivery" || order.delivery_attempt_status !== "in_progress") {
+        return json({ error: "Seule une commande actuellement en cours de livraison peut déclencher cette procédure de retour." }, 409, origin);
+      }
+      if (!order.assigned_courier_id) return json({ error: "Aucun livreur n’est affecté à cette commande." }, 409, origin);
+
+      const code = String(crypto.getRandomValues(new Uint32Array(1))[0] % 1000000).padStart(6, "0");
+      const salt = randomHex(16);
+      const codeHash = await digest(salt + ":return:" + orderId + ":" + code);
+      const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+      const { error: codeError } = await admin.from("delivery_return_confirmation_codes").upsert({
+        order_id: orderId, courier_id: order.assigned_courier_id, code_hash: codeHash,
+        salt, expires_at: expiresAt, attempts: 0, created_at: new Date().toISOString(),
+        last_attempt_at: null, verified_at: null,
+      }, { onConflict: "order_id" });
+      if (codeError) throw new Error("Impossible de préparer le code de retour : " + codeError.message);
+
+      const { data: updatedOrder, error: updateError } = await admin.from("orders").update({
+        status: "cancelled",
+        delivery_attempt_status: "return_pending",
+        delivery_failure_reason: "Commande annulée pendant la livraison. Retour physique du colis chez SAMA-PACK requis.",
+        updated_at: new Date().toISOString(),
+      }).eq("id", orderId).eq("status", "out_for_delivery")
+        .eq("delivery_attempt_status", "in_progress")
+        .select("id").maybeSingle();
+      if (updateError) throw new Error("Annulation et retour non enregistrés : " + updateError.message);
+      if (!updatedOrder) return json({ error: "La commande a changé d’état. Actualise la liste avant de réessayer." }, 409, origin);
+
+      await admin.from("delivery_confirmation_codes").delete().eq("order_id", orderId);
+      await event({
+        order_id: orderId, courier_id: order.assigned_courier_id, actor_user_id: user.id,
+        event_type: "delivery_return_requested",
+        note: "Commande annulée pendant la livraison. Le colis doit être rapporté et contrôlé chez SAMA-PACK avant confirmation du retour.",
+      });
+
+      await notify(order.assigned_courier_id, "delivery_return_requested", "Retour au dépôt obligatoire",
+        "La commande " + orderId + " a été annulée pendant ta tournée. Ne remets pas le colis au client. Rapporte tous les articles chez SAMA-PACK. Après réception et contrôle physique au dépôt, l’administrateur général te communiquera le code à saisir dans ton espace livreur. Le code de retour n’est pas communiqué à l’avance.", orderId);
+
+      const { data: owners, error: ownersError } = await admin.from("profiles")
+        .select("id").eq("role", "admin").eq("is_super_admin", true);
+      if (ownersError) throw new Error("Impossible de préparer l’avis à l’administrateur général : " + ownersError.message);
+      if (!owners?.length) throw new Error("Aucun administrateur général n’est configuré pour recevoir le code de retour.");
+      for (const owner of owners) {
+        await notify(owner.id, "delivery_return_code", "Code de contrôle du retour — " + orderId,
+          "Commande " + orderId + " annulée pendant la livraison. Livre​​ur concerné : " + profile.full_name +
+            ". Le colis doit être reçu et contrôlé physiquement chez SAMA-PACK avant de communiquer ce code au livreur : " + code +
+            ". Code valable 24 heures. Ne le communique qu’après avoir récupéré et vérifié le colis.",
+          orderId);
+      }
+      return json({
+        ok: true,
+        message: "Commande annulée. Le livreur a reçu l’ordre de retour et le code de contrôle a été envoyé à l’administrateur général."
+      }, 200, origin);
+    }
+
+    if (action === "confirm_return") {
+      if (!isCourier) return json({ error: "Accès réservé aux livreurs." }, 403, origin);
+      const orderId = text(payload.order_id);
+      const code = text(payload.code);
+      if (!/^\\d{6}$/.test(code)) return json({ error: "Saisis le code à six chiffres remis par l’administrateur au dépôt." }, 400, origin);
+      const order = await getAssignedOrder(orderId);
+      if (order.status !== "cancelled" || order.delivery_attempt_status !== "return_pending") {
+        return json({ error: "Cette commande n’attend pas de confirmation de retour au dépôt." }, 409, origin);
+      }
+      const { data: storedCode, error: readCodeError } = await admin.from("delivery_return_confirmation_codes")
+        .select("*").eq("order_id", orderId).eq("courier_id", user.id).maybeSingle();
+      if (readCodeError || !storedCode) return json({ error: "Code de retour introuvable. Contacte l’administrateur général." }, 404, origin);
+      if (storedCode.verified_at) return json({ error: "Ce retour a déjà été confirmé." }, 409, origin);
+      if (new Date(storedCode.expires_at).getTime() < Date.now()) return json({ error: "Le code de retour a expiré. Demande à l’administrateur général de le renouveler." }, 410, origin);
+      if (Number(storedCode.attempts || 0) >= 5) return json({ error: "Trop de tentatives. Contacte l’administrateur général." }, 429, origin);
+      const suppliedHash = await digest(String(storedCode.salt) + ":return:" + orderId + ":" + code);
+      if (!safeEqual(suppliedHash, String(storedCode.code_hash))) {
+        await admin.from("delivery_return_confirmation_codes").update({
+          attempts: Number(storedCode.attempts || 0) + 1,
+          last_attempt_at: new Date().toISOString(),
+        }).eq("order_id", orderId);
+        return json({ error: "Code de retour incorrect. Vérifie le code donné par l’administrateur après réception du colis." }, 400, origin);
+      }
+
+      const now = new Date().toISOString();
+      const { data: updatedOrder, error: updateError } = await admin.from("orders").update({
+        delivery_attempt_status: "returned",
+        updated_at: now,
+      }).eq("id", orderId).eq("assigned_courier_id", user.id)
+        .eq("status", "cancelled").eq("delivery_attempt_status", "return_pending")
+        .select("id").maybeSingle();
+      if (updateError) throw new Error("Confirmation du retour impossible : " + updateError.message);
+      if (!updatedOrder) return json({ error: "L’état de retour a changé. Actualise tes livraisons." }, 409, origin);
+
+      const { error: codeUpdateError } = await admin.from("delivery_return_confirmation_codes")
+        .update({ verified_at: now }).eq("order_id", orderId).eq("courier_id", user.id);
+      if (codeUpdateError) throw new Error("Retour enregistré, mais le code n’a pas pu être clôturé : " + codeUpdateError.message);
+      await event({
+        order_id: orderId, courier_id: user.id, actor_user_id: user.id,
+        event_type: "delivery_return_confirmed",
+        note: "Colis reçu et contrôlé chez SAMA-PACK. Retour confirmé par le code de dépôt.",
+      });
+
+      const { data: owners } = await admin.from("profiles")
+        .select("id").eq("role", "admin").eq("is_super_admin", true);
+      for (const owner of owners || []) {
+        await notify(owner.id, "delivery_return_confirmed", "Retour du colis confirmé",
+          "Le retour de la commande " + orderId + " a été confirmé par code au dépôt par " +
+            (profile.full_name || user.email || "le livreur") + ". Le colis est enregistré comme retourné chez SAMA-PACK.",
+          orderId);
+      }
+      if (order.user_id) {
+        await notify(order.user_id, "delivery_return_confirmed_customer", "Retour du colis enregistré",
+          "Le colis de ta commande annulée " + orderId + " a été reçu et enregistré chez SAMA-PACK. Notre équipe te communiquera les prochaines étapes.",
+          orderId);
+      }
+      return json({ ok: true, message: "Retour confirmé. Le colis est enregistré comme reçu chez SAMA-PACK." }, 200, origin);
+    }
+
     if (action === "invite_courier") {
       if (!isOwner) return json({ error: "Seul l’administrateur général peut inviter un livreur." }, 403, origin);
       const email = text(payload.email).toLowerCase();
@@ -298,8 +421,18 @@ Deno.serve(async (req: Request) => {
         .select("amount").eq("order_id", orderId).eq("event_type", "collection_recorded").eq("review_status", "pending");
       if (collectionError) throw new Error("Vérification des encaissements impossible.");
       const pendingAmount = (collections || []).reduce((sum, row) => sum + num(row.amount), 0);
-      if (num(order.amount_paid) + pendingAmount + 0.01 < num(order.total)) {
-        return json({ error: "Le solde de la commande doit être encaissé avant de confirmer la remise. Enregistre d’abord le paiement reçu." }, 409, origin);
+      // Seuls les encaissements déjà validés par l'administrateur sont comptés dans amount_paid.
+      // Les déclarations encore en attente ne peuvent jamais solder une commande.
+      if (num(order.amount_paid) + 0.01 < num(order.total)) {
+        if (pendingAmount > 0.01) {
+          return json({
+            error: "Le livreur a déclaré " + Math.round(pendingAmount).toLocaleString("fr-FR") +
+              " FCFA, mais cet encaissement attend encore la validation de l’administrateur général. La remise ne peut être clôturée qu’après validation."
+          }, 409, origin);
+        }
+        return json({
+          error: "Le solde restant doit être encaissé, puis validé par l’administrateur général avant de confirmer la remise."
+        }, 409, origin);
       }
       const now = new Date().toISOString();
       const { error: updateError } = await admin.from("orders").update({
