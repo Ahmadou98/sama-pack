@@ -84,7 +84,8 @@ Deno.serve(async (req: Request) => {
       if (!(await existsInStorage(admin, frontPath, user.id))) return json({ error: "La photo du recto n’a pas été correctement téléversée." }, 400, origin);
       if (backPath && !(await existsInStorage(admin, backPath, user.id))) return json({ error: "La photo du verso n’a pas été correctement téléversée." }, 400, origin);
 
-      const { data: existing } = await admin.from("courier_identity_documents").select("verification_status").eq("courier_id", user.id).maybeSingle();
+      const { data: existing } = await admin.from("courier_identity_documents")
+        .select("verification_status,front_image_path,back_image_path").eq("courier_id", user.id).maybeSingle();
       if (existing?.verification_status === "approved") return json({ error: "Ton identité est déjà validée. Contacte l’administrateur pour demander une nouvelle vérification." }, 409, origin);
       const now = new Date().toISOString();
       const { error: saveError } = await admin.from("courier_identity_documents").upsert({
@@ -104,6 +105,12 @@ Deno.serve(async (req: Request) => {
         updated_at: now,
       }, { onConflict: "courier_id" });
       if (saveError) throw new Error("Enregistrement du dossier impossible : " + saveError.message);
+      const obsoletePaths = [existing?.front_image_path, existing?.back_image_path]
+        .filter((path): path is string => Boolean(path) && path !== frontPath && path !== backPath);
+      if (obsoletePaths.length) {
+        const { error: cleanupError } = await admin.storage.from("courier-identity").remove(obsoletePaths);
+        if (cleanupError) console.warn("Anciennes photos d’identité non supprimées :", cleanupError.message);
+      }
       const { data: owners } = await admin.from("profiles").select("id").eq("role", "admin").eq("is_super_admin", true);
       for (const owner of owners || []) {
         await admin.from("notifications").insert({
