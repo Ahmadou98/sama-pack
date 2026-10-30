@@ -4250,3 +4250,47 @@ body.general-admin-mode .general-admin-account-modal {
 @media (max-width: 700px) {
   .delivery-failure-message { min-width: 180px; }
 }
+
+
+/* Dedicated notification control in the general-admin workspace */
+.admin-notification-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 19px;
+  height: 19px;
+  padding: 0 5px;
+  margin-left: 3px;
+  border-radius: 999px;
+  background: #b42318;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1;
+}
+.admin-notification-badge.hidden { display: none !important; }
+.admin-notification-permission {
+  display: grid;
+  gap: 7px;
+  margin: 0 0 14px;
+  padding: 13px 15px;
+  border: 1px solid #e6d6b8;
+  border-radius: 12px;
+  background: #fffaf1;
+  color: #533e1b;
+  font-size: 13px;
+}
+.admin-notification-permission span {
+  color: #68583c;
+  line-height: 1.45;
+}
+.admin-notification-permission.is-enabled {
+  border-color: #b9dcc7;
+  background: #f3faf5;
+  color: #195b37;
+}
+.admin-notification-permission.is-enabled span { color: #426a52; }
+@media (max-width: 700px) {
+  #adminNotificationBtn { min-width: 0; padding-inline: 9px; }
+  #adminNotificationBtn span:not(.admin-notification-badge) { display: none; }
+}
