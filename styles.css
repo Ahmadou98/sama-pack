@@ -4430,3 +4430,72 @@ body{padding-top:100px!important}
  .info-floating-header #accountBtn.account-nav-user .account-nav-avatar{flex-basis:19px!important;width:19px!important;height:19px!important}
  .info-floating-header #accountBtn.account-nav-user .account-nav-label{max-width:35px!important;font-size:8px!important}
 }
+
+
+/* Navigation back-office : identité visuelle indépendante du menu public */
+#adminPanel .admin-shell { background:#f3f7f4; }
+#adminPanel .admin-sidebar {
+  background:linear-gradient(180deg,#123d29 0%,#0c2c1d 100%);
+  color:#f4fff7;
+  border-right:1px solid rgba(255,255,255,.1);
+}
+#adminPanel .admin-brand { color:#fff; }
+#adminPanel .admin-session-label {
+  padding:9px 11px;
+  border:1px solid rgba(122,219,157,.24);
+  border-radius:10px;
+  background:rgba(80,178,112,.12);
+  color:#c9f5d5;
+  font-size:10px;
+  font-weight:800;
+  letter-spacing:.045em;
+  line-height:1.45;
+}
+#adminPanel .admin-nav-heading {
+  color:#8ecba3;
+  font-size:9px;
+  font-weight:900;
+  letter-spacing:.11em;
+}
+#adminPanel .side-btn {
+  border:1px solid transparent;
+  border-radius:10px;
+  color:#e7f4eb;
+  background:transparent;
+  text-align:left;
+}
+#adminPanel .side-btn:hover {
+  color:#fff;
+  background:rgba(255,255,255,.075);
+}
+#adminPanel .side-btn.active {
+  color:#103c26;
+  background:#d8f4e0;
+  border-color:#a7dfb8;
+  box-shadow:inset 3px 0 #43ad69;
+  font-weight:850;
+}
+#adminPanel .admin-nav-group-empty,
+#adminPanel .admin-nav-group[hidden] { display:none!important; }
+#adminPanel .admin-main { background:#f5f8f6; }
+#adminPanel .admin-top {
+  padding:18px 20px;
+  border:1px solid #e2ebe5;
+  border-radius:16px;
+  background:#fff;
+  box-shadow:0 5px 20px rgba(20,60,36,.045);
+}
+#adminPanel .admin-top .eyebrow { color:#397b50; }
+#adminPanel .admin-context { color:#64796a; }
+#adminPanel .sidebar-foot { border-color:rgba(255,255,255,.13); }
+#adminPanel .sidebar-foot .btn,
+#adminPanel .sidebar-foot .link-btn { border-radius:10px; }
+#adminPanel .sidebar-foot .link-btn { color:#d5e8dc; }
+#adminPanel.is-general-admin .admin-session-label { border-color:rgba(248,203,105,.32); background:rgba(248,203,105,.1); color:#ffe8b0; }
+#adminPanel.is-role-admin .admin-session-label { border-color:rgba(122,219,157,.24); }
+@media(max-width:900px) {
+  #adminPanel .admin-sidebar { border-radius:0 0 16px 16px; }
+  #adminPanel .admin-sidebar.is-open { border-radius:0 0 16px 16px; }
+  #adminPanel .admin-main { padding-left:12px; padding-right:12px; }
+  #adminPanel .admin-top { padding:14px; border-radius:13px; }
+}
