@@ -2940,10 +2940,16 @@
   function updateAdminContext() {
     const name = String(currentProfile?.full_name || currentUser?.email || "Compte de gestion");
     const role = currentProfile?.is_super_admin === true ? "Administrateur général" : "Administrateur";
+    const panel = $("adminPanel");
+    if (panel) {
+      panel.classList.toggle("is-general-admin", isGeneralAdmin());
+      panel.classList.toggle("is-role-admin", isAdmin() && !isGeneralAdmin());
+      panel.dataset.managementRole = isGeneralAdmin() ? "general-admin" : "admin";
+    }
     const context = $("adminContext");
     if (context) context.textContent = role + " · " + name;
     const flag = $("adminFlag");
-    if (flag) flag.textContent = "Connecté : " + name + " · " + role;
+    if (flag) flag.textContent = "ESPACE DE GESTION · " + role.toLocaleUpperCase("fr") + " · " + name;
   }
 
   function applyAdminNavigationSearch() {
@@ -2997,7 +3003,14 @@
       const allowed = canViewAdminView(b.dataset.view);
       b.classList.toggle("hidden", !allowed);
       b.classList.remove("admin-nav-hidden");
+      b.setAttribute("aria-hidden", String(!allowed));
+      b.tabIndex = allowed ? 0 : -1;
       b.classList.toggle("active", allowed && (b.dataset.view === view || (view === "products" && b.dataset.view === "packs")));
+    });
+    document.querySelectorAll("#adminSidebar .admin-nav-group").forEach(group => {
+      const hasVisibleItems = [...group.querySelectorAll(".side-btn")].some(button => !button.classList.contains("hidden"));
+      group.classList.toggle("admin-nav-group-empty", !hasVisibleItems);
+      group.hidden = !hasVisibleItems;
     });
     const globalSearch = $("adminGlobalSearch"); if (globalSearch) globalSearch.value = "";
     updateAdminContext();
