@@ -4523,17 +4523,45 @@ body{padding-top:100px!important}
   z-index: 10021;
 }
 
-/* Correctif de sécurité : la navigation de gestion reste visible hors mobile,
-   et le bouton hamburger reste visible/actif sur les petits écrans. */
-#adminPanel .admin-sidebar-content {
-  display: flex !important;
-  visibility: visible;
+/* Navigation de gestion : en-tête stable, contenu masqué tant que le menu mobile est fermé. */
+#adminPanel.admin-overlay {
+  z-index: 1200;
 }
 #adminPanel .admin-sidebar-header {
-  display: flex !important;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex: 0 0 42px;
+  min-height: 42px;
+  width: 100%;
+}
+#adminPanel .admin-sidebar-content {
+  display: flex;
   visibility: visible;
+  flex: 1 1 auto;
+  min-height: 0;
 }
 @media (max-width: 900px) {
+  #adminPanel .admin-sidebar {
+    display: flex !important;
+    position: absolute;
+    top: 0;
+    right: 0;
+    left: 0;
+    z-index: 90;
+    flex-direction: column;
+    align-items: stretch;
+    width: 100%;
+    height: var(--admin-mobile-header-height);
+    min-height: var(--admin-mobile-header-height);
+    max-height: var(--admin-mobile-header-height);
+    overflow: hidden;
+  }
+  #adminPanel .admin-sidebar-header {
+    display: flex !important;
+    flex: 0 0 42px;
+    min-height: 42px;
+  }
   #adminPanel .admin-menu-toggle {
     display: inline-flex !important;
     visibility: visible !important;
@@ -4544,7 +4572,24 @@ body{padding-top:100px!important}
   #adminPanel .admin-sidebar-content {
     display: none !important;
   }
+  #adminPanel .admin-sidebar.is-open {
+    height: 100dvh;
+    min-height: 0;
+    max-height: 100dvh;
+    overflow: hidden;
+  }
   #adminPanel .admin-sidebar.is-open .admin-sidebar-content {
     display: flex !important;
+    flex: 1 1 auto;
+    min-height: 0;
+    margin-top: 8px;
+    padding: 0 0 calc(16px + env(safe-area-inset-bottom));
+    overflow-y: auto;
+    overflow-x: hidden;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+  #adminPanel .admin-main {
+    padding-top: calc(var(--admin-mobile-header-height) + 12px);
   }
 }
