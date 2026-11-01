@@ -4593,3 +4593,223 @@ body{padding-top:100px!important}
     padding-top: calc(var(--admin-mobile-header-height) + 12px);
   }
 }
+
+
+/* Découverte aléatoire de l'autre catalogue */
+.catalog-discovery {
+  position: fixed;
+  z-index: 980;
+  right: max(14px, env(safe-area-inset-right));
+  bottom: max(18px, env(safe-area-inset-bottom));
+  width: min(390px, calc(100vw - 28px));
+  opacity: 0;
+  transform: translate3d(0, 16px, 0) scale(.985);
+  pointer-events: none;
+  transition: opacity .24s ease, transform .24s ease;
+  font-family: inherit;
+}
+.catalog-discovery.is-visible {
+  opacity: 1;
+  transform: translate3d(0, 0, 0) scale(1);
+  pointer-events: auto;
+}
+.catalog-discovery-card {
+  position: relative;
+  padding: 16px;
+  overflow: hidden;
+  border: 1px solid #dce9df;
+  border-radius: 18px;
+  background: rgba(255,255,255,.98);
+  box-shadow: 0 18px 48px rgba(15, 45, 27, .22);
+  backdrop-filter: blur(14px);
+}
+.catalog-discovery-close {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid #e2e8e2;
+  border-radius: 50%;
+  background: #fff;
+  color: #405348;
+  font-size: 21px;
+  line-height: 1;
+  cursor: pointer;
+}
+.catalog-discovery-heading {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding-right: 34px;
+  margin-bottom: 12px;
+}
+.catalog-discovery-kicker {
+  color: #287148;
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: .14em;
+}
+.catalog-discovery-heading strong {
+  color: #183b28;
+  font-size: 14px;
+  line-height: 1.35;
+}
+.catalog-discovery-content {
+  display: grid;
+  grid-template-columns: 104px minmax(0, 1fr);
+  align-items: center;
+  gap: 13px;
+}
+.catalog-discovery-visual {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 104px;
+  height: 112px;
+  overflow: hidden;
+  border-radius: 12px;
+  background: #f0f7f1;
+}
+.catalog-discovery-image {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.catalog-discovery-placeholder {
+  display: grid;
+  place-items: center;
+  padding: 18px;
+}
+.catalog-discovery-placeholder .cleaning-bottle-icon {
+  width: 48px;
+  height: 62px;
+}
+.catalog-discovery-promo-label {
+  position: absolute;
+  left: 6px;
+  bottom: 6px;
+  max-width: calc(100% - 12px);
+  padding: 4px 7px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #176b43;
+  color: #fff;
+  font-size: 9px;
+  font-weight: 900;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.catalog-discovery-details {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+.catalog-discovery-type {
+  color: #718075;
+  font-size: 10px;
+  font-weight: 800;
+}
+.catalog-discovery-name {
+  display: -webkit-box;
+  overflow: hidden;
+  color: #183b28;
+  font-size: 14px;
+  line-height: 1.3;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+.catalog-discovery-description {
+  display: -webkit-box;
+  overflow: hidden;
+  margin: 0;
+  color: #637168;
+  font-size: 11px;
+  line-height: 1.4;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+.catalog-discovery-price {
+  margin-top: 2px;
+}
+.catalog-discovery-price .price {
+  color: #176b43;
+  font-size: 16px;
+  font-weight: 900;
+}
+.catalog-discovery-price .old-price {
+  color: #879289;
+  font-size: 10px;
+}
+.catalog-discovery-price .promo-label {
+  display: none;
+}
+.catalog-discovery-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 14px;
+}
+.catalog-discovery-actions .btn {
+  flex: 0 0 auto;
+  min-height: 36px;
+  padding: 8px 11px;
+  font-size: 11px;
+}
+.catalog-discovery-catalog-link {
+  color: #287148;
+  font-size: 11px;
+  font-weight: 800;
+  text-align: right;
+}
+.catalog-discovery-catalog-link:hover {
+  color: #14532d;
+  text-decoration: underline;
+}
+@media (max-width: 600px) {
+  .catalog-discovery {
+    right: 10px;
+    bottom: max(12px, env(safe-area-inset-bottom));
+    left: 10px;
+    width: auto;
+  }
+  .catalog-discovery-card {
+    padding: 13px;
+    border-radius: 16px;
+  }
+  .catalog-discovery-content {
+    grid-template-columns: 88px minmax(0, 1fr);
+    gap: 10px;
+  }
+  .catalog-discovery-visual {
+    width: 88px;
+    height: 102px;
+  }
+  .catalog-discovery-name {
+    font-size: 13px;
+  }
+  .catalog-discovery-actions {
+    gap: 8px;
+  }
+  .catalog-discovery-actions .btn {
+    min-height: 35px;
+    padding: 8px 9px;
+    font-size: 10px;
+  }
+  .catalog-discovery-catalog-link {
+    font-size: 10px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .catalog-discovery {
+    transition: none;
+  }
+}
