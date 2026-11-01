@@ -698,7 +698,7 @@
       <td>${esc(row.supplier_name || "—")}<br><span class="small-note">${esc(row.supplier_ref || "Réf. non renseignée")}</span></td>
       <td>${row.supplier_price == null ? "—" : money(row.supplier_price)}${row.carton_price == null ? "" : `<br><span class="small-note">Colis : ${money(row.carton_price)} HT</span>`}</td><td>${row.margin_percent == null ? "—" : Number(row.margin_percent) + " %"}</td><td>${money(row.price)}</td>
       <td>${availabilityBadgeHtml(row)}</td><td>${row.active ? '<span class="status delivered">Publié</span>' : '<span class="status cancelled">Masqué</span>'}</td>
-      <td><div class="prospect-actions"><button class="btn ghost small" onclick="editCatalogItem('${esc(row.id)}')">Modifier</button><button class="btn ghost small" onclick="archiveCatalogItem('${esc(row.id)}',${row.active ? "false" : "true"})">${row.active ? "Masquer" : "Publier"}</button></div></td>
+      <td><div class="prospect-actions"><button class="btn ghost small" onclick="editCatalogItem('${esc(row.id)}')">Modifier</button><button class="btn ghost small" onclick="archiveCatalogItem('${esc(row.id)}',${row.active ? "false" : "true"})">${row.active ? "Masquer" : Number(row.price) <= 0 ? "Saisir le prix" : !getProductImages(row).length ? "Ajouter une photo" : "Publier"}</button></div></td>
     </tr>`).join("")}</tbody></table></div>` : '<div class="empty">Aucun produit individuel ni outil enregistré.</div>';
     host.innerHTML = `${formHtml}<div class="panel"><div class="section-head"><div><div class="eyebrow">GESTION DES ARTICLES</div><h3>Produits et outils enregistrés (${catalogRows.length})</h3></div></div><label class="catalog-admin-search-label">Recherche par référence SAMA-PACK, désignation ou fournisseur<input class="input" id="catalogAdminSearch" type="search" placeholder="Ex. SP-PROD-120, vaisselle, SNAD…"></label>${listHtml}</div>`;
     const search = $("catalogAdminSearch");
@@ -772,17 +772,36 @@
 
   async function archiveCatalogItem(id, active) {
     const action = active ? "rendre visible" : "masquer";
-    const product = getP(id);
-    if (active && (!product || Number(product.price) <= 0)) return toast("Renseigne un prix de vente supérieur à zéro avant la publication.", true);
-    if (active && !getProductImages(product).length) return toast("Ajoute au moins une photo à cet article avant de le publier.", true);
+    // Relire l’article depuis Supabase : le cache local peut être incomplet ou ancien.
+    const { data: product, error: readError } = await client.from("products")
+      .select("id,name,price,active,image_path,image_paths,catalog_type")
+      .eq("id", id).maybeSingle();
+    if (readError) return toast("Impossible de vérifier cet article : " + errorMessage(readError), true);
+    if (!product) return toast("Article introuvable ou non accessible. Actualise le catalogue.", true);
+    if (active && Number(product.price) <= 0) {
+      editingCatalogItemId = id;
+      await renderIndividualCatalogAdmin();
+      const priceField = $("individualCatalogForm")?.querySelector('[name="price"]');
+      priceField?.focus();
+      return toast("Publication bloquée : renseigne d’abord le prix de vente de « " + product.name + " ».", true);
+    }
+    if (active && !getProductImages(product).length) {
+      editingCatalogItemId = id;
+      await renderIndividualCatalogAdmin();
+      const imageField = $("individualCatalogForm")?.querySelector('[name="image_path"]') || $("individualCatalogForm")?.querySelector('[name="image_files"]');
+      imageField?.focus();
+      return toast("Publication bloquée : ajoute au moins une photo à « " + product.name + " ».", true);
+    }
     if (!window.confirm(`Confirmer : ${action} cet article dans le catalogue ?`)) return;
-    const { error } = await client.from("products").update({ active, updated_at: new Date().toISOString() }).eq("id", id);
-    if (error) return toast(errorMessage(error), true);
-    toast(active ? "Article publié." : "Article masqué du catalogue.");
+    const { data: updated, error } = await client.from("products")
+      .update({ active, updated_at: new Date().toISOString() })
+      .eq("id", id).select("id,active").maybeSingle();
+    if (error) return toast("Publication non enregistrée : " + errorMessage(error), true);
+    if (!updated) return toast("Aucune modification confirmée. Vérifie les droits du compte puis actualise.", true);
+    toast(active ? "Article publié dans le catalogue." : "Article masqué du catalogue.");
     await loadPublicData();
     await renderIndividualCatalogAdmin();
   }
-
   async function uploadProductImages(files, productId, existingImages = []) {
     const selected = Array.from(files || []).filter(file => file instanceof File && file.size > 0);
     if (selected.length + existingImages.length > 8) return { error: "Un article peut contenir au maximum 8 photos. Retire des photos ou coche le remplacement." };
