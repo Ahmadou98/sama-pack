@@ -8,6 +8,9 @@
   const PRODUCTS_PER_PAGE = 20;
   const PROMO_ROTATE_MS = 6500;
   let currentProductPage = 1;
+  let catalogDiscoveryInitialized = false;
+  let catalogDiscoveryTimer = null;
+  let catalogDiscoveryShown = false;
   let productReviewStats = Object.create(null);
   let currentPromoIndex = 0;
   let promoCarouselTimer = null;
@@ -855,10 +858,122 @@
     const count = $("packCount"); if (count) count.textContent = String(products.filter(p => p.active && p.catalog_type === "pack").length);
     updateContact(); updateCategoryFilter(); renderTop(); renderProducts(); renderPromoCarousel(); updateCartCount();
     if (document.body?.dataset?.productDetail === "true") renderSEOProductPage();
+    initCatalogDiscovery();
   }
   function getCurrentCatalogType() {
     const value = document.body?.dataset?.catalogType;
     return value === "product" || value === "tool" ? value : "pack";
+  }
+
+  function initCatalogDiscovery() {
+    const section = $("catalogue");
+    const pageType = getCurrentCatalogType();
+    if (!section || !["pack", "product"].includes(pageType) || catalogDiscoveryInitialized) return;
+    catalogDiscoveryInitialized = true;
+
+    const sessionKey = "sama_pack_cross_catalog_discovery_" + pageType + "_v1";
+    try {
+      if (sessionStorage.getItem(sessionKey) === "shown") {
+        catalogDiscoveryShown = true;
+        return;
+      }
+    } catch {
+      // Le composant reste fonctionnel si le stockage de session est indisponible.
+    }
+
+    const isCatalogInView = () => {
+      const rect = section.getBoundingClientRect();
+      return rect.top < window.innerHeight * 0.78 && rect.bottom > window.innerHeight * 0.25;
+    };
+
+    const showDiscovery = () => {
+      if (catalogDiscoveryShown || document.hidden || !isCatalogInView()) return;
+      const targetType = pageType === "pack" ? "product" : "pack";
+      const candidates = products.filter(item =>
+        item.active === true &&
+        item.catalog_type === targetType &&
+        canSellProduct(item) &&
+        Number(item.price) > 0
+      );
+      if (!candidates.length) return;
+
+      const promotions = candidates.filter(item => hasPromotion(item));
+      const regularItems = candidates.filter(item => !hasPromotion(item));
+      const showPromotion = promotions.length > 0 && (regularItems.length === 0 || Math.random() < 0.35);
+      const pool = showPromotion ? promotions : (regularItems.length ? regularItems : candidates);
+      const item = pool[Math.floor(Math.random() * pool.length)];
+      if (!item) return;
+
+      const host = document.createElement("aside");
+      host.className = "catalog-discovery";
+      host.setAttribute("role", "region");
+      host.setAttribute("aria-label", "Suggestion pour découvrir l’autre catalogue");
+      host.setAttribute("aria-live", "polite");
+
+      const images = getProductImages(item);
+      const image = images.length
+        ? '<img class="catalog-discovery-image" src="' + esc(resolveProductImageUrl(images[0])) + '" alt="' + esc(item.name) + '" loading="lazy" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'grid\'">'
+        : "";
+      const fallback = '<div class="catalog-discovery-image catalog-discovery-placeholder" ' + (images.length ? 'style="display:none"' : "") + '>' + cleaningBottleSvg() + '</div>';
+      const title = pageType === "pack" ? "À découvrir aussi : les produits à l’unité" : "À découvrir aussi : nos packs";
+      const subtitle = item.catalog_type === "pack" ? "Pack de nettoyage" : "Produit de nettoyage";
+      const description = String(item.desc || item.description || "").replace(/\s+/g, " ").trim();
+      const shortDescription = description.length > 92 ? description.slice(0, 89).replace(/\s+\S*$/, "") + "…" : description;
+      const catalogUrl = targetType === "product" ? "produits.html" : "/#catalogue";
+      const promoLabel = hasPromotion(item) ? '<span class="catalog-discovery-promo-label">' + esc(item.promo_label || "Offre spéciale") + '</span>' : "";
+
+      host.innerHTML =
+        '<div class="catalog-discovery-card">' +
+          '<button class="catalog-discovery-close" type="button" aria-label="Fermer la suggestion">×</button>' +
+          '<div class="catalog-discovery-heading"><span class="catalog-discovery-kicker">SAMA-PACK · DÉCOUVERTE</span>' +
+          '<strong>' + esc(title) + '</strong></div>' +
+          '<div class="catalog-discovery-content">' +
+            '<div class="catalog-discovery-visual">' + image + fallback + promoLabel + '</div>' +
+            '<div class="catalog-discovery-details"><span class="catalog-discovery-type">' + esc(subtitle) + '</span>' +
+              '<strong class="catalog-discovery-name">' + esc(item.name) + '</strong>' +
+              (shortDescription ? '<p class="catalog-discovery-description">' + esc(shortDescription) + '</p>' : '') +
+              '<div class="catalog-discovery-price">' + priceDisplayHtml(item) + '</div>' +
+            '</div>' +
+          '</div>' +
+          '<div class="catalog-discovery-actions">' +
+            '<button class="btn primary small" type="button" data-discovery-product="' + esc(item.id) + '">Découvrir l’article</button>' +
+            '<a class="catalog-discovery-catalog-link" href="' + catalogUrl + '">Voir tout le catalogue →</a>' +
+          '</div>' +
+        '</div>';
+
+      document.body.appendChild(host);
+      requestAnimationFrame(() => host.classList.add("is-visible"));
+      catalogDiscoveryShown = true;
+      try { sessionStorage.setItem(sessionKey, "shown"); } catch { /* Ignore l’indisponibilité du stockage. */ }
+
+      const dismiss = () => {
+        host.classList.remove("is-visible");
+        window.setTimeout(() => host.remove(), 220);
+      };
+      host.querySelector(".catalog-discovery-close")?.addEventListener("click", dismiss);
+      host.querySelector("[data-discovery-product]")?.addEventListener("click", () => {
+        dismiss();
+        openProduct(item.id);
+      });
+      host.querySelector(".catalog-discovery-catalog-link")?.addEventListener("click", dismiss);
+    };
+
+    const onScroll = () => {
+      if (catalogDiscoveryShown || catalogDiscoveryTimer || document.hidden || window.scrollY < 80 || !isCatalogInView()) return;
+      const delay = 1600 + Math.floor(Math.random() * 3600);
+      catalogDiscoveryTimer = window.setTimeout(() => {
+        catalogDiscoveryTimer = null;
+        showDiscovery();
+      }, delay);
+    };
+
+    window.addEventListener("scroll", onScroll, { passive: true });
+    document.addEventListener("visibilitychange", () => {
+      if (document.hidden && catalogDiscoveryTimer) {
+        window.clearTimeout(catalogDiscoveryTimer);
+        catalogDiscoveryTimer = null;
+      }
+    });
   }
 
   function updateCategoryFilter() {
