@@ -3390,11 +3390,32 @@
     }).join("")}</tbody></table></div>` : '<div class="empty">Aucune commande pour le moment.</div>'}</div>`;
   }
 
-  function showOrder(id) {
-    const o = cachedOrders.find(x => x.id === id); if (!o) return toast("Commande introuvable.", true);
-    const customer = cachedCustomers.find(c => c.id === o.customer_id) || {};
-    const lines = cachedOrderItems.filter(x => x.order_id === o.id);
-    const name = o.customer_name || customer.name || "Client"; const phone = o.customer_phone || customer.phone || "";
+  async function showOrder(id) {
+    if (!id) return toast("Référence de commande manquante.", true);
+    let o = cachedOrders.find(x => String(x.id) === String(id)) || null;
+    let customer = o ? (cachedCustomers.find(c => c.id === o.customer_id) || {}) : {};
+    let lines = cachedOrderItems.filter(x => String(x.order_id) === String(id));
+    try {
+      const orderResult = await client.from("orders").select("*").eq("id", id).maybeSingle();
+      if (orderResult.error) throw orderResult.error;
+      if (!orderResult.data) throw new Error("Commande introuvable.");
+      o = orderResult.data;
+      const [itemsResult, customerResult] = await Promise.all([
+        client.from("order_items").select("id,order_id,product_id,product_name,quantity,unit_price").eq("order_id", id),
+        o.customer_id ? client.from("customers").select("id,name,phone,address,zone").eq("id", o.customer_id).maybeSingle() : Promise.resolve({data:null,error:null})
+      ]);
+      if (itemsResult.error) throw itemsResult.error;
+      lines = itemsResult.data || [];
+      customer = customerResult.data || customer;
+      cachedOrders = [...cachedOrders.filter(row => row.id !== o.id), o];
+      cachedOrderItems = [...cachedOrderItems.filter(row => row.order_id !== o.id), ...lines];
+      if (customer?.id) cachedCustomers = [...cachedCustomers.filter(row => row.id !== customer.id), customer];
+    } catch (error) {
+      if (!o) return toast(errorMessage(error), true);
+      console.warn("Détail de commande affiché depuis le cache après échec d’actualisation.", error);
+    }
+    const name = o.customer_name || customer.name || "Client";
+    const phone = o.customer_phone || customer.phone || "";
     showModal(`<div class="modal-head"><div><div class="eyebrow">COMMANDE</div><h2>${esc(o.id)}</h2></div><button class="close" onclick="closeModal()">✕</button></div><p><strong>${esc(name)}</strong> · ${esc(phone)}<br>${esc(o.delivery_address || customer.address || "")} ${esc(o.delivery_zone || customer.zone || "")}<br><span class="small-note">Créée le ${esc(fmtDate(o.created_at))}</span></p>${orderTrackingHtml(o)}<ul class="pack-items">${lines.map(i=>`<li>${Number(i.quantity)} × ${esc(i.product_name)} — ${money(i.unit_price)}</li>`).join("") || "<li>Détails des lignes indisponibles pour cette ancienne commande.</li>"}</ul><div class="summary"><div class="summary-row"><span>Sous-total</span><strong>${money(o.subtotal)}</strong></div><div class="summary-row"><span>Livraison</span><strong>${money(o.delivery)}</strong></div><div class="summary-row"><span>Mode de paiement</span><strong>${esc(o.payment_choice || o.payment || "Non renseigné")}</strong></div><div class="summary-row"><span>Créneau de livraison</span><strong>${esc(o.slot || "À convenir")}</strong></div><div class="summary-row"><span>Statut du paiement</span><strong>${esc(paymentStatusLabel(o.payment_status))}</strong></div><div class="summary-row"><span>Déjà encaissé</span><strong>${money(o.amount_paid || 0)}</strong></div><div class="summary-row"><span>Solde restant</span><strong>${money(Math.max(0, Number(o.total || 0)-Number(o.amount_paid || 0)))}</strong></div><div class="summary-row total"><span>Total</span><strong>${money(o.total)}</strong></div></div>${["awaiting_payment","awaiting_delivery_payment"].includes(o.status) ? `<button class="btn primary full" onclick="retryOrderPayment('${esc(o.id)}')">Reprendre le paiement</button>` : ""}`);
   }
   async function setOrderStatus(id, status) {
@@ -4402,11 +4423,11 @@
         try {
           const permission = await Notification.requestPermission();
           if (permission === "granted") toast("Alertes système activées pour l’administrateur général.");
-        } catch (error) {
-          console.warn("Demande de permission notifications refusée", error);
-        }
+        } catch (error) { console.warn("Demande de permission notifications refusée", error); }
       }
-      await loadAndShowNotifications();
+      await loadNotifications();
+      const html = userNotifications.length ? userNotifications.map(n => `<article class="notification-item ${n.read_at ? "read" : "unread"}"><div class="notification-title">${esc(n.title)}</div><div class="notification-message">${esc(n.message)}</div><div class="notification-meta">${esc(fmtDate(n.created_at))} ${n.read_at ? "· Lue" : `<button class="link-btn dark-link" onclick="markNotificationRead('${esc(n.id)}')">Marquer comme lue</button>`}</div></article>`).join("") : '<div class="empty">Aucune notification pour le moment.</div>';
+      showModal(`<div class="modal-head"><div><div class="eyebrow">GESTION · CENTRE DE NOTIFICATIONS</div><h2>Notifications administrateur</h2></div><button class="close" type="button" onclick="closeModal()" aria-label="Fermer">✕</button></div><div class="notification-list">${html}</div>`);
     };
     const adminMenuToggle = $("adminMenuToggle");
     if (adminMenuToggle) adminMenuToggle.onclick = () => setAdminMobileMenuOpen(!$("adminSidebar")?.classList.contains("is-open"));
