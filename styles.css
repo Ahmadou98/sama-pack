@@ -4512,3 +4512,13 @@ body{padding-top:100px!important}
   visibility: visible !important;
   pointer-events: auto !important;
 }
+
+
+/* Correction d’empilement : les fenêtres modales doivent passer au-dessus du back-office. */
+#modalRoot {
+  position: relative;
+  z-index: 10020;
+}
+#modalRoot .modal {
+  z-index: 10021;
+}
