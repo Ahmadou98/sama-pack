@@ -4522,3 +4522,29 @@ body{padding-top:100px!important}
 #modalRoot .modal {
   z-index: 10021;
 }
+
+/* Correctif de sécurité : la navigation de gestion reste visible hors mobile,
+   et le bouton hamburger reste visible/actif sur les petits écrans. */
+#adminPanel .admin-sidebar-content {
+  display: flex !important;
+  visibility: visible;
+}
+#adminPanel .admin-sidebar-header {
+  display: flex !important;
+  visibility: visible;
+}
+@media (max-width: 900px) {
+  #adminPanel .admin-menu-toggle {
+    display: inline-flex !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    position: relative;
+    z-index: 2;
+  }
+  #adminPanel .admin-sidebar-content {
+    display: none !important;
+  }
+  #adminPanel .admin-sidebar.is-open .admin-sidebar-content {
+    display: flex !important;
+  }
+}
