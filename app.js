@@ -4131,7 +4131,7 @@
         : '<span class="small-note">Réservé au propriétaire</span>';
       const unitCost = Number(stockCosts.get(p.id) || 0);
       const stockCostCell = isGeneralAdmin()
-        ? '<td><input class="input stock-field" type="number" min="0" step="0.01" aria-label="Coût unitaire du stock" data-stock-id="' + esc(p.id) + '" data-stock-key="unit_cost" value="' + unitCost + '"><br><span class="small-note">Valeur : ' + money(Number(s.quantity || 0) * unitCost) + '</span></td>'
+        ? '<td><input class="input stock-field" type="number" min="0" step="0.01" aria-label="Coût d’achat par ' + esc(getSaleUnitLabel(p)) + '" data-stock-id="' + esc(p.id) + '" data-stock-key="unit_cost" value="' + unitCost + '"><br><span class="small-note">Valeur du stock : ' + money(Number(s.quantity || 0) * unitCost) + '</span></td>'
         : "";
       const searchText = [p.public_ref,p.id,p.name,p.category,link.supplier_name,link.supplier_ref,s.supplier].join(" ").toLowerCase();
       return '<tr data-stock-search-row data-search="' + esc(searchText) + '">' +
