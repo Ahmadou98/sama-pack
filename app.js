@@ -620,26 +620,30 @@
 
   function readProductPricing(formData) {
     const saleUnit = String(formData.get("sale_unit") || "unit") === "carton" ? "carton" : "unit";
-    const supplierRaw = String(formData.get(saleUnit === "carton" ? "supplier_carton_price" : "supplier_price") ?? "").trim();
-    const marginRaw = String(formData.get("margin_percent") ?? "").trim();
+    const unitCostRaw = String(formData.get("supplier_price") ?? "").trim();
+    const supplierRaw = saleUnit === "carton" ? String(formData.get("supplier_carton_price") ?? "").trim() : unitCostRaw;
     const supplierPrice = supplierRaw === "" ? null : Number(supplierRaw);
+    const supplierUnitPrice = unitCostRaw === "" ? null : Number(unitCostRaw);
+    const marginRaw = String(formData.get("margin_percent") ?? "").trim();
     const marginPercent = marginRaw === "" ? null : Number(marginRaw);
     if (supplierPrice !== null && (!Number.isFinite(supplierPrice) || supplierPrice < 0)) return { error: "Le coût fournisseur correspondant au mode de vente doit être un nombre positif ou nul." };
+    if (supplierUnitPrice !== null && (!Number.isFinite(supplierUnitPrice) || supplierUnitPrice < 0)) return { error: "Le coût fournisseur unitaire doit être un nombre positif ou nul." };
     if (marginPercent !== null && (!Number.isFinite(marginPercent) || marginPercent < 0 || marginPercent > 1000)) return { error: "La marge doit être comprise entre 0 et 1 000 %." };
     const enteredPrice = String(formData.get("price") ?? "").trim();
     const manualPrice = enteredPrice === "" ? 0 : Number(enteredPrice);
     if (!Number.isFinite(manualPrice) || manualPrice < 0) return { error: "Le prix de vente doit être un nombre positif ou nul." };
     const salePrice = supplierPrice !== null && marginPercent !== null ? Math.round(supplierPrice * (1 + marginPercent / 100)) : manualPrice;
-    return { supplierPrice, marginPercent, salePrice, saleUnit };
+    return { supplierPrice, supplierUnitPrice, marginPercent, salePrice, saleUnit };
   }
 
   async function saveProductPricing(productId, pricing) {
-    if (pricing.supplierPrice === null && pricing.marginPercent === null) {
+    if (pricing.supplierPrice === null && pricing.marginPercent === null && pricing.supplierUnitPrice === null) {
       const { error } = await client.from("product_costs").delete().eq("product_id", String(productId));
       return error || null;
     }
     const { error } = await client.from("product_costs").upsert({
       product_id: String(productId), supplier_price: pricing.supplierPrice,
+      supplier_unit_price: pricing.supplierUnitPrice,
       margin_percent: pricing.marginPercent, updated_at: new Date().toISOString()
     }, { onConflict: "product_id" });
     return error || null;
@@ -736,7 +740,7 @@
       return;
     }
     const [costResult, linkResult, supplierResult] = await Promise.all([
-      client.from("product_costs").select("product_id,supplier_price,margin_percent"),
+      client.from("product_costs").select("product_id,supplier_price,supplier_unit_price,margin_percent"),
       client.from("product_supplier_links").select("product_id,supplier_id,supplier_ref,carton_price,units_per_carton,source_url,research_note"),
       client.from("suppliers").select("id,name").order("name", { ascending: true })
     ]);
@@ -768,14 +772,14 @@
       <form id="individualCatalogForm" class="admin-form">
         <label class="full">Référence publique SAMA-PACK<input class="input" readonly value="${esc(current.public_ref || "Attribuée automatiquement à l’enregistrement")}"></label>
         <label>Type d’article *<select class="input" name="catalog_type" required><option value="product" ${(current.catalog_type || "product") === "product" ? "selected" : ""}>Produit de nettoyage</option><option value="tool" ${current.catalog_type === "tool" ? "selected" : ""}>Outil / matériel de nettoyage</option></select></label>
-        <label>Mode de vente public *<select class="input" name="sale_unit" required><option value="unit" ${current.sale_unit !== "carton" ? "selected" : ""}>À l’unité</option><option value="carton" ${current.sale_unit === "carton" ? "selected" : ""}>Par colis</option></select><span class="small-note">Le prix et les quantités seront exprimés dans ce mode de vente.</span></label>
+        <label>Mode de vente public *<select class="input" name="sale_unit" required><option value="unit" ${current.sale_unit !== "carton" ? "selected" : ""}>À l’unité</option><option value="carton" ${current.sale_unit === "carton" ? "selected" : ""}>Par colis</option></select><span class="small-note">Le prix et les quantités suivront ce mode. En passant au colis, vérifie aussi le stock : il doit être compté en colis, sans conversion automatique.</span></label>
         <label>Nom *<input class="input" name="name" required minlength="2" maxlength="180" value="${esc(current.name || "")}" placeholder="Ex. Nettoyant sol 1 L"></label>
         <label>Catégorie<input class="input" name="category" maxlength="100" value="${esc(current.category || "")}" placeholder="Lessive, désinfection…"></label>
         <label>Fournisseur associé<select class="input" name="supplier_id">${supplierOptions}</select></label>
         <label>Référence chez le fournisseur<input class="input" name="supplier_ref" maxlength="100" value="${esc(current.supplier_ref || "")}" placeholder="Ex. PROD-0150"></label>
-        <label>Coût d’achat fournisseur par unité (FCFA HT)<input class="input" name="supplier_price" type="number" min="0" step="0.01" value="${current.supplier_price == null ? "" : Number(current.supplier_price)}" placeholder="Coût d’une unité"></label>
+        <label>Coût d’achat fournisseur par unité (FCFA HT)<input class="input" name="supplier_price" type="number" min="0" step="0.01" value="${(current.supplier_unit_price ?? (current.sale_unit !== "carton" ? current.supplier_price : null)) == null ? "" : Number(current.supplier_unit_price ?? (current.sale_unit !== "carton" ? current.supplier_price : null))}" placeholder="Coût d’une unité"></label>
         <label>Marge souhaitée / majoration (%)<input class="input" name="margin_percent" type="number" min="0" max="1000" step="0.1" value="${current.margin_percent == null ? "" : Number(current.margin_percent)}" placeholder="Ex. 30"></label>
-        <label>Coût d’achat du colis fournisseur (FCFA HT)<input class="input" name="supplier_carton_price" type="number" min="0" step="0.01" value="${current.carton_price == null ? "" : Number(current.carton_price)}" placeholder="Coût total d’un colis"></label>
+        <label>Coût d’achat du colis fournisseur (FCFA HT)<input class="input" name="supplier_carton_price" type="number" min="0" step="0.01" value="${(current.carton_price ?? (current.sale_unit === "carton" ? current.supplier_price : null)) == null ? "" : Number(current.carton_price ?? (current.sale_unit === "carton" ? current.supplier_price : null))}" placeholder="Coût total d’un colis"></label>
         <label>Unités / lots par colis<input class="input" name="supplier_units_per_carton" maxlength="80" value="${esc(current.units_per_carton || "")}" placeholder="Ex. 12 pièces / colis"></label>
         <label>Prix de vente calculé (FCFA) *<input class="input selling-price-input" name="price" type="number" required min="0" step="1" value="${Number(current.price || 0)}" ${current.supplier_price != null && current.margin_percent != null ? "readonly" : ""}></label>
         <label>Disponibilité au catalogue<select class="input" name="availability_status"><option value="available" ${(current.availability_status || "out_of_stock") === "available" ? "selected" : ""}>Disponible</option><option value="out_of_stock" ${(current.availability_status || "out_of_stock") === "out_of_stock" ? "selected" : ""}>Rupture de stock</option></select></label>
@@ -790,7 +794,7 @@
     const listHtml = catalogRows.length ? `<div class="table-wrap"><table class="table"><thead><tr><th>Réf. SAMA-PACK</th><th>Article</th><th>Fournisseur / réf. fournisseur</th><th>Coût fournisseur</th><th>Marge</th><th>Prix de vente</th><th>Disponibilité</th><th>Publication</th><th>Actions</th></tr></thead><tbody>${catalogRows.map(row => `<tr data-admin-search-row data-search="${esc([row.public_ref,row.id,row.name,row.category,row.supplier_name,row.supplier_ref].join(" ").toLowerCase())}">
       <td><strong>${esc(row.public_ref || "—")}</strong></td><td><strong>${esc(row.name)}</strong><br><span class="small-note">${esc(row.category || "Sans catégorie")}</span>${row.source_url ? `<br><a href="${esc(row.source_url)}" target="_blank" rel="noopener noreferrer" title="${esc(row.research_note || "Source du produit")}">Consulter la source ↗</a>` : ""}</td>
       <td>${esc(row.supplier_name || "—")}<br><span class="small-note">${esc(row.supplier_ref || "Réf. non renseignée")}</span></td>
-      <td>${row.supplier_price == null ? "—" : money(row.supplier_price)}${row.carton_price == null ? "" : `<br><span class="small-note">Colis : ${money(row.carton_price)} HT</span>`}</td><td>${row.margin_percent == null ? "—" : Number(row.margin_percent) + " %"}</td><td>${money(row.price)}</td>
+      <td>${row.supplier_price == null ? "—" : money(row.supplier_price) + " / " + getSaleUnitLabel(row)}${row.supplier_unit_price == null || row.sale_unit !== "carton" ? "" : `<br><span class="small-note">Coût unitaire conservé : ${money(row.supplier_unit_price)} HT</span>`}${row.carton_price == null ? "" : `<br><span class="small-note">Référence colis fournisseur : ${money(row.carton_price)} HT</span>`}</td><td>${row.margin_percent == null ? "—" : Number(row.margin_percent) + " %"}</td><td>${money(row.price)} / ${esc(getSaleUnitLabel(row))}</td>
       <td>${availabilityBadgeHtml(row)}</td><td>${row.active ? '<span class="status delivered">Publié</span>' : '<span class="status cancelled">Masqué</span>'}</td>
       <td><div class="prospect-actions"><button class="btn ghost small" onclick="editCatalogItem('${esc(row.id)}')">Modifier</button><button class="btn ghost small" onclick="archiveCatalogItem('${esc(row.id)}',${row.active ? "false" : "true"})">${row.active ? "Masquer" : Number(row.price) <= 0 ? "Saisir le prix" : !getProductImages(row).length ? "Ajouter une photo" : "Publier"}</button></div></td>
     </tr>`).join("")}</tbody></table></div>` : '<div class="empty">Aucun produit individuel ni outil enregistré.</div>';
@@ -1582,10 +1586,15 @@
     if (!lines.length || lines.some(line => !line.product || !canSellProduct(line.product))) return toast("La sélection contient un article indisponible. Génère une nouvelle proposition.", true);
     const total = lines.reduce((sum, line) => sum + getEffectivePrice(line.product) * line.qty, 0);
     if (total <= 0 || total > budgetBuilderState.budget) return toast("La sélection dépasse le budget. Ajuste les quantités.", true);
+    if (lines.some(line => {
+      const existing = cart.find(item => item.id === line.id);
+      return existing && getCartLineModeMismatch(existing);
+    })) return toast("Le mode de vente d’un article a changé. Retire-le du panier puis ajoute-le à nouveau.", true);
     lines.forEach(line => {
       const existing = cart.find(item => item.id === line.id);
+      const saleUnit = getSaleUnitKey(line.product);
       if (existing) existing.qty = Math.min(99, existing.qty + line.qty);
-      else cart.push({ id: line.id, qty: Math.min(99, line.qty) });
+      else cart.push({ id: line.id, qty: Math.min(99, line.qty), sale_unit: saleUnit });
     });
     saveCart(); updateCartCount(); renderCartModal();
     toast("Ton pack personnalisé a été ajouté au panier.");
@@ -4089,7 +4098,7 @@
   async function adminStock() {
     const stockResult = await client.from("stock").select("product_id,quantity,min_quantity,updated_at");
     if (stockResult.error) throw stockResult.error;
-    const productResult = await client.from("products").select("id,public_ref,name,category,catalog_type,price,active,availability_status").order("name",{ascending:true});
+    const productResult = await client.from("products").select("id,public_ref,name,category,catalog_type,sale_unit,price,active,availability_status").order("name",{ascending:true});
     if (productResult.error) throw productResult.error;
     let links = [], suppliers = [], stockCosts = new Map(), stockSuppliers = new Map();
     if (isGeneralAdmin()) {
@@ -4153,7 +4162,7 @@
           '</tbody></table></div>' : '<div class="empty">Aucun pack publié.</div>') + '</div>';
     }
     const [costResult, linkResult, supplierResult] = await Promise.all([
-      client.from("product_costs").select("product_id,supplier_price,margin_percent"),
+      client.from("product_costs").select("product_id,supplier_price,supplier_unit_price,margin_percent"),
       client.from("product_supplier_links").select("product_id,supplier_id,supplier_ref,carton_price,units_per_carton,source_url,research_note"),
       client.from("suppliers").select("id,name").order("name", { ascending: true })
     ]);
