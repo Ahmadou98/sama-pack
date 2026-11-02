@@ -3088,6 +3088,7 @@
       if (retryProfile) currentProfile = retryProfile;
       if (!isAdmin()) { toast("Le compte est administrateur, mais son profil n’a pas pu être chargé. Actualise la page et reconnecte-toi si nécessaire.", true); return; }
     }
+    document.body.classList.add("admin-management-open");
     $("adminPanel").classList.remove("hidden"); await showAdminView("dashboard");
   }
   function setAdminMobileMenuOpen(open) {
@@ -3103,6 +3104,7 @@
   function closeAdmin() {
     setAdminMobileMenuOpen(false);
     $("adminPanel").classList.add("hidden");
+    document.body.classList.remove("admin-management-open");
     stopDashboardPresencePolling();
   }
   function statusLabel(status) { return ({new:"Reçue",confirmed:"Confirmée",processing:"En préparation",prepared:"Préparée",out_for_delivery:"En cours de livraison",delivered:"Livrée",cancelled:"Annulée",awaiting_payment:"Paiement intégral en attente",awaiting_delivery_payment:"Frais de livraison à payer",won:"Gagné",lost:"Perdu"})[status] || status || "—"; }
