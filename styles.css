@@ -3109,13 +3109,6 @@ body.general-admin-mode .general-admin-account-modal {
     width: 100%;
   }
 }
-
-
-/* Espace de gestion — navigation unifiée et ergonomie mobile */
-#adminPanel.admin-overlay {
-  background: #f4f7f5;
-  color: #17261d;
-}
 #adminPanel .admin-top {
   display: flex;
   align-items: flex-end;
@@ -3323,7 +3316,6 @@ body.general-admin-mode .general-admin-account-modal {
   #adminPanel .admin-global-search { flex: 1 1 260px; }
 }
 @media (max-width: 900px) {
-  #adminPanel.admin-overlay { overflow: hidden; }
   #adminPanel .admin-top { margin-bottom: 15px; padding-bottom: 14px; gap: 11px; }
 }
 @media (max-width: 600px) {
@@ -4080,19 +4072,6 @@ body{padding-top:100px!important}
 }
 
 
-/* Correctif prioritaire : le back-office doit passer au-dessus de l’en-tête public fixe. */
-#adminPanel.admin-overlay {
-  position: fixed !important;
-  inset: 0 !important;
-  z-index: 10010 !important;
-}
-#adminPanel.admin-overlay:not(.hidden) {
-  display: block !important;
-  visibility: visible !important;
-  pointer-events: auto !important;
-}
-
-
 /* Correction d’empilement : les fenêtres modales doivent passer au-dessus du back-office. */
 #modalRoot {
   position: relative;
@@ -4100,11 +4079,6 @@ body{padding-top:100px!important}
 }
 #modalRoot .modal {
   z-index: 10021;
-}
-
-/* Navigation de gestion : en-tête stable, contenu masqué tant que le menu mobile est fermé. */
-#adminPanel.admin-overlay {
-  z-index: 1200;
 }
 
 
@@ -4598,6 +4572,8 @@ body{padding-top:100px!important}
     display: none !important;
   }
 }
+
+
 
 
 
