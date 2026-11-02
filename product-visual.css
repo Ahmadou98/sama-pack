@@ -1,0 +1,51 @@
+/* Signature visuelle SAMA-PACK — traitement léger des photos du catalogue.
+   Le filtre reste volontairement discret pour préserver les couleurs réelles,
+   les étiquettes et les informations imprimées sur les emballages. */
+
+.product-card .pack-visual.has-photo,
+.product-detail-image-wrap,
+.seo-product-photo-wrap,
+.promo-visual.product-image-frame {
+  background: radial-gradient(
+    ellipse at 50% 44%,
+    #ffffff 0%,
+    #fbfdfb 64%,
+    #eff6f1 100%
+  );
+}
+
+.product-card .pack-visual.has-photo .product-photo,
+.product-detail-image-wrap .product-photo-detail,
+.seo-product-photo,
+.promo-image .product-photo,
+.catalog-discovery-image:not(.catalog-discovery-placeholder),
+.budget-builder-thumb-img,
+.product-image-thumb img {
+  filter: brightness(1.015) contrast(1.035) saturate(1.055);
+  transition: filter .22s ease, transform .22s ease;
+}
+
+/* La vente flash garde son ombre de détourage, avec le même rendu colorimétrique. */
+.flash-photo .product-photo {
+  filter: brightness(1.015) contrast(1.035) saturate(1.055)
+    drop-shadow(0 18px 22px rgba(24, 63, 37, .14));
+}
+
+@media (hover: hover) and (prefers-reduced-motion: no-preference) {
+  .product-card:hover .pack-visual.has-photo .product-photo {
+    filter: brightness(1.02) contrast(1.04) saturate(1.065);
+    transform: scale(1.025);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .product-card .pack-visual.has-photo .product-photo,
+  .product-detail-image-wrap .product-photo-detail,
+  .seo-product-photo,
+  .promo-image .product-photo,
+  .catalog-discovery-image:not(.catalog-discovery-placeholder),
+  .budget-builder-thumb-img,
+  .product-image-thumb img {
+    transition: none;
+  }
+}
