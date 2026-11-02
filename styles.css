@@ -5295,3 +5295,37 @@ body{padding-top:100px!important}
     padding-top: 136px !important;
   }
 }
+
+
+/* Réglage responsive final de la boutique : hamburger seulement lorsque la fenêtre est réduite. */
+@media (min-width: 1241px) {
+  header.topbar.info-floating-header .mobile-menu-shell,
+  header.topbar.info-floating-header .mobile-menu-toggle {
+    display: none !important;
+    visibility: hidden !important;
+    pointer-events: none !important;
+  }
+  header.topbar.info-floating-header .desktop-nav {
+    display: flex !important;
+    visibility: visible !important;
+    flex: 1 1 auto !important;
+  }
+  header.topbar.info-floating-header .wrap.nav {
+    display: flex !important;
+  }
+}
+@media (max-width: 1240px) {
+  header.topbar.info-floating-header .mobile-menu-shell {
+    display: inline-flex !important;
+    visibility: visible !important;
+    pointer-events: auto !important;
+  }
+  header.topbar.info-floating-header .mobile-menu-toggle {
+    display: grid !important;
+    visibility: visible !important;
+    pointer-events: auto !important;
+  }
+  header.topbar.info-floating-header .desktop-nav {
+    display: none !important;
+  }
+}
