@@ -4987,3 +4987,12 @@ body{padding-top:100px!important}
   #adminPanel .admin-sidebar { transition: none; }
   #adminPanel .side-btn { transition: none; }
 }
+
+
+/* Masquer l'en-tête public de la boutique pendant que la gestion est ouverte. */
+body.admin-management-open > .info-floating-header,
+body.admin-management-open .info-floating-header {
+  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
