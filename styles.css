@@ -4847,12 +4847,6 @@ body{padding-top:100px!important}
 
 
 /* Navigation partagée ordinateur / mobile : mêmes destinations, présentation adaptée à l'écran. */
-.info-floating-header .nav {
-  display: flex !important;
-  align-items: center !important;
-  justify-content: space-between !important;
-  gap: 14px !important;
-}
 .info-floating-header .desktop-nav {
   display: flex;
   align-items: center;
@@ -4925,6 +4919,11 @@ body{padding-top:100px!important}
   outline: none;
 }
 @media (min-width: 1241px) {
+  .info-floating-header .nav {
+    gap: 14px !important;
+  }
+}
+@media (min-width: 1241px) {
   .info-floating-header .desktop-nav {
     display: flex !important;
   }
@@ -4941,5 +4940,22 @@ body{padding-top:100px!important}
   }
   .info-floating-header .mobile-menu-shell {
     display: inline-flex !important;
+  }
+}
+@media (max-width: 700px) {
+  .info-floating-header .nav {
+    display: grid !important;
+    grid-template-columns: max-content minmax(0, 1fr) !important;
+    align-items: center !important;
+    width: 96vw !important;
+    min-width: 0 !important;
+    height: 58px !important;
+    gap: 6px !important;
+  }
+  .info-floating-header .nav-actions {
+    justify-self: end !important;
+    min-width: 0 !important;
+    flex-wrap: nowrap !important;
+    gap: 4px !important;
   }
 }
