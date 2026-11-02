@@ -54,10 +54,10 @@
   let budgetBuilderState = { budget: 5000, category: "all", items: [] };
 
   function normalizeFallbackProduct(p) {
-    return { id: String(p.id), public_ref: String(p.public_ref || p.id), availability_status: String(p.availability_status || "available"), catalog_type: String(p.catalog_type || "pack"), name: String(p.name || "Pack"), cat: String(p.cat || p.category || "Autre"), category: String(p.cat || p.category || "Autre"), price: Number(p.price || 0), desc: String(p.desc || p.description || ""), description: String(p.desc || p.description || ""), items: Array.isArray(p.items) ? p.items : [], image_path: p.image_path || "", image_paths: Array.isArray(p.image_paths) ? p.image_paths : [], youtube_howto_url: String(p.youtube_howto_url || ""), active: p.active !== false, promo_active: p.promo_active === true, promo_price: p.promo_price == null || p.promo_price === "" ? null : Number(p.promo_price), promo_label: String(p.promo_label || "Offre spéciale"), promo_end_at: p.promo_end_at || null };
+    return { id: String(p.id), public_ref: String(p.public_ref || p.id), availability_status: String(p.availability_status || "available"), catalog_type: String(p.catalog_type || "pack"), name: String(p.name || "Pack"), cat: String(p.cat || p.category || "Autre"), category: String(p.cat || p.category || "Autre"), price: Number(p.price || 0), sale_unit: String(p.sale_unit || "unit"), desc: String(p.desc || p.description || ""), description: String(p.desc || p.description || ""), items: Array.isArray(p.items) ? p.items : [], image_path: p.image_path || "", image_paths: Array.isArray(p.image_paths) ? p.image_paths : [], youtube_howto_url: String(p.youtube_howto_url || ""), active: p.active !== false, promo_active: p.promo_active === true, promo_price: p.promo_price == null || p.promo_price === "" ? null : Number(p.promo_price), promo_label: String(p.promo_label || "Offre spéciale"), promo_end_at: p.promo_end_at || null };
   }
   function normalizeProduct(p) {
-    return { ...p, id: String(p.id), public_ref: String(p.public_ref || p.id), availability_status: String(p.availability_status || "available"), catalog_type: String(p.catalog_type || "pack"), cat: String(p.category || p.cat || "Autre"), category: String(p.category || p.cat || "Autre"), price: Number(p.price || 0), desc: String(p.description || p.desc || ""), description: String(p.description || p.desc || ""), items: Array.isArray(p.items) ? p.items : [], image_path: String(p.image_path || ""), image_paths: Array.isArray(p.image_paths) ? p.image_paths : [], youtube_howto_url: String(p.youtube_howto_url || ""), active: p.active !== false, promo_active: p.promo_active === true && (!p.promo_end_at || (Number.isFinite(new Date(p.promo_end_at).getTime()) && new Date(p.promo_end_at).getTime() > Date.now())), promo_price: p.promo_price == null || p.promo_price === "" ? null : Number(p.promo_price), promo_label: String(p.promo_label || "Offre spéciale") };
+    return { ...p, id: String(p.id), public_ref: String(p.public_ref || p.id), availability_status: String(p.availability_status || "available"), catalog_type: String(p.catalog_type || "pack"), cat: String(p.category || p.cat || "Autre"), category: String(p.category || p.cat || "Autre"), price: Number(p.price || 0), sale_unit: String(p.sale_unit || "unit"), desc: String(p.description || p.desc || ""), description: String(p.description || p.desc || ""), items: Array.isArray(p.items) ? p.items : [], image_path: String(p.image_path || ""), image_paths: Array.isArray(p.image_paths) ? p.image_paths : [], youtube_howto_url: String(p.youtube_howto_url || ""), active: p.active !== false, promo_active: p.promo_active === true && (!p.promo_end_at || (Number.isFinite(new Date(p.promo_end_at).getTime()) && new Date(p.promo_end_at).getTime() > Date.now())), promo_price: p.promo_price == null || p.promo_price === "" ? null : Number(p.promo_price), promo_label: String(p.promo_label || "Offre spéciale") };
   }
   function getProductImages(p) {
     const paths = Array.isArray(p?.image_paths) ? p.image_paths : [];
@@ -110,6 +110,29 @@
     return `<span class="availability-badge ${out ? "is-out" : "is-available"}">${out ? "Rupture de stock" : "Disponible"}</span>`;
   }
   function canSellProduct(p) { return Boolean(p && p.active && p.availability_status !== "out_of_stock" && Number(p.price) > 0); }
+  function getSaleUnitKey(p) {
+    if (p?.catalog_type === "pack") return "pack";
+    return p?.sale_unit === "carton" ? "carton" : "unit";
+  }
+  function getSaleUnitLabel(p) {
+    return ({ unit: "unité", carton: "colis", pack: "pack" })[getSaleUnitKey(p)];
+  }
+  function getSaleUnitCountLabel(p, quantity = 1) {
+    const key = getSaleUnitKey(p), plural = Number(quantity) > 1;
+    return key === "carton" ? "colis" : key === "pack" ? (plural ? "packs" : "pack") : (plural ? "unités" : "unité");
+  }
+  function getOrderLineSaleUnitLabel(item) {
+    const saved = String(item?.sale_unit || "");
+    if (["unit", "carton", "pack"].includes(saved)) return ({ unit: "unité", carton: "colis", pack: "pack" })[saved];
+    return getP(String(item?.product_id || ""))?.catalog_type === "pack" ? "pack" : "unité";
+  }
+  function getCartLineModeMismatch(line) {
+    const product = getP(String(line?.id || ""));
+    if (!product) return false;
+    const saved = ["unit", "carton", "pack"].includes(line.sale_unit)
+      ? line.sale_unit : (product.catalog_type === "pack" ? "pack" : "unit");
+    return saved !== getSaleUnitKey(product);
+  }
 
   function normalizeYouTubeHowToUrl(value) {
     const raw = String(value || "").trim();
@@ -145,8 +168,9 @@
   }
   function getEffectivePrice(p) { return hasPromotion(p) ? Number(p.promo_price) : Number(p?.price || 0); }
   function priceDisplayHtml(p) {
-    if (!hasPromotion(p)) return `<div class="price">${money(p.price)}</div>`;
-    return `<div class="promo-price-block"><div class="price">${money(getEffectivePrice(p))}</div><div class="old-price">${money(p.price)}</div></div><span class="promo-label">${esc(p.promo_label || "Offre spéciale")}</span>`;
+    const unitLabel = getSaleUnitKey(p) === "carton" ? '<small class="price-unit-label">par colis</small>' : "";
+    if (!hasPromotion(p)) return `<div class="price">${money(p.price)}${unitLabel}</div>`;
+    return `<div class="promo-price-block"><div class="price">${money(getEffectivePrice(p))}${unitLabel}</div><div class="old-price">${money(p.price)}</div></div><span class="promo-label">${esc(p.promo_label || "Offre spéciale")}</span>`;
   }
   function loadCart() {
     try {
@@ -159,7 +183,7 @@
       }
       const normalized = value
         .filter(item => item && typeof item.id === "string" && item.id.trim().length > 0 && Number(item.qty) > 0)
-        .map(item => ({ id: item.id.trim(), qty: Math.min(99, Math.max(1, Number(item.qty) || 1)) }));
+        .map(item => ({ id: item.id.trim(), qty: Math.min(99, Math.max(1, Number(item.qty) || 1)), sale_unit: ["unit","carton","pack"].includes(item.sale_unit) ? item.sale_unit : null }));
       if (JSON.stringify(value) !== JSON.stringify(normalized)) {
         if (normalized.length) localStorage.setItem(CART_KEY, JSON.stringify(normalized));
         else localStorage.removeItem(CART_KEY);
@@ -463,7 +487,7 @@
     const toolGrid = $("cleaningToolGrid");
     if (productGrid) {
       const items = products.filter(p => p.active && p.catalog_type === "product");
-      productGrid.innerHTML = items.map(productCard).join("") || '<div class="empty individual-catalog-empty">Les produits de nettoyage à l’unité seront bientôt disponibles.</div>';
+      productGrid.innerHTML = items.map(productCard).join("") || '<div class="empty individual-catalog-empty">Les produits de nettoyage à l’unité ou par colis seront bientôt disponibles.</div>';
     }
     if (toolGrid) {
       const items = products.filter(p => p.active && p.catalog_type === "tool");
@@ -595,17 +619,18 @@
   }
 
   function readProductPricing(formData) {
-    const supplierRaw = String(formData.get("supplier_price") ?? "").trim();
+    const saleUnit = String(formData.get("sale_unit") || "unit") === "carton" ? "carton" : "unit";
+    const supplierRaw = String(formData.get(saleUnit === "carton" ? "supplier_carton_price" : "supplier_price") ?? "").trim();
     const marginRaw = String(formData.get("margin_percent") ?? "").trim();
     const supplierPrice = supplierRaw === "" ? null : Number(supplierRaw);
     const marginPercent = marginRaw === "" ? null : Number(marginRaw);
-    if (supplierPrice !== null && (!Number.isFinite(supplierPrice) || supplierPrice < 0)) return { error: "Le prix fournisseur doit être un nombre positif ou nul." };
+    if (supplierPrice !== null && (!Number.isFinite(supplierPrice) || supplierPrice < 0)) return { error: "Le coût fournisseur correspondant au mode de vente doit être un nombre positif ou nul." };
     if (marginPercent !== null && (!Number.isFinite(marginPercent) || marginPercent < 0 || marginPercent > 1000)) return { error: "La marge doit être comprise entre 0 et 1 000 %." };
     const enteredPrice = String(formData.get("price") ?? "").trim();
     const manualPrice = enteredPrice === "" ? 0 : Number(enteredPrice);
     if (!Number.isFinite(manualPrice) || manualPrice < 0) return { error: "Le prix de vente doit être un nombre positif ou nul." };
     const salePrice = supplierPrice !== null && marginPercent !== null ? Math.round(supplierPrice * (1 + marginPercent / 100)) : manualPrice;
-    return { supplierPrice, marginPercent, salePrice };
+    return { supplierPrice, marginPercent, salePrice, saleUnit };
   }
 
   async function saveProductPricing(productId, pricing) {
@@ -622,33 +647,43 @@
 
   function bindProductPriceCalculator(form) {
     if (!form || form.dataset.priceCalculatorBound === "true") return;
-    const supplierField = form.querySelector('[name="supplier_price"]');
+    const unitCostField = form.querySelector('[name="supplier_price"]');
+    const cartonCostField = form.querySelector('[name="supplier_carton_price"]');
+    const saleUnitField = form.querySelector('[name="sale_unit"]');
     const marginField = form.querySelector('[name="margin_percent"]');
     const saleField = form.querySelector('[name="price"]');
     const feedback = form.querySelector("[data-pricing-feedback]");
-    if (!supplierField || !marginField || !saleField) return;
+    if (!unitCostField || !marginField || !saleField) return;
     form.dataset.priceCalculatorBound = "true";
+    const unitCostLabel = unitCostField.closest("label");
     const recalculate = () => {
-      const supplierRaw = String(supplierField.value || "").trim();
+      const saleUnit = saleUnitField?.value === "carton" ? "carton" : "unit";
+      const activeCostField = saleUnit === "carton" ? cartonCostField : unitCostField;
+      if (unitCostLabel) unitCostLabel.hidden = saleUnit === "carton";
+      const supplierRaw = String(activeCostField?.value || "").trim();
       const marginRaw = String(marginField.value || "").trim();
       if (supplierRaw === "" || marginRaw === "") {
         saleField.readOnly = false;
-        if (feedback) feedback.textContent = "Renseigne le prix fournisseur et la marge souhaitée pour calculer le prix automatiquement. Tant qu’une valeur manque, tu peux saisir le prix de vente manuellement.";
+        if (feedback) feedback.textContent = saleUnit === "carton"
+          ? "Pour calculer automatiquement le prix du colis, renseigne son coût fournisseur et la marge. Tu peux aussi saisir le prix de vente manuellement."
+          : "Renseigne le coût fournisseur par unité et la marge souhaitée. Tant qu’une valeur manque, tu peux saisir le prix de vente manuellement.";
         return;
       }
       const supplierPrice = Number(supplierRaw);
       const marginPercent = Number(marginRaw);
       if (!Number.isFinite(supplierPrice) || supplierPrice < 0 || !Number.isFinite(marginPercent) || marginPercent < 0 || marginPercent > 1000) {
         saleField.readOnly = false;
-        if (feedback) feedback.textContent = "Vérifie le prix fournisseur et la marge (de 0 à 1 000 %).";
+        if (feedback) feedback.textContent = "Vérifie le coût fournisseur et la marge (de 0 à 1 000 %).";
         return;
       }
       const calculated = Math.round(supplierPrice * (1 + marginPercent / 100));
       saleField.value = String(calculated);
       saleField.readOnly = true;
-      if (feedback) feedback.textContent = "Prix calculé : " + money(calculated) + " (coût fournisseur " + money(supplierPrice) + " + majoration de " + marginPercent + " %).";
+      if (feedback) feedback.textContent = "Prix de vente calculé " + (saleUnit === "carton" ? "par colis" : "par unité") + " : " + money(calculated) + " (coût " + money(supplierPrice) + " + majoration " + marginPercent + " %).";
     };
-    supplierField.addEventListener("input", recalculate);
+    unitCostField.addEventListener("input", recalculate);
+    cartonCostField?.addEventListener("input", recalculate);
+    saleUnitField?.addEventListener("change", recalculate);
     marginField.addEventListener("input", recalculate);
     recalculate();
   }
@@ -684,7 +719,7 @@
     const host = $("adminContent");
     if (!host || !client || !isAdmin()) return;
     const { data: rows, error } = await client.from("products")
-      .select("id,public_ref,availability_status,name,catalog_type,category,price,description,items,image_path,image_paths,youtube_howto_url,active,promo_active,promo_price,promo_label,promo_started_at,promo_end_at")
+      .select("id,public_ref,availability_status,name,catalog_type,sale_unit,category,price,description,items,image_path,image_paths,youtube_howto_url,active,promo_active,promo_price,promo_label,promo_started_at,promo_end_at")
       .in("catalog_type", ["product", "tool"])
       .order("name", { ascending: true });
     if (error) {
@@ -733,13 +768,14 @@
       <form id="individualCatalogForm" class="admin-form">
         <label class="full">Référence publique SAMA-PACK<input class="input" readonly value="${esc(current.public_ref || "Attribuée automatiquement à l’enregistrement")}"></label>
         <label>Type d’article *<select class="input" name="catalog_type" required><option value="product" ${(current.catalog_type || "product") === "product" ? "selected" : ""}>Produit de nettoyage</option><option value="tool" ${current.catalog_type === "tool" ? "selected" : ""}>Outil / matériel de nettoyage</option></select></label>
+        <label>Mode de vente public *<select class="input" name="sale_unit" required><option value="unit" ${current.sale_unit !== "carton" ? "selected" : ""}>À l’unité</option><option value="carton" ${current.sale_unit === "carton" ? "selected" : ""}>Par colis</option></select><span class="small-note">Le prix et les quantités seront exprimés dans ce mode de vente.</span></label>
         <label>Nom *<input class="input" name="name" required minlength="2" maxlength="180" value="${esc(current.name || "")}" placeholder="Ex. Nettoyant sol 1 L"></label>
         <label>Catégorie<input class="input" name="category" maxlength="100" value="${esc(current.category || "")}" placeholder="Lessive, désinfection…"></label>
         <label>Fournisseur associé<select class="input" name="supplier_id">${supplierOptions}</select></label>
         <label>Référence chez le fournisseur<input class="input" name="supplier_ref" maxlength="100" value="${esc(current.supplier_ref || "")}" placeholder="Ex. PROD-0150"></label>
-        <label>Prix fournisseur / coût d’achat unitaire (FCFA HT)<input class="input" name="supplier_price" type="number" min="0" step="0.01" value="${current.supplier_price == null ? "" : Number(current.supplier_price)}" placeholder="Coût par unité ou par matériel"></label>
+        <label>Coût d’achat fournisseur par unité (FCFA HT)<input class="input" name="supplier_price" type="number" min="0" step="0.01" value="${current.supplier_price == null ? "" : Number(current.supplier_price)}" placeholder="Coût d’une unité"></label>
         <label>Marge souhaitée / majoration (%)<input class="input" name="margin_percent" type="number" min="0" max="1000" step="0.1" value="${current.margin_percent == null ? "" : Number(current.margin_percent)}" placeholder="Ex. 30"></label>
-        <label>Prix du colis fournisseur (FCFA HT)<input class="input" name="supplier_carton_price" type="number" min="0" step="0.01" value="${current.carton_price == null ? "" : Number(current.carton_price)}" placeholder="Optionnel, tarif fournisseur"></label>
+        <label>Coût d’achat du colis fournisseur (FCFA HT)<input class="input" name="supplier_carton_price" type="number" min="0" step="0.01" value="${current.carton_price == null ? "" : Number(current.carton_price)}" placeholder="Coût total d’un colis"></label>
         <label>Unités / lots par colis<input class="input" name="supplier_units_per_carton" maxlength="80" value="${esc(current.units_per_carton || "")}" placeholder="Ex. 12 pièces / colis"></label>
         <label>Prix de vente calculé (FCFA) *<input class="input selling-price-input" name="price" type="number" required min="0" step="1" value="${Number(current.price || 0)}" ${current.supplier_price != null && current.margin_percent != null ? "readonly" : ""}></label>
         <label>Disponibilité au catalogue<select class="input" name="availability_status"><option value="available" ${(current.availability_status || "out_of_stock") === "available" ? "selected" : ""}>Disponible</option><option value="out_of_stock" ${(current.availability_status || "out_of_stock") === "out_of_stock" ? "selected" : ""}>Rupture de stock</option></select></label>
@@ -780,6 +816,7 @@
         catalog_type: data.get("catalog_type") === "tool" ? "tool" : "product",
         category: String(data.get("category") || "").trim() || (data.get("catalog_type") === "tool" ? "Outils de nettoyage" : "Produits de nettoyage"),
         price: pricing.salePrice,
+        sale_unit: pricing.saleUnit,
         description: String(data.get("description") || "").trim(),
         youtube_howto_url: null,
         image_path: String(data.get("image_path") || "").trim(),
@@ -920,7 +957,7 @@
   async function loadPublicData() {
     if (!client) return;
     const { data: rows, error } = await client.from("products")
-      .select("id,public_ref,availability_status,name,catalog_type,category,price,description,items,image_path,image_paths,youtube_howto_url,active,promo_active,promo_price,promo_label,promo_started_at,promo_end_at")
+      .select("id,public_ref,availability_status,name,catalog_type,sale_unit,category,price,description,items,image_path,image_paths,youtube_howto_url,active,promo_active,promo_price,promo_label,promo_started_at,promo_end_at")
       .order("id", { ascending: true });
     if (!error && Array.isArray(rows)) {
       products = rows.map(normalizeProduct);
@@ -1009,7 +1046,7 @@
         ? '<img class="catalog-discovery-image" src="' + esc(resolveProductImageUrl(images[0])) + '" alt="' + esc(item.name) + '" loading="lazy" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'grid\'">'
         : "";
       const fallback = '<div class="catalog-discovery-image catalog-discovery-placeholder" ' + (images.length ? 'style="display:none"' : "") + '>' + cleaningBottleSvg() + '</div>';
-      const title = pageType === "pack" ? "À découvrir aussi : les produits à l’unité" : "À découvrir aussi : nos packs";
+      const title = pageType === "pack" ? "À découvrir aussi : les produits à l’unité ou par colis" : "À découvrir aussi : nos packs";
       const subtitle = item.catalog_type === "pack" ? "Pack de nettoyage" : "Produit de nettoyage";
       const description = String(item.desc || item.description || "").replace(/\s+/g, " ").trim();
       const shortDescription = description.length > 92 ? description.slice(0, 89).replace(/\s+\S*$/, "") + "…" : description;
@@ -1390,7 +1427,9 @@
     if (isGeneralAdmin()) return toast("Le compte administrateur général n’utilise pas les fonctions d’achat client.", true);
     const p = getP(id); if (!p || !p.active) { toast("Cet article n’est plus publié.", true); return; } if (p.availability_status === "out_of_stock") { toast("Cet article est en rupture de stock.", true); return; } if (Number(p.price) <= 0) { toast("Le prix de cet article doit être confirmé avant la commande.", true); return; }
     const line = cart.find(i => i.id === id);
-    if (line) line.qty = Math.min(99, line.qty + 1); else cart.push({ id, qty: 1 });
+    const saleUnit = getSaleUnitKey(p);
+    if (line && getCartLineModeMismatch(line)) return toast("Le mode de vente de cet article a changé. Retire-le du panier puis ajoute-le à nouveau.", true);
+    if (line) line.qty = Math.min(99, line.qty + 1); else cart.push({ id, qty: 1, sale_unit: saleUnit });
     saveCart(); updateCartCount(); toast("Article ajouté au panier.");
   }
   function updateCartCount() { const el = $("cartCount"); if (el) el.textContent = String(cart.reduce((sum, i) => sum + i.qty, 0)); }
@@ -1417,9 +1456,9 @@
     if (isGeneralAdmin()) return toast("Le panier client n’est pas disponible pour l’administrateur général.");
     if (!cart.length) { showModal(`<div class="modal-head"><h2>Ton panier</h2><button class="close" onclick="closeModal()">✕</button></div><div class="empty">Ton panier est vide.<br><br><a class="btn primary" href="#catalogue" onclick="closeModal()">Voir le catalogue</a></div>`); return; }
     const t = cartTotals();
-    showModal(`<div class="modal-head"><div><div class="eyebrow">COMMANDE EN LIGNE</div><h2>Ton panier</h2></div><button class="close" onclick="closeModal()">✕</button></div><div class="cart-list">${cart.map(i => { const p = getP(i.id); if (!p) return ""; return `<div class="cart-item"><div class="cart-product-icon">${cleaningBottleSvg()}</div><div><strong>${esc(p.name)}</strong><div class="small-note">${money(getEffectivePrice(p))} / ${p.catalog_type === "product" ? "unité" : "pack"}</div></div><div class="qty"><button onclick="changeQty('${esc(p.id)}',-1)" aria-label="Retirer une unité">−</button><b>${i.qty}</b><button onclick="changeQty('${esc(p.id)}',1)" aria-label="Ajouter une unité">+</button></div></div>`; }).join("")}</div><div class="summary"><div class="summary-row"><span>Sous-total</span><strong>${money(t.subtotal)}</strong></div><div class="summary-row"><span>Livraison</span><strong>${money(t.delivery)}</strong></div><div class="summary-row total"><span>Total estimé</span><strong>${money(t.total)}</strong></div></div><button class="btn primary full" onclick="checkoutModal()">Passer la commande</button>`);
+    showModal(`<div class="modal-head"><div><div class="eyebrow">COMMANDE EN LIGNE</div><h2>Ton panier</h2></div><button class="close" onclick="closeModal()">✕</button></div><div class="cart-list">${cart.map(i => { const p = getP(i.id); if (!p) return ""; return `<div class="cart-item"><div class="cart-product-icon">${cleaningBottleSvg()}</div><div><strong>${esc(p.name)}</strong><div class="small-note">${money(getEffectivePrice(p))} / ${esc(getSaleUnitLabel(p))}</div>${getCartLineModeMismatch(i) ? '<span class="small-note" style="color:#b45309">Mode de vente modifié : retire puis ajoute à nouveau cet article.</span>' : ""}</div><div class="qty"><button onclick="changeQty('${esc(p.id)}',-1)" aria-label="Retirer un ${esc(getSaleUnitLabel(p))}">−</button><b>${i.qty} ${esc(getSaleUnitCountLabel(p,i.qty))}</b><button onclick="changeQty('${esc(p.id)}',1)" aria-label="Ajouter un ${esc(getSaleUnitLabel(p))}">+</button></div></div>`; }).join("")}</div><div class="summary"><div class="summary-row"><span>Sous-total</span><strong>${money(t.subtotal)}</strong></div><div class="summary-row"><span>Livraison</span><strong>${money(t.delivery)}</strong></div><div class="summary-row total"><span>Total estimé</span><strong>${money(t.total)}</strong></div></div><button class="btn primary full" onclick="checkoutModal()">Passer la commande</button>`);
   }
-  function changeQty(id, delta) { const x = cart.find(i => i.id === id); if (!x) return; x.qty += delta; if (x.qty <= 0) cart = cart.filter(i => i.id !== id); if (x.qty > 99) x.qty = 99; saveAndRenderCart(); }
+  function changeQty(id, delta) { const x = cart.find(i => i.id === id); if (!x) return; if (getCartLineModeMismatch(x)) return toast("Le mode de vente a changé. Retire cet article puis ajoute-le à nouveau.", true); x.qty += delta; if (x.qty <= 0) cart = cart.filter(i => i.id !== id); if (x.qty > 99) x.qty = 99; saveAndRenderCart(); }
 
   function getBudgetBuilderProducts(category = "all") {
     return products.filter(p => p && p.catalog_type !== "pack" && canSellProduct(p) &&
@@ -1514,7 +1553,7 @@
     results.innerHTML = '<div class="budget-builder-summary"><div><span>Ta sélection</span><strong>' + lines.length + (lines.length > 1 ? ' articles' : ' article') + '</strong></div><div><span>Total des produits</span><strong>' + money(total) + '</strong></div><div><span>Budget restant</span><strong>' + money(remaining) + '</strong></div></div>' +
       '<div class="budget-builder-list">' + lines.map(line => {
         const p = line.product;
-        return '<article class="budget-builder-item"><div class="budget-builder-thumb">' + budgetBuilderImage(p) + '</div><div class="budget-builder-item-copy"><strong>' + esc(p.name) + '</strong><small>' + esc(p.cat || "Article") + ' · ' + money(getEffectivePrice(p)) + '</small></div><div class="qty budget-builder-qty"><button type="button" onclick="changeBudgetBuilderQty(\'' + esc(p.id) + '\',-1)" aria-label="Retirer une unité">−</button><b>' + line.qty + '</b><button type="button" onclick="changeBudgetBuilderQty(\'' + esc(p.id) + '\',1)" aria-label="Ajouter une unité">+</button></div></article>';
+        return '<article class="budget-builder-item"><div class="budget-builder-thumb">' + budgetBuilderImage(p) + '</div><div class="budget-builder-item-copy"><strong>' + esc(p.name) + '</strong><small>' + esc(p.cat || "Article") + ' · ' + money(getEffectivePrice(p)) + ' / ' + esc(getSaleUnitLabel(p)) + '</small></div><div class="qty budget-builder-qty"><button type="button" onclick="changeBudgetBuilderQty(\'' + esc(p.id) + '\',-1)" aria-label="Retirer une unité">−</button><b>' + line.qty + '</b><button type="button" onclick="changeBudgetBuilderQty(\'' + esc(p.id) + '\',1)" aria-label="Ajouter une unité">+</button></div></article>';
       }).join("") + '</div>';
     if (addButton) addButton.disabled = total <= 0 || total > budgetBuilderState.budget;
   }
@@ -1568,9 +1607,12 @@
       const productId = String(row.product_id || ""), product = getP(productId);
       if (!product || !canSellProduct(product)) { unavailable.push(String(row.product_name || "Article indisponible")); continue; }
       const qty = Math.max(1, Math.min(99, Math.trunc(Number(row.quantity) || 1)));
+      const previousSaleUnit = row.sale_unit || (product.catalog_type === "pack" ? "pack" : "unit");
+      if (previousSaleUnit !== getSaleUnitKey(product)) { unavailable.push(String(row.product_name || "Article") + " (mode de vente modifié)"); continue; }
       const existing = cart.find(item => item.id === productId);
+      if (existing && getCartLineModeMismatch(existing)) { unavailable.push(String(row.product_name || "Article") + " (mode de vente modifié)"); continue; }
       if (existing) existing.qty = Math.min(99, existing.qty + qty);
-      else cart.push({ id: productId, qty });
+      else cart.push({ id: productId, qty, sale_unit: getSaleUnitKey(product) });
       added++;
     }
     if (!added) return toast("Aucun article de cette commande n’est actuellement disponible à la vente.", true);
@@ -1730,7 +1772,7 @@
   }
   function subscriptionLineHtml(line) {
     const value = line || {};
-    const options = replenishmentProducts().map(p => '<option value="' + esc(p.id) + '" ' + (String(p.id) === String(value.product_id || "") ? "selected" : "") + '>' + esc(p.name) + ' — ' + money(getEffectivePrice(p)) + '</option>').join("");
+    const options = replenishmentProducts().map(p => '<option value="' + esc(p.id) + '" ' + (String(p.id) === String(value.product_id || "") ? "selected" : "") + '>' + esc(p.name) + ' — ' + money(getEffectivePrice(p)) + ' / ' + esc(getSaleUnitLabel(p)) + '</option>').join("");
     return '<div class="subscription-line"><label class="subscription-product-field"><span>Produit ou pack</span><select class="input" name="product_id" required>' + (options || '<option value="">Aucun article disponible</option>') + '</select></label><label class="subscription-quantity-field"><span>Qté</span><input class="input" name="quantity" type="number" min="1" max="99" step="1" value="' + Math.max(1, Math.min(99, Number(value.quantity) || 1)) + '" required></label><button type="button" class="btn small ghost subscription-remove-line" onclick="removeSubscriptionLine(this)" aria-label="Retirer cet article" title="Retirer cet article">✕</button></div>';
   }
   async function openSubscriptionEditor(subscriptionId) {
@@ -1769,7 +1811,7 @@
         if (!product || !canSellProduct(product)) return toast("Un article sélectionné n’est plus disponible. Modifie la liste.", true);
         if (!Number.isInteger(qty) || qty < 1 || qty > 99) return toast("Chaque quantité doit être comprise entre 1 et 99.", true);
         if (chosen.some(item => item.product_id === product.id)) return toast("Un même article ne peut apparaître qu’une fois. Ajuste sa quantité.", true);
-        chosen.push({ product_id: product.id, product_name: product.name, quantity: qty, unit_price: getEffectivePrice(product) });
+        chosen.push({ product_id: product.id, product_name: product.name, quantity: qty, unit_price: getEffectivePrice(product), sale_unit: getSaleUnitKey(product) });
       }
       const parsedDate = new Date(String(values.get("next_reminder_at") || ""));
       if (!Number.isFinite(parsedDate.getTime())) return toast("Choisis une date valide pour le rappel.", true);
@@ -2657,6 +2699,7 @@
     if (!cart.length) return toast("Ton panier est vide.", true);
     const unavailableLines = cart.filter(line => { const p = getP(line.id); return !canSellProduct(p); });
     if (unavailableLines.length) return toast("Retire les articles en rupture ou sans prix confirmé du panier avant de commander.", true);
+    if (cart.some(getCartLineModeMismatch)) return toast("Le mode de vente d’un article a changé. Retire-le du panier puis ajoute-le à nouveau avant de commander.", true);
     if (!currentUser) { closeModal(); renderAuthForm("login", "Connecte-toi ou crée un compte pour confirmer ta commande en ligne."); return; }
     const totals = cartTotals(); const profile = currentProfile || {};
     const savedAddress = profileDeliveryAddress(profile);
@@ -2928,7 +2971,7 @@
     if (!available.length) return '<option value="" selected disabled>Aucun article disponible</option>';
     return '<option value="" disabled ' + (selectedId ? '' : 'selected') + '>Choisir un produit ou un pack</option>' +
       available.map(function (p) {
-        return '<option value="' + esc(p.id) + '" ' + (String(p.id) === String(selectedId || "") ? "selected" : "") + '>' + esc(p.name) + ' — ' + money(getEffectivePrice(p)) + '</option>';
+        return '<option value="' + esc(p.id) + '" ' + (String(p.id) === String(selectedId || "") ? "selected" : "") + '>' + esc(p.name) + ' — ' + money(getEffectivePrice(p)) + ' / ' + esc(getSaleUnitLabel(p)) + '</option>';
       }).join("");
   }
   function b2bProductLineHtml(value) {
@@ -2970,7 +3013,7 @@
       if (!Number.isInteger(quantity) || quantity < 1 || quantity > 99) throw new Error("Chaque quantité doit être comprise entre 1 et 99.");
       const duplicate = lines.find(item => item.product_id === product.id);
       if (duplicate) duplicate.quantity = Math.min(99, duplicate.quantity + quantity);
-      else lines.push({ product_id: product.id, product_name: product.name, quantity, unit_price: getEffectivePrice(product) });
+      else lines.push({ product_id: product.id, product_name: product.name, quantity, unit_price: getEffectivePrice(product), sale_unit: getSaleUnitKey(product), sale_unit_label: getSaleUnitLabel(product) });
     }
     if (!lines.length) throw new Error("Ajoute toi-même au moins un produit ou pack avant de continuer.");
     return lines;
@@ -3093,12 +3136,12 @@
     };
   }
   async function submitB2BQuantityOrder() {
-    try{const account=await saveB2BProfileFromForm(),lines=readB2BLines();for(const item of lines){const existing=cart.find(entry=>entry.id===item.product_id);if(existing)existing.qty=Math.min(99,existing.qty+item.quantity);else cart.push({id:item.product_id,qty:Math.min(99,item.quantity)});}currentBusinessAccount=account;saveCart();updateCartCount();closeModal();renderCartModal();toast("Articles professionnels ajoutés au panier. Vérifie les quantités avant de confirmer.");}catch(error){toast(errorMessage(error),true);}
+    try{const account=await saveB2BProfileFromForm(),lines=readB2BLines();for(const item of lines){const existing=cart.find(entry=>entry.id===item.product_id);if(existing&&getCartLineModeMismatch(existing))throw new Error("Le mode de vente d’un article a changé. Retire-le puis ajoute-le à nouveau.");if(existing)existing.qty=Math.min(99,existing.qty+item.quantity);else cart.push({id:item.product_id,qty:Math.min(99,item.quantity),sale_unit:item.sale_unit});}currentBusinessAccount=account;saveCart();updateCartCount();closeModal();renderCartModal();toast("Articles professionnels ajoutés au panier. Vérifie les quantités avant de confirmer.");}catch(error){toast(errorMessage(error),true);}
   }
   async function submitB2BQuote() {
     try{
       const account=await saveB2BProfileFromForm(),lines=readB2BLines(),amount=lines.reduce(function(sum,item){return sum+item.quantity*item.unit_price;},0);
-      const details=lines.map(function(item){return item.quantity+" × "+item.product_name+" — prix indicatif unitaire "+money(item.unit_price);}).join("\n");
+      const details=lines.map(function(item){return item.quantity+" × "+item.product_name+" — prix indicatif par "+item.sale_unit_label+" "+money(item.unit_price);}).join("\n");
       const extras=String($("b2bWorkspaceForm")?.querySelector('[name="message"]')?.value||"").trim();
       const payload={company:account.company_name,phone:account.phone,email:account.email||currentUser.email||"",need:"Devis B2B détaillé — "+lines.length+" référence(s)",
         message:"Secteur : "+account.sector+"\nContact : "+account.contact_name+"\nZone : "+(account.delivery_zone||"à préciser")+"\n\nArticles et quantités :\n"+details+"\n\nValeur indicative avant vérification : "+money(amount)+(extras?"\n\nPrécisions : "+extras:""),
@@ -3510,7 +3553,7 @@
     const [orders, customers] = await Promise.all([readRows("orders"), readRows("customers")]);
     const sorted = orders.sort((a,b) => new Date(b.created_at) - new Date(a.created_at));
     let items = [];
-    if (sorted.length) { const result = await client.from("order_items").select("id,order_id,product_id,product_name,quantity,unit_price").in("order_id", sorted.map(o => o.id)); if (result.error) throw result.error; items = result.data || []; }
+    if (sorted.length) { const result = await client.from("order_items").select("id,order_id,product_id,product_name,quantity,unit_price,sale_unit").in("order_id", sorted.map(o => o.id)); if (result.error) throw result.error; items = result.data || []; }
     cachedOrders = sorted; cachedCustomers = customers; cachedOrderItems = items;
     return sorted.map(o => {
       const customer = customers.find(c => c.id === o.customer_id) || {};
@@ -3712,7 +3755,7 @@
       if (!orderResult.data) throw new Error("Commande introuvable.");
       o = orderResult.data;
       const [itemsResult, customerResult] = await Promise.all([
-        client.from("order_items").select("id,order_id,product_id,product_name,quantity,unit_price").eq("order_id", id),
+        client.from("order_items").select("id,order_id,product_id,product_name,quantity,unit_price,sale_unit").eq("order_id", id),
         o.customer_id ? client.from("customers").select("id,name,phone,address,zone").eq("id", o.customer_id).maybeSingle() : Promise.resolve({data:null,error:null})
       ]);
       if (itemsResult.error) throw itemsResult.error;
@@ -3727,7 +3770,7 @@
     }
     const name = o.customer_name || customer.name || "Client";
     const phone = o.customer_phone || customer.phone || "";
-    showModal(`<div class="modal-head"><div><div class="eyebrow">COMMANDE</div><h2>${esc(o.id)}</h2></div><button class="close" onclick="closeModal()">✕</button></div><p><strong>${esc(name)}</strong> · ${esc(phone)}<br>${esc(o.delivery_address || customer.address || "")} ${esc(o.delivery_zone || customer.zone || "")}<br><span class="small-note">Créée le ${esc(fmtDate(o.created_at))}</span></p>${orderTrackingHtml(o)}<ul class="pack-items">${lines.map(i=>`<li>${Number(i.quantity)} × ${esc(i.product_name)} — ${money(i.unit_price)}</li>`).join("") || "<li>Détails des lignes indisponibles pour cette ancienne commande.</li>"}</ul><div class="summary"><div class="summary-row"><span>Sous-total</span><strong>${money(o.subtotal)}</strong></div><div class="summary-row"><span>Livraison</span><strong>${money(o.delivery)}</strong></div><div class="summary-row"><span>Mode de paiement</span><strong>${esc(o.payment_choice || o.payment || "Non renseigné")}</strong></div><div class="summary-row"><span>Créneau de livraison</span><strong>${esc(o.slot || "À convenir")}</strong></div><div class="summary-row"><span>Statut du paiement</span><strong>${esc(paymentStatusLabel(o.payment_status))}</strong></div><div class="summary-row"><span>Déjà encaissé</span><strong>${money(o.amount_paid || 0)}</strong></div><div class="summary-row"><span>Solde restant</span><strong>${money(Math.max(0, Number(o.total || 0)-Number(o.amount_paid || 0)))}</strong></div><div class="summary-row total"><span>Total</span><strong>${money(o.total)}</strong></div></div>${["awaiting_payment","awaiting_delivery_payment"].includes(o.status) ? `<button class="btn primary full" onclick="retryOrderPayment('${esc(o.id)}')">Reprendre le paiement</button>` : ""}`);
+    showModal(`<div class="modal-head"><div><div class="eyebrow">COMMANDE</div><h2>${esc(o.id)}</h2></div><button class="close" onclick="closeModal()">✕</button></div><p><strong>${esc(name)}</strong> · ${esc(phone)}<br>${esc(o.delivery_address || customer.address || "")} ${esc(o.delivery_zone || customer.zone || "")}<br><span class="small-note">Créée le ${esc(fmtDate(o.created_at))}</span></p>${orderTrackingHtml(o)}<ul class="pack-items">${lines.map(i=>`<li>${Number(i.quantity)} × ${esc(i.product_name)} — ${money(i.unit_price)} / ${esc(getOrderLineSaleUnitLabel(i))}</li>`).join("") || "<li>Détails des lignes indisponibles pour cette ancienne commande.</li>"}</ul><div class="summary"><div class="summary-row"><span>Sous-total</span><strong>${money(o.subtotal)}</strong></div><div class="summary-row"><span>Livraison</span><strong>${money(o.delivery)}</strong></div><div class="summary-row"><span>Mode de paiement</span><strong>${esc(o.payment_choice || o.payment || "Non renseigné")}</strong></div><div class="summary-row"><span>Créneau de livraison</span><strong>${esc(o.slot || "À convenir")}</strong></div><div class="summary-row"><span>Statut du paiement</span><strong>${esc(paymentStatusLabel(o.payment_status))}</strong></div><div class="summary-row"><span>Déjà encaissé</span><strong>${money(o.amount_paid || 0)}</strong></div><div class="summary-row"><span>Solde restant</span><strong>${money(Math.max(0, Number(o.total || 0)-Number(o.amount_paid || 0)))}</strong></div><div class="summary-row total"><span>Total</span><strong>${money(o.total)}</strong></div></div>${["awaiting_payment","awaiting_delivery_payment"].includes(o.status) ? `<button class="btn primary full" onclick="retryOrderPayment('${esc(o.id)}')">Reprendre le paiement</button>` : ""}`);
   }
   async function setOrderStatus(id, status) {
     if (!hasAdminPermission("orders.update_status")) return toast("Accès refusé.", true);
@@ -3964,7 +4007,7 @@
     let orderItems = [];
     if (orderIds.length) {
       const itemResult = await client.from("order_items")
-        .select("id,order_id,product_id,product_name,quantity,unit_price")
+        .select("id,order_id,product_id,product_name,quantity,unit_price,sale_unit")
         .in("order_id", orderIds);
       if (itemResult.error) console.warn("Lignes de commande client indisponibles", itemResult.error);
       else orderItems = itemResult.data || [];
@@ -4004,7 +4047,7 @@
     const orderMarkup = orders.length ? orders.map(order => {
       const lines = orderItemsById.get(order.id) || [];
       const itemsMarkup = lines.length
-        ? '<ul class="customer-order-items">' + lines.map(item => '<li>' + Number(item.quantity) + ' × ' + esc(item.product_name) + ' — ' + money(item.unit_price) + '</li>').join("") + '</ul>'
+        ? '<ul class="customer-order-items">' + lines.map(item => '<li>' + Number(item.quantity) + ' × ' + esc(item.product_name) + ' — ' + money(item.unit_price) + ' / ' + esc(getOrderLineSaleUnitLabel(item)) + '</li>').join("") + '</ul>'
         : '<p class="small-note">Détail des articles indisponible pour cette commande.</p>';
       const balance = Math.max(0, Number(order.total || 0) - Number(order.amount_paid || 0));
       return '<article class="customer-history-order"><div class="customer-history-order-head"><div><strong>' + esc(order.id) + '</strong><span class="small-note">' + esc(fmtDate(order.created_at)) + '</span></div><span class="status ' + esc(order.status) + '">' + esc(statusLabel(order.status)) + '</span><strong>' + money(order.total) + '</strong></div>' +
@@ -4083,7 +4126,7 @@
         : "";
       const searchText = [p.public_ref,p.id,p.name,p.category,link.supplier_name,link.supplier_ref,s.supplier].join(" ").toLowerCase();
       return '<tr data-stock-search-row data-search="' + esc(searchText) + '">' +
-        '<td><strong>' + esc(p.public_ref || p.id) + '</strong><br>' + esc(p.name) + '<br><span class="small-note">' + esc(p.category || p.cat || "") + '</span></td>' +
+        '<td><strong>' + esc(p.public_ref || p.id) + '</strong><br>' + esc(p.name) + '<br><span class="small-note">' + esc(p.category || p.cat || "") + ' · Stock compté en ' + esc(getSaleUnitLabel(p)) + '</span></td>' +
         '<td>' + supplierLabel + '</td>' + stockCostCell +
         '<td><input class="input stock-field" type="number" min="0" step="1" aria-label="Quantité en stock" data-stock-id="' + esc(p.id) + '" data-stock-key="quantity" ' + (!isGeneralAdmin() && !hasAdminPermission("stock.update") ? "disabled" : "") + ' value="' + Number(s.quantity||0) + '"></td>' +
         '<td><input class="input stock-field" type="number" min="0" step="1" aria-label="Seuil d’alerte" data-stock-id="' + esc(p.id) + '" data-stock-key="min_quantity" ' + (!isGeneralAdmin() && !hasAdminPermission("stock.update") ? "disabled" : "") + ' value="' + Number(s.min_quantity||0) + '"></td>' +
