@@ -170,70 +170,7 @@
 
 <div id="modalRoot"></div>
 
-<div id="adminPanel" class="admin-overlay hidden">
-  <div class="admin-shell">
-    <aside class="admin-sidebar" id="adminSidebar" aria-label="Navigation de gestion">
-      <div class="admin-sidebar-header"><div class="brand admin-brand"><span class="brand-mark">S</span><span>SAMA<span>-PACK</span></span></div><button class="admin-menu-toggle" id="adminMenuToggle" type="button" aria-controls="adminSidebarContent" aria-expanded="false" aria-label="Ouvrir le menu de gestion"><span class="admin-menu-icon" aria-hidden="true"><i></i><i></i><i></i></span><span>Menu</span></button></div><div class="admin-sidebar-content" id="adminSidebarContent">
-      <div class="admin-session-label" id="adminFlag">Espace réservé aux administrateurs</div>
-      <label class="admin-nav-search" for="adminNavSearch"><span>Retrouver une rubrique</span><input id="adminNavSearch" class="input" type="search" placeholder="Ex. stock, devis, client…" autocomplete="off"></label>
-      <div class="admin-nav-group">
-        <span class="admin-nav-heading">PILOTAGE</span>
-        <button class="side-btn active" data-view="dashboard">▦ <span>Tableau de bord</span></button>
-        <button class="side-btn" data-view="orders">▤ <span>Commandes</span></button>
-      </div>
-      <div class="admin-nav-group" id="adminDeliveryNavGroup">
-        <span class="admin-nav-heading">LIVRAISONS</span>
-        <button class="side-btn" data-view="deliveries">🚚 <span>Gestion des livreurs et livraisons</span></button>
-      </div>
-      <div class="admin-nav-group">
-        <span class="admin-nav-heading">CLIENTÈLE &amp; VENTES</span>
-        <button class="side-btn" data-view="customers">♙ <span>Clients</span></button>
-        <button class="side-btn" data-view="prospects">◎ <span>Prospection</span></button>
-        <button class="side-btn" data-view="quotes">▧ <span>Devis professionnels</span></button>
-        <button class="side-btn" data-view="sales_codes">⌁ <span>Codes commerciaux</span></button>
-      </div>
-      <div class="admin-nav-group">
-        <span class="admin-nav-heading">CATALOGUE &amp; OPÉRATIONS</span>
-        <button class="side-btn" data-view="packs">▣ <span>Packs</span></button>
-        <button class="side-btn" data-view="catalogs">▤ <span>Produits &amp; outils</span></button>
-        <button class="side-btn" data-view="stock">▦ <span>Stock</span></button>
-        <button class="side-btn" data-view="suppliers">⇄ <span>Fournisseurs</span></button>
-      </div>
-      <div class="admin-nav-group">
-        <span class="admin-nav-heading">FINANCES</span>
-        <button class="side-btn" data-view="expenses">₣ <span>Dépenses</span></button>
-        <button class="side-btn" data-view="profitability">↗ <span>Rentabilité</span></button>
-      </div>
-      <div class="admin-nav-group">
-        <span class="admin-nav-heading">ADMINISTRATION</span>
-        <button class="side-btn" data-view="admins">♧ <span>Comptes administrateurs</span></button>
-        <button class="side-btn" data-view="activity">◷ <span>Journal des actions</span></button>
-        <button class="side-btn" data-view="contacts">✉ <span>Messages de contact</span></button>
-        <button class="side-btn" data-view="marketing">✉ <span>Campagnes e-mail</span></button>
-        <button class="side-btn" data-view="settings">⚙ <span>Paramètres</span></button>
-      </div>
-      <div id="adminNavNoResults" class="admin-nav-no-results hidden">Aucune rubrique trouvée.</div>
-      <div class="sidebar-foot">
-        <button class="btn small ghost full" id="viewShopBtnSide">Voir la boutique</button>
-        <button class="link-btn" id="closeAdminBtn">Fermer la gestion</button>
-      </div>
-    </div>
-    </aside>
-    <section class="admin-main">
-      <div class="admin-top">
-        <div class="admin-top-heading"><span class="eyebrow">GESTION COMMERCIALE</span><h2 id="adminTitle">Tableau de bord</h2><p id="adminContext" class="admin-context">Vue d’ensemble de SAMA-PACK</p></div>
-        <div class="admin-top-actions">
-          <label class="admin-global-search" for="adminGlobalSearch"><span aria-hidden="true">⌕</span><input id="adminGlobalSearch" type="search" placeholder="Filtrer les résultats affichés…" autocomplete="off"></label>
-          <button class="btn small ghost admin-header-action" id="adminRefreshBtn" type="button" title="Actualiser la rubrique">↻ <span>Actualiser</span></button>
-          <button class="btn small ghost admin-header-action" id="adminNotificationBtn" type="button" title="Ouvrir les notifications" aria-label="Notifications de l’administrateur général">🔔 <span>Notifications</span><span id="adminNotificationCount" class="admin-notification-badge hidden">0</span></button>
-          <button class="btn small secondary admin-header-action" id="adminAccountBtn" type="button" title="Mon compte">♙ <span>Mon compte</span></button>
-          <button class="btn small ghost admin-header-action" id="viewShopBtn" type="button">Voir boutique</button>
-        </div>
-      </div>
-      <div id="adminContent" aria-live="polite"><div class="panel loading-panel">Chargement des données…</div></div>
-    </section>
-  </div>
-</div>
+<script src="admin-panel.js?v=20261102-shared-admin-panel-v1"></script>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/dist/umd/supabase.js"></script>
 <script src="app.js?v=20261102-browser-storage-hygiene-v2"></script>
