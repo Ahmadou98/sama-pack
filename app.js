@@ -24,6 +24,8 @@
   let catalogLoadFailed = false;
   let currentUser = null;
   let currentProfile = null;
+  let authSyncSequence = 0;
+  let profileReadSequence = 0;
   let accountButtonAvatarUrl = "";
   let accountButtonAvatarPath = "";
   let accountAvatarRequestId = 0;
@@ -2322,13 +2324,38 @@
   }
   async function signOut() { await client.auth.signOut(); await syncAuth(null); closeModal(); toast("Tu es déconnecté."); }
   async function syncAuth(user) {
+    const syncSequence = ++authSyncSequence;
+    const profileSequence = ++profileReadSequence;
     const nextUser = user || null;
-    if (!nextUser || nextUser.id !== currentUser?.id) currentBusinessAccount = null;
-    currentUser = nextUser; currentProfile = currentUser ? await getProfile(currentUser) : null;
+    const nextUserId = nextUser?.id || null;
+    const previousUserId = currentUser?.id || null;
+    const identityChanged = previousUserId !== nextUserId;
+
+    if (identityChanged) {
+      currentBusinessAccount = null;
+      currentProfile = null;
+      userNotifications = [];
+      accountButtonAvatarUrl = "";
+      accountButtonAvatarPath = "";
+      accountAvatarRequestId += 1;
+      stopAccountPresence();
+      stopNotificationsRealtime();
+      updateAccountButtons();
+    }
+
+    currentUser = nextUser;
+    const nextProfile = nextUser ? await getProfile(nextUser) : null;
+    if (syncSequence !== authSyncSequence ||
+        profileSequence !== profileReadSequence ||
+        (currentUser?.id || null) !== nextUserId) return;
+
+    currentProfile = nextProfile;
     setupAccountPresence(currentUser);
     updateAccountButtons();
     await refreshAccountButtonAvatar();
+    if (syncSequence !== authSyncSequence || (currentUser?.id || null) !== nextUserId) return;
     await loadNotifications();
+    if (syncSequence !== authSyncSequence || (currentUser?.id || null) !== nextUserId) return;
     setupNotificationsRealtime();
     if (isAdmin()) { updateCategoryFilter(); renderProducts(); }
     if (document.body?.dataset?.productDetail === "true") renderSEOProductPage();
@@ -3071,25 +3098,39 @@
   }
 
   async function openAdmin() {
-    if (!currentUser) { openAccountModal(); toast("Connecte-toi avec un compte administrateur."); return; }
-    // Refresh the role/permissions before deciding which modules to display.
-    // This avoids stale client state after permission changes or an account switch.
-    try {
-      const refreshedProfile = await getProfile(currentUser);
-      if (refreshedProfile) currentProfile = refreshedProfile;
-    } catch (error) {
-      console.warn("Impossible d’actualiser le profil avant l’ouverture de la gestion.", error);
-    }
+    const expectedUserId = currentUser?.id || null;
+    if (!expectedUserId) { openAccountModal(); toast("Connecte-toi avec un compte administrateur."); return; }
+
+    // Toujours relire le profil du compte courant avant de vérifier les privilèges.
+    // Une lecture plus ancienne ne doit jamais écraser le profil d’une autre session.
+    let profileSequence = ++profileReadSequence;
+    const refreshedProfile = await getProfile(currentUser);
+    if (currentUser?.id !== expectedUserId || profileSequence !== profileReadSequence) return;
+    currentProfile = refreshedProfile;
+
     if (!isAdmin()) {
       const { data: adminCheck, error: adminCheckError } = await client.rpc("sama_is_admin");
-      if (adminCheckError || adminCheck !== true) { toast("Ce compte n’a pas les droits d’administration.", true); return; }
-      // The database confirms the role; retry the profile read once before denying access.
+      if (currentUser?.id !== expectedUserId) return;
+      if (adminCheckError || adminCheck !== true) {
+        toast("Ce compte n’a pas les droits d’administration.", true);
+        return;
+      }
+
+      // La base confirme le rôle : relire le profil avant d’accorder l’accès à l’interface.
+      profileSequence = ++profileReadSequence;
       const retryProfile = await getProfile(currentUser);
-      if (retryProfile) currentProfile = retryProfile;
-      if (!isAdmin()) { toast("Le compte est administrateur, mais son profil n’a pas pu être chargé. Actualise la page et reconnecte-toi si nécessaire.", true); return; }
+      if (currentUser?.id !== expectedUserId || profileSequence !== profileReadSequence) return;
+      currentProfile = retryProfile;
+      if (!isAdmin()) {
+        toast("Le compte est administrateur, mais son profil n’a pas pu être chargé. Actualise la page et reconnecte-toi si nécessaire.", true);
+        return;
+      }
     }
+
+    if (currentUser?.id !== expectedUserId) return;
     document.body.classList.add("admin-management-open");
-    $("adminPanel").classList.remove("hidden"); await showAdminView("dashboard");
+    $("adminPanel").classList.remove("hidden");
+    await showAdminView("dashboard");
   }
   function setAdminMobileMenuOpen(open) {
     const sidebar = $("adminSidebar");
@@ -3112,7 +3153,7 @@
   function actionLabel(action) { return ({pack_created:"Pack créé",pack_updated:"Pack modifié",pack_deleted:"Pack supprimé",order_status_changed:"Statut de commande modifié",order_placed:"Commande passée",admin_bootstrap:"Premier administrateur configuré",admin_invited:"Administrateur invité",admin_removed:"Droits administrateur retirés",settings_updated:"Paramètres modifiés",stock_created:"Stock créé",stock_updated:"Stock modifié",supplier_created:"Fournisseur ajouté",supplier_updated:"Fournisseur modifié",supplier_deleted:"Fournisseur supprimé",expense_created:"Dépense ajoutée",expense_updated:"Dépense modifiée",expense_deleted:"Dépense supprimée",quote_created:"Demande de devis reçue",quote_updated:"Devis modifié",quote_deleted:"Devis supprimé"})[action] || action || "Action"; }
   function updateAdminContext() {
     const name = String(currentProfile?.full_name || currentUser?.email || "Compte de gestion");
-    const role = currentProfile?.is_super_admin === true ? "Administrateur général" : "Administrateur";
+    const role = isGeneralAdmin() ? "Administrateur général" : "Administrateur";
     const panel = $("adminPanel");
     if (panel) {
       panel.classList.toggle("is-general-admin", isGeneralAdmin());
@@ -4096,7 +4137,7 @@
       .eq("role", "admin").order("created_at", { ascending: true });
     if (error) throw error;
     const admins = data || [];
-    const isGeneralAdmin = currentProfile?.is_super_admin === true;
+    const generalAdmin = isGeneralAdmin();
     const inviterIds = [...new Set(admins.map(row => row.invited_by).filter(Boolean))];
     const inviterLabels = Object.create(null);
     if (inviterIds.length) {
@@ -4104,19 +4145,19 @@
         .select("id,full_name,email").in("id", inviterIds);
       if (!inviterError) (inviters || []).forEach(row => { inviterLabels[row.id] = row.full_name || row.email || "Administrateur"; });
     }
-    const invitePanel = isGeneralAdmin
+    const invitePanel = generalAdmin
       ? `<div class="panel admin-invite-panel"><div class="eyebrow">ACCÈS ET SÉCURITÉ</div><h3>Inviter un administrateur</h3><p>Seul l’administrateur général peut ajouter ou retirer des accès administrateur. Chaque compte doit rester nominatif.</p><form id="inviteAdminForm" class="admin-form"><label>Nom complet<input class="input" name="full_name" required minlength="2" maxlength="120" placeholder="Nom complet"></label><label>Adresse e-mail<input class="input" name="email" type="email" required maxlength="254" placeholder="personne@entreprise.sn"></label><button class="btn primary full" type="submit">Envoyer l’invitation</button></form><p class="small-note">L’invité reçoit un lien par e-mail. La journalisation conserve l’auteur de l’invitation.</p></div>`
       : `<div class="panel admin-permission-note"><h3>Gestion des accès</h3><p>Tu peux consulter la liste des administrateurs, mais seul l’administrateur général peut inviter un administrateur ou lui retirer ses droits.</p></div>`;
-    const tableHtml = admins.length ? `<div class="table-wrap"><table class="table"><thead><tr><th>Administrateur</th><th>Compte</th><th>Niveau d’accès</th><th>Invité par</th><th>Depuis</th>${isGeneralAdmin ? "<th>Actions</th>" : ""}</tr></thead><tbody>${admins.map(a => {
+    const tableHtml = admins.length ? `<div class="table-wrap"><table class="table"><thead><tr><th>Administrateur</th><th>Compte</th><th>Niveau d’accès</th><th>Invité par</th><th>Depuis</th>${generalAdmin ? "<th>Actions</th>" : ""}</tr></thead><tbody>${admins.map(a => {
       const general = a.is_super_admin === true;
-      const canRemove = isGeneralAdmin && !general && a.id !== currentUser?.id;
-      return `<tr><td><strong>${esc(a.full_name || "Sans nom")}</strong><br><span class="small-note">${general ? "Propriétaire de l’espace" : "Compte administrateur"}</span></td><td>${esc(a.email || "—")}<br><span class="small-note">${esc(a.phone || "")}</span></td><td><span class="status ${general ? "delivered" : "processing"}">${general ? "Administrateur général" : "Administrateur"}</span></td><td>${general ? "—" : esc(inviterLabels[a.invited_by] || (a.invited_by ? "Administrateur général" : "Ancien compte"))}</td><td>${esc(fmtDate(a.created_at))}</td>${isGeneralAdmin ? `<td>${canRemove ? `<button class="btn small secondary" onclick="showAdminPermissionsEditor('${esc(a.id)}')">Permissions</button><button class="btn small danger" onclick="removeAdmin('${esc(a.id)}')">Retirer les droits</button>` : `<span class="small-note">${general ? "Compte protégé" : "Ton compte"}</span>`}</td>` : ""}</tr>`;
+      const canRemove = generalAdmin && !general && a.id !== currentUser?.id;
+      return `<tr><td><strong>${esc(a.full_name || "Sans nom")}</strong><br><span class="small-note">${general ? "Propriétaire de l’espace" : "Compte administrateur"}</span></td><td>${esc(a.email || "—")}<br><span class="small-note">${esc(a.phone || "")}</span></td><td><span class="status ${general ? "delivered" : "processing"}">${general ? "Administrateur général" : "Administrateur"}</span></td><td>${general ? "—" : esc(inviterLabels[a.invited_by] || (a.invited_by ? "Administrateur général" : "Ancien compte"))}</td><td>${esc(fmtDate(a.created_at))}</td>${generalAdmin ? `<td>${canRemove ? `<button class="btn small secondary" onclick="showAdminPermissionsEditor('${esc(a.id)}')">Permissions</button><button class="btn small danger" onclick="removeAdmin('${esc(a.id)}')">Retirer les droits</button>` : `<span class="small-note">${general ? "Compte protégé" : "Ton compte"}</span>`}</td>` : ""}</tr>`;
     }).join("")}</tbody></table></div>` : '<div class="empty">Aucun administrateur n’est enregistré.</div>';
-    return `${invitePanel}<div class="panel admin-accounts-list"><div class="dashboard-panel-heading"><div><div class="eyebrow">ACCÈS AU BACK-OFFICE</div><h3>Administrateurs (${admins.length})</h3></div><span class="small-note">${isGeneralAdmin ? "Tu es administrateur général." : "Consultation uniquement."}</span></div>${tableHtml}<p class="small-note">« Retirer les droits » transforme le compte en compte client et le retire de cette liste. L’historique des commandes et des actions est conservé.</p></div>`;
+    return `${invitePanel}<div class="panel admin-accounts-list"><div class="dashboard-panel-heading"><div><div class="eyebrow">ACCÈS AU BACK-OFFICE</div><h3>Administrateurs (${admins.length})</h3></div><span class="small-note">${generalAdmin ? "Tu es administrateur général." : "Consultation uniquement."}</span></div>${tableHtml}<p class="small-note">« Retirer les droits » transforme le compte en compte client et le retire de cette liste. L’historique des commandes et des actions est conservé.</p></div>`;
   }
 
   async function removeAdmin(id) {
-    if (currentProfile?.is_super_admin !== true) return toast("Seul l’administrateur général peut retirer les droits d’un administrateur.", true);
+    if (!isGeneralAdmin()) return toast("Seul l’administrateur général peut retirer les droits d’un administrateur.", true);
     if (!id || id === currentUser?.id) return toast("Tu ne peux pas retirer tes propres droits administrateur général.", true);
     const target = (await client.from("profiles").select("full_name,email,is_super_admin").eq("id", id).maybeSingle()).data;
     if (target?.is_super_admin) return toast("L’administrateur général est protégé.", true);
