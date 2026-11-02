@@ -25,7 +25,6 @@
   let currentUser = null;
   let currentProfile = null;
   let authSyncSequence = 0;
-  let profileReadSequence = 0;
   let accountButtonAvatarUrl = "";
   let accountButtonAvatarPath = "";
   let accountAvatarRequestId = 0;
@@ -2325,7 +2324,6 @@
   async function signOut() { await client.auth.signOut(); await syncAuth(null); closeModal(); toast("Tu es déconnecté."); }
   async function syncAuth(user) {
     const syncSequence = ++authSyncSequence;
-    const profileSequence = ++profileReadSequence;
     const nextUser = user || null;
     const nextUserId = nextUser?.id || null;
     const previousUserId = currentUser?.id || null;
@@ -2346,7 +2344,6 @@
     currentUser = nextUser;
     const nextProfile = nextUser ? await getProfile(nextUser) : null;
     if (syncSequence !== authSyncSequence ||
-        profileSequence !== profileReadSequence ||
         (currentUser?.id || null) !== nextUserId) return;
 
     currentProfile = nextProfile;
@@ -3103,9 +3100,9 @@
 
     // Toujours relire le profil du compte courant avant de vérifier les privilèges.
     // Une lecture plus ancienne ne doit jamais écraser le profil d’une autre session.
-    let profileSequence = ++profileReadSequence;
+    const authSequence = authSyncSequence;
     const refreshedProfile = await getProfile(currentUser);
-    if (currentUser?.id !== expectedUserId || profileSequence !== profileReadSequence) return;
+    if (currentUser?.id !== expectedUserId || authSyncSequence !== authSequence) return;
     currentProfile = refreshedProfile;
 
     if (!isAdmin()) {
@@ -3117,9 +3114,8 @@
       }
 
       // La base confirme le rôle : relire le profil avant d’accorder l’accès à l’interface.
-      profileSequence = ++profileReadSequence;
       const retryProfile = await getProfile(currentUser);
-      if (currentUser?.id !== expectedUserId || profileSequence !== profileReadSequence) return;
+      if (currentUser?.id !== expectedUserId || authSyncSequence !== authSequence) return;
       currentProfile = retryProfile;
       if (!isAdmin()) {
         toast("Le compte est administrateur, mais son profil n’a pas pu être chargé. Actualise la page et reconnecte-toi si nécessaire.", true);
