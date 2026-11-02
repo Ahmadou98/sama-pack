@@ -3171,21 +3171,30 @@
     document.querySelectorAll(".admin-nav-group").forEach(group => group.classList.remove("admin-nav-group-empty"));
     const navNoResults = $("adminNavNoResults"); if (navNoResults) navNoResults.classList.add("hidden");
     const generalAdmin = isGeneralAdmin();
+    // Mettre à jour le rôle avant d'appliquer les styles conditionnels du menu.
+    updateAdminContext();
     document.querySelectorAll("#adminSidebar .side-btn").forEach(b => {
-      // L’administrateur général voit toujours l’intégralité du menu, indépendamment
-      // des permissions individuelles affectées aux comptes administrateurs secondaires.
-      const allowed = b.dataset.view === "deliveries" ? generalAdmin : (generalAdmin || canViewAdminView(b.dataset.view));
+      // Le compte général voit systématiquement les 18 rubriques, sans dépendre
+      // des permissions individuelles enregistrées pour les autres administrateurs.
+      const allowed = generalAdmin || (b.dataset.view !== "deliveries" && canViewAdminView(b.dataset.view));
       b.hidden = !allowed;
       b.classList.toggle("hidden", !allowed);
       b.classList.remove("admin-nav-hidden");
-      b.setAttribute("aria-hidden", String(!allowed));
+      if (generalAdmin) {
+        b.removeAttribute("hidden");
+        b.removeAttribute("aria-hidden");
+        b.style.removeProperty("display");
+      } else {
+        b.setAttribute("aria-hidden", String(!allowed));
+      }
       b.tabIndex = allowed ? 0 : -1;
       b.classList.toggle("active", allowed && (b.dataset.view === view || (view === "products" && b.dataset.view === "packs")));
     });
     document.querySelectorAll("#adminSidebar .admin-nav-group").forEach(group => {
       const hasVisibleItems = [...group.querySelectorAll(".side-btn")].some(button => !button.hidden && !button.classList.contains("hidden") && button.getAttribute("aria-hidden") !== "true");
-      group.classList.toggle("admin-nav-group-empty", !hasVisibleItems);
-      group.hidden = !hasVisibleItems;
+      group.classList.toggle("admin-nav-group-empty", generalAdmin ? false : !hasVisibleItems);
+      group.hidden = generalAdmin ? false : !hasVisibleItems;
+      if (generalAdmin) group.removeAttribute("hidden");
     });
     const globalSearch = $("adminGlobalSearch"); if (globalSearch) globalSearch.value = "";
     updateAdminContext();
