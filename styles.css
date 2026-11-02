@@ -4818,3 +4818,29 @@ body{padding-top:100px!important}
 /* Lien vidéo facultatif du mode d’emploi sur les fiches produits */
 .product-howto{margin:16px 0;}
 .product-howto-link{display:inline-flex;align-items:center;gap:8px;max-width:100%;white-space:normal;text-align:left;}
+
+
+/* Navigation complète : le contenu du menu dispose toujours de son propre défilement. */
+#adminPanel .admin-sidebar {
+  min-height: 0;
+}
+#adminPanel .admin-sidebar-content {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+#adminPanel .admin-nav-group {
+  flex: 0 0 auto;
+}
+@media (max-width: 900px) {
+  #adminPanel .admin-sidebar.is-open .admin-sidebar-content {
+    min-height: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+}
