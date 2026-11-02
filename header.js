@@ -36,6 +36,19 @@
     });
   }
 
+  const desktopMore = header.querySelector(".desktop-nav-more");
+  if (desktopMore) {
+    desktopMore.querySelectorAll("a").forEach(link => {
+      link.addEventListener("click", () => { desktopMore.open = false; });
+    });
+    document.addEventListener("click", event => {
+      if (!desktopMore.contains(event.target)) desktopMore.open = false;
+    });
+    document.addEventListener("keydown", event => {
+      if (event.key === "Escape") desktopMore.open = false;
+    });
+  }
+
   const homeAction = action => {
     const url = new URL("/", window.location.origin);
     url.searchParams.set("spAction", action);
