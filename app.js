@@ -2342,7 +2342,13 @@
     }
     const bootstrap = $("bootstrapAdminForm"); if (bootstrap) bootstrap.onsubmit = async e => { e.preventDefault(); const form = e.currentTarget; setBusy(form, true, "Configuration…"); const token = String(new FormData(form).get("bootstrap_token") || "").trim(); const { data, error } = await client.rpc("sama_bootstrap_first_admin", { p_token: token }); setBusy(form, false); if (error) return toast(errorMessage(error), true); await syncAuth(currentUser); closeModal(); toast(data?.message || "Compte administrateur configuré."); };
   }
-  async function signOut() { await client.auth.signOut(); await syncAuth(null); closeModal(); toast("Tu es déconnecté."); }
+  async function signOut() {
+    const { error } = await client.auth.signOut();
+    if (error) return toast(errorMessage(error), true);
+    await syncAuth(null);
+    closeModal();
+    toast("Tu es déconnecté.");
+  }
   function resetUserScopedMemory() {
     currentProfile = null;
     currentBusinessAccount = null;
@@ -4678,6 +4684,7 @@
         const capturedAt = Number(saved?.capturedAt);
         const age = Date.now() - capturedAt;
         if (code && Number.isFinite(capturedAt) && capturedAt > 0 && age >= 0 && age <= SALES_REFERRAL_TTL_MS) {
+          localStorage.removeItem(LEGACY_SALES_REFERRAL_KEY);
           return code;
         }
         localStorage.removeItem(SALES_REFERRAL_KEY);
