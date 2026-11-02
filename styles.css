@@ -5236,3 +5236,62 @@ body{padding-top:100px!important}
     display: inline-flex !important;
   }
 }
+
+
+/* Correctif final boutique : un ordinateur avec souris ne doit jamais afficher le hamburger public. */
+@media (any-hover: hover) and (any-pointer: fine) {
+  header.topbar.info-floating-header .nav-actions > .mobile-menu-shell,
+  header.topbar.info-floating-header .mobile-menu-shell,
+  header.topbar.info-floating-header .mobile-menu-toggle {
+    display: none !important;
+    visibility: hidden !important;
+    pointer-events: none !important;
+  }
+  header.topbar.info-floating-header .desktop-nav {
+    display: flex !important;
+    visibility: visible !important;
+    flex: 1 1 auto !important;
+    min-width: 0 !important;
+    white-space: normal !important;
+    flex-wrap: wrap !important;
+  }
+}
+@media (min-width: 901px) and (any-pointer: fine) {
+  header.topbar.info-floating-header .wrap.nav {
+    display: flex !important;
+  }
+}
+@media (max-width: 900px) and (any-pointer: fine) {
+  header.topbar.info-floating-header .wrap.nav {
+    display: grid !important;
+    grid-template-columns: max-content minmax(0, 1fr) !important;
+    grid-template-areas:
+      "brand actions"
+      "menu menu" !important;
+    align-items: center !important;
+    height: auto !important;
+    min-height: 104px !important;
+    padding: 7px 12px 9px !important;
+    gap: 3px 10px !important;
+  }
+  header.topbar.info-floating-header .wrap.nav > .brand {
+    grid-area: brand !important;
+  }
+  header.topbar.info-floating-header .wrap.nav > .desktop-nav {
+    grid-area: menu !important;
+    display: flex !important;
+    justify-content: space-between !important;
+    align-items: center !important;
+    width: 100% !important;
+    gap: 3px 10px !important;
+    font-size: 11px !important;
+  }
+  header.topbar.info-floating-header .wrap.nav > .nav-actions {
+    grid-area: actions !important;
+    justify-self: end !important;
+    margin-left: 0 !important;
+  }
+  body {
+    padding-top: 136px !important;
+  }
+}
