@@ -5177,3 +5177,62 @@ body{padding-top:100px!important}
     overflow-y: auto !important;
   }
 }
+
+
+/* Boutique : navigation horizontale sur ordinateur, hamburger uniquement sur petit écran. */
+@media (min-width: 901px) {
+  .info-floating-header .desktop-nav {
+    display: flex !important;
+    min-width: 0 !important;
+    font-size: 11px !important;
+    gap: clamp(5px, .65vw, 10px) !important;
+  }
+  .info-floating-header .mobile-menu-shell {
+    display: none !important;
+  }
+  .info-floating-header .nav-actions > #adminBtn:not(.hidden) {
+    display: inline-flex !important;
+  }
+}
+@media (min-width: 901px) and (max-width: 1180px) {
+  .info-floating-header .wrap.nav {
+    display: grid !important;
+    grid-template-columns: max-content minmax(0, 1fr) !important;
+    grid-template-areas:
+      "brand actions"
+      "menu menu" !important;
+    align-items: center !important;
+    height: auto !important;
+    min-height: 96px !important;
+    padding: 7px 12px 9px !important;
+    gap: 3px 10px !important;
+  }
+  .info-floating-header .wrap.nav > .brand {
+    grid-area: brand !important;
+  }
+  .info-floating-header .wrap.nav > .desktop-nav {
+    grid-area: menu !important;
+    display: flex !important;
+    justify-content: space-between !important;
+    flex-wrap: wrap !important;
+    width: 100% !important;
+    gap: 2px 10px !important;
+    white-space: normal !important;
+  }
+  .info-floating-header .wrap.nav > .nav-actions {
+    grid-area: actions !important;
+    justify-self: end !important;
+    margin-left: 0 !important;
+  }
+  body {
+    padding-top: 132px !important;
+  }
+}
+@media (max-width: 900px) {
+  .info-floating-header .desktop-nav {
+    display: none !important;
+  }
+  .info-floating-header .mobile-menu-shell {
+    display: inline-flex !important;
+  }
+}
