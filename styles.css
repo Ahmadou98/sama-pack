@@ -5079,3 +5079,101 @@ body{padding-top:100px!important}
     justify-content: center;
   }
 }
+
+
+/* Sur ordinateur, y compris dans une fenêtre étroite, le menu de gestion reste en barre latérale : aucun hamburger. */
+@media (min-width: 901px), (hover: hover) and (pointer: fine) {
+  #adminPanel .admin-shell {
+    display: grid !important;
+    grid-template-columns: 268px minmax(0, 1fr) !important;
+    flex-direction: initial !important;
+    height: 100% !important;
+    min-height: 100% !important;
+  }
+  #adminPanel .admin-sidebar {
+    display: flex !important;
+    position: relative !important;
+    inset: auto !important;
+    z-index: auto !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
+    width: auto !important;
+    height: 100% !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    padding: 22px 15px 15px !important;
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+    border-right: 1px solid rgba(255,255,255,.06) !important;
+    border-bottom: 0 !important;
+  }
+  #adminPanel .admin-sidebar-header {
+    display: flex !important;
+    flex: 0 0 auto !important;
+    min-height: 0 !important;
+    width: 100% !important;
+  }
+  #adminPanel .admin-brand,
+  #adminPanel .admin-session-label,
+  #adminPanel .admin-nav-heading {
+    display: flex !important;
+  }
+  #adminPanel .admin-menu-toggle {
+    display: none !important;
+    visibility: hidden !important;
+    pointer-events: none !important;
+  }
+  #adminPanel .admin-sidebar-content,
+  #adminPanel .admin-sidebar.is-open .admin-sidebar-content {
+    display: flex !important;
+    flex: 1 1 auto !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 8px !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+    margin-top: 0 !important;
+    padding: 0 !important;
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+  }
+  #adminPanel .admin-nav-search {
+    display: grid !important;
+    flex: 0 0 auto !important;
+    width: 100% !important;
+    margin: 3px 0 8px !important;
+    padding: 0 4px 12px !important;
+  }
+  #adminPanel .admin-nav-search > span {
+    display: block !important;
+  }
+  #adminPanel .admin-nav-group,
+  #adminPanel .admin-sidebar.is-open .admin-nav-group {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) !important;
+    flex: 0 0 auto !important;
+    gap: 3px !important;
+    width: 100% !important;
+  }
+  #adminPanel .side-btn {
+    flex: 0 0 auto !important;
+    width: 100% !important;
+    white-space: normal !important;
+  }
+  #adminPanel .sidebar-foot,
+  #adminPanel .admin-sidebar.is-open .sidebar-foot {
+    display: grid !important;
+    flex: 0 0 auto !important;
+    width: 100% !important;
+    margin-top: auto !important;
+    padding: 13px 0 0 !important;
+    border-top: 1px solid rgba(229,245,235,.12) !important;
+    border-left: 0 !important;
+  }
+  #adminPanel .admin-main {
+    min-width: 0 !important;
+    padding: clamp(16px, 2.2vw, 30px) !important;
+    overflow-y: auto !important;
+  }
+}
