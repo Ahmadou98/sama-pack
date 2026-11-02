@@ -179,9 +179,12 @@
     if (error) { console.warn("Profile unavailable", error); return null; }
     return data;
   }
-  function isAdmin() { return currentProfile?.role === "admin"; }
-  function isCourier() { return currentProfile?.role === "courier"; }
-  function isGeneralAdmin() { return isAdmin() && currentProfile?.is_super_admin === true; }
+  function isAdmin() { return String(currentProfile?.role || "").trim().toLowerCase() === "admin"; }
+  function isCourier() { return String(currentProfile?.role || "").trim().toLowerCase() === "courier"; }
+  function isGeneralAdmin() {
+    const flag = currentProfile?.is_super_admin;
+    return isAdmin() && (flag === true || flag === 1 || flag === "true" || flag === "1");
+  }
   function hasAdminPermission(permission) { return isGeneralAdmin() || (isAdmin() && currentProfile?.admin_permissions?.[permission] === true); }
   const ADMIN_VIEW_PERMISSION = {
     dashboard: "dashboard.view", orders: "orders.view", customers: "customers.view",
@@ -2161,12 +2164,19 @@
     }).join("") + '</tbody></table></div>' : '<div class="empty compact-empty">Tu n’as pas encore passé de commande en ligne.</div>';
     const subscriptionsHtml = renderSubscriptionsHtml(cachedSubscriptions);
     const accountNotificationsHtml = userNotifications.length ? userNotifications.map(n => '<article class="notification-item ' + (n.read_at ? 'read' : 'unread') + '"><div class="notification-title">' + esc(n.title) + '</div><div class="notification-message">' + esc(n.message) + '</div><div class="notification-meta">' + esc(fmtDate(n.created_at)) + (n.read_at ? ' · Lue' : ' · <button class="link-btn dark-link" onclick="markNotificationRead(\'' + esc(n.id) + '\')">Marquer comme lue</button>') + '</div></article>').join("") : '<div class="empty compact-empty">Aucune notification pour le moment.</div>';
+    const courierAccountTabHtml = isCourier()
+      ? '<button type="button" class="account-tab" role="tab" aria-selected="false" data-account-tab="deliveries"><span class="account-tab-icon">🚚</span><span>Mes livraisons</span></button>'
+      : "";
+    const courierAccountPanelHtml = isCourier()
+      ? '<section class="account-tab-panel hidden" id="accountTab-deliveries" role="tabpanel"><div class="account-section-heading"><div><div class="eyebrow">ESPACE LIVREUR</div><h3>Mes livraisons</h3><p class="small-note">Accède aux commandes qui te sont attribuées et aux actions de remise.</p></div></div><a class="btn primary full" href="livraisons.html">Ouvrir mon espace livreur</a></section>'
+      : "";
     showModal(
       '<div class="modal-head account-modal-header"><div><div class="eyebrow">ESPACE CLIENT</div><h2>Mon compte</h2><p class="small-note">' + (isCourier() ? "Ton compte livreur te permet aussi d’acheter sur SAMA-PACK. Tes commandes et tes livraisons restent accessibles avec cette même adresse e-mail." : "Retrouve tes commandes et paramètres ici.") + '</p></div><div class="account-header-actions"><button type="button" class="account-menu-toggle" id="accountMenuToggle" aria-expanded="false" aria-controls="accountTabsMenu" aria-label="Ouvrir le menu du compte"><span></span><span></span><span></span></button><button class="close" onclick="closeModal()" aria-label="Fermer">✕</button></div></div>' +
       '<div class="account-workspace">' +
         '<nav id="accountTabsMenu" class="account-tabs" role="tablist" aria-label="Rubriques du compte">' +
           '<button type="button" class="account-tab is-active" role="tab" aria-selected="true" data-account-tab="profile"><span class="account-tab-icon">◉</span><span>Mon profil</span></button>' +
           '<button type="button" class="account-tab" role="tab" aria-selected="false" data-account-tab="orders"><span class="account-tab-icon">▤</span><span>Commandes</span><span class="account-tab-count">' + orders.length + '</span></button>' +
+          courierAccountTabHtml +
           '<button type="button" class="account-tab" role="tab" aria-selected="false" data-account-tab="replenishments"><span class="account-tab-icon">↻</span><span>Rappels</span></button>' +
           '<button type="button" class="account-tab" role="tab" aria-selected="false" data-account-tab="notifications"><span class="account-tab-icon">♧</span><span>Alertes</span><span class="account-tab-count">' + userNotifications.filter(n=>!n.read_at).length + '</span></button>' +
           '<button type="button" class="account-tab" role="tab" aria-selected="false" data-account-tab="security"><span class="account-tab-icon">⌑</span><span>Sécurité</span></button>' +
@@ -2179,6 +2189,7 @@
           '<div class="account-section-heading"><div><div class="eyebrow">ACTIVITÉ</div><h3>Mes commandes</h3><p class="small-note">Consulte le suivi, le paiement, le solde et le créneau de livraison.</p></div><span class="account-section-badge">' + orders.length + ' commande(s)</span></div>' +
           '<div class="panel account-orders">' + orderHtml + '</div>' +
         '</section>' +
+        courierAccountPanelHtml +
         '<section class="account-tab-panel hidden" id="accountTab-replenishments" role="tabpanel">' +
           '<div class="account-section-heading"><div><div class="eyebrow">PLANIFICATION</div><h3>Mes réapprovisionnements</h3><p class="small-note">Programme des rappels sans déclencher automatiquement de commande ni de paiement.</p></div><button class="btn primary small" onclick="openSubscriptionEditor()">+ Nouveau rappel</button></div>' +
           '<div class="panel account-subscriptions">' + subscriptionsHtml + '</div>' +
@@ -2358,10 +2369,6 @@
         }
       }
     }
-    const courierDesktopLink = $("courierDesktopLink");
-    if (courierDesktopLink) courierDesktopLink.classList.toggle("hidden", !isCourier());
-    const courierMobileLink = $("courierMobileLink");
-    if (courierMobileLink) courierMobileLink.classList.toggle("hidden", !isCourier());
     const adminBtn = $("adminBtn");
     if (adminBtn) { adminBtn.textContent = "Gestion"; adminBtn.classList.toggle("hidden", !isAdmin()); }
     const mobileManageBtn = $("mobileManageBtn");
@@ -3167,7 +3174,7 @@
     document.querySelectorAll("#adminSidebar .side-btn").forEach(b => {
       // L’administrateur général voit toujours l’intégralité du menu, indépendamment
       // des permissions individuelles affectées aux comptes administrateurs secondaires.
-      const allowed = generalAdmin || canViewAdminView(b.dataset.view);
+      const allowed = b.dataset.view === "deliveries" ? generalAdmin : (generalAdmin || canViewAdminView(b.dataset.view));
       b.hidden = !allowed;
       b.classList.toggle("hidden", !allowed);
       b.classList.remove("admin-nav-hidden");
@@ -3176,7 +3183,7 @@
       b.classList.toggle("active", allowed && (b.dataset.view === view || (view === "products" && b.dataset.view === "packs")));
     });
     document.querySelectorAll("#adminSidebar .admin-nav-group").forEach(group => {
-      const hasVisibleItems = [...group.querySelectorAll(".side-btn")].some(button => !button.classList.contains("hidden"));
+      const hasVisibleItems = [...group.querySelectorAll(".side-btn")].some(button => !button.hidden && !button.classList.contains("hidden") && button.getAttribute("aria-hidden") !== "true");
       group.classList.toggle("admin-nav-group-empty", !hasVisibleItems);
       group.hidden = !hasVisibleItems;
     });
