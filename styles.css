@@ -4996,3 +4996,49 @@ body.admin-management-open .info-floating-header {
   visibility: hidden !important;
   pointer-events: none !important;
 }
+
+
+/* BACK-OFFICE — verrouillage du conteneur et des débordements */
+#adminPanel.admin-overlay {
+  isolation: isolate;
+  width: auto !important;
+  height: auto !important;
+  min-width: 0;
+  margin: 0 !important;
+  padding: 0 !important;
+  transform: none !important;
+}
+#adminPanel .admin-shell {
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  max-width: none;
+  overflow: hidden;
+  grid-template-columns: minmax(250px, 286px) minmax(0, 1fr);
+  align-items: stretch;
+}
+#adminPanel .admin-sidebar,
+#adminPanel .admin-sidebar-content,
+#adminPanel .admin-main {
+  box-sizing: border-box;
+  min-width: 0;
+  min-height: 0;
+}
+#adminPanel .admin-main { width: auto; max-width: none; }
+#adminPanel #adminContent {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+}
+#adminPanel #adminContent > * { min-width: 0; max-width: 100%; }
+#adminPanel #adminContent .table-wrap {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+@media (max-width: 900px) {
+  #adminPanel .admin-shell { grid-template-columns: minmax(0, 1fr); }
+  #adminPanel .admin-main { width: 100%; }
+}
