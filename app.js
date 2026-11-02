@@ -696,7 +696,7 @@
       const visible = (rows || []).filter(p => p.active === true);
       host.innerHTML = '<div class="panel"><div class="admin-panel-head"><h3>Produits et outils publiés</h3><span class="small-note">Consultation uniquement. Coûts fournisseurs, marges et publications sont réservés au propriétaire.</span></div>' +
         (visible.length ? '<div class="table-wrap"><table class="table"><thead><tr><th>Référence</th><th>Article</th><th>Type</th><th>Prix public</th><th>Disponibilité</th></tr></thead><tbody>' +
-          visible.map(function(p) { return '<tr><td>' + esc(p.public_ref || p.id) + '</td><td><strong>' + esc(p.name) + '</strong><br><span class="small-note">' + esc(p.category || "") + '</span></td><td>' + (p.catalog_type === "tool" ? "Outil" : "Produit") + '</td><td>' + money(p.price) + '</td><td>' + availabilityBadgeHtml(p) + '</td></tr>'; }).join("") +
+          visible.map(function(p) { return '<tr><td>' + esc(p.public_ref || p.id) + '</td><td><strong>' + esc(p.name) + '</strong><br><span class="small-note">' + esc(p.category || "") + '</span></td><td>' + (p.catalog_type === "tool" ? "Outil" : "Produit") + '</td><td>' + money(p.price) + ' / ' + esc(getSaleUnitLabel(p)) + '</td><td>' + availabilityBadgeHtml(p) + '</td></tr>'; }).join("") +
           '</tbody></table></div>' : '<div class="empty">Aucun produit ou outil publié.</div>') + '</div>';
       return;
     }
@@ -1560,7 +1560,7 @@
       .select("id,user_id").eq("id", id).eq("user_id", currentUser.id).maybeSingle();
     if (orderError || !order) return toast("Cette commande est introuvable ou n’est pas accessible depuis ce compte.", true);
     const { data: rows, error } = await client.from("order_items")
-      .select("product_id,product_name,quantity").eq("order_id", id);
+      .select("product_id,product_name,quantity,sale_unit").eq("order_id", id);
     if (error) return toast("Les articles de cette ancienne commande ne sont pas accessibles pour le moment.", true);
     if (!rows?.length) return toast("Les détails des articles ne sont pas disponibles pour cette commande.", true);
     let added = 0; const unavailable = [];
