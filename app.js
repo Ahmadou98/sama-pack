@@ -180,8 +180,8 @@
     if (error) { console.warn("Profile unavailable", error); return null; }
     return data;
   }
-  function isAdmin() { return String(currentProfile?.role || "").trim().toLowerCase() === "admin"; }
-  function isCourier() { return String(currentProfile?.role || "").trim().toLowerCase() === "courier"; }
+  function isAdmin() { return Boolean(currentUser?.id && currentProfile?.id === currentUser.id && String(currentProfile?.role || "").trim().toLowerCase() === "admin"); }
+  function isCourier() { return Boolean(currentUser?.id && currentProfile?.id === currentUser.id && String(currentProfile?.role || "").trim().toLowerCase() === "courier"); }
   function isGeneralAdmin() {
     const flag = currentProfile?.is_super_admin;
     return isAdmin() && (flag === true || flag === 1 || flag === "true" || flag === "1");
