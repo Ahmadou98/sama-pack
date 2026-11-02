@@ -3163,8 +3163,12 @@
     const navSearch = $("adminNavSearch"); if (navSearch) navSearch.value = "";
     document.querySelectorAll(".admin-nav-group").forEach(group => group.classList.remove("admin-nav-group-empty"));
     const navNoResults = $("adminNavNoResults"); if (navNoResults) navNoResults.classList.add("hidden");
-    document.querySelectorAll(".side-btn").forEach(b => {
-      const allowed = canViewAdminView(b.dataset.view);
+    const generalAdmin = isGeneralAdmin();
+    document.querySelectorAll("#adminSidebar .side-btn").forEach(b => {
+      // L’administrateur général voit toujours l’intégralité du menu, indépendamment
+      // des permissions individuelles affectées aux comptes administrateurs secondaires.
+      const allowed = generalAdmin || canViewAdminView(b.dataset.view);
+      b.hidden = !allowed;
       b.classList.toggle("hidden", !allowed);
       b.classList.remove("admin-nav-hidden");
       b.setAttribute("aria-hidden", String(!allowed));
