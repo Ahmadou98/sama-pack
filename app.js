@@ -5,6 +5,9 @@
   const SUPABASE_URL = "https://tbxxrnhcfuaeaatlrdtr.supabase.co";
   const SUPABASE_KEY = "sb_publishable_lDAKRHFWyUYZ-tb23hbbnQ_96zF9Iwo"; // clé publique uniquement; RLS protège les données.
   const CART_KEY = "sama_pack_cart_v2";
+  const SALES_REFERRAL_KEY = "sama_pack_sales_referral_v2";
+  const LEGACY_SALES_REFERRAL_KEY = "sama_pack_sales_referral_code_v1";
+  const SALES_REFERRAL_TTL_MS = 30 * 24 * 60 * 60 * 1000;
   const PRODUCTS_PER_PAGE = 20;
   const PROMO_ROTATE_MS = 6500;
   let currentProductPage = 1;
@@ -142,8 +145,26 @@
     return `<div class="promo-price-block"><div class="price">${money(getEffectivePrice(p))}</div><div class="old-price">${money(p.price)}</div></div><span class="promo-label">${esc(p.promo_label || "Offre spéciale")}</span>`;
   }
   function loadCart() {
-    try { const value = JSON.parse(localStorage.getItem(CART_KEY) || "[]"); return Array.isArray(value) ? value.filter(x => x && typeof x.id === "string" && Number(x.qty) > 0).map(x => ({ id: x.id, qty: Math.min(99, Math.max(1, Number(x.qty) || 1)) })) : []; }
-    catch { return []; }
+    try {
+      const raw = localStorage.getItem(CART_KEY);
+      if (!raw) return [];
+      const value = JSON.parse(raw);
+      if (!Array.isArray(value)) {
+        localStorage.removeItem(CART_KEY);
+        return [];
+      }
+      const normalized = value
+        .filter(item => item && typeof item.id === "string" && item.id.trim().length > 0 && Number(item.qty) > 0)
+        .map(item => ({ id: item.id.trim(), qty: Math.min(99, Math.max(1, Number(item.qty) || 1)) }));
+      if (JSON.stringify(value) !== JSON.stringify(normalized)) {
+        if (normalized.length) localStorage.setItem(CART_KEY, JSON.stringify(normalized));
+        else localStorage.removeItem(CART_KEY);
+      }
+      return normalized;
+    } catch {
+      try { localStorage.removeItem(CART_KEY); } catch { /* Stockage indisponible : le panier reste en mémoire. */ }
+      return [];
+    }
   }
   function saveCart() { try { localStorage.setItem(CART_KEY, JSON.stringify(cart)); } catch { /* Le panier fonctionne aussi en mémoire si le navigateur bloque le stockage. */ } }
   function money(n) { return new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 0 }).format(Math.round(Number(n) || 0)) + " FCFA"; }
@@ -2322,6 +2343,34 @@
     const bootstrap = $("bootstrapAdminForm"); if (bootstrap) bootstrap.onsubmit = async e => { e.preventDefault(); const form = e.currentTarget; setBusy(form, true, "Configuration…"); const token = String(new FormData(form).get("bootstrap_token") || "").trim(); const { data, error } = await client.rpc("sama_bootstrap_first_admin", { p_token: token }); setBusy(form, false); if (error) return toast(errorMessage(error), true); await syncAuth(currentUser); closeModal(); toast(data?.message || "Compte administrateur configuré."); };
   }
   async function signOut() { await client.auth.signOut(); await syncAuth(null); closeModal(); toast("Tu es déconnecté."); }
+  function resetUserScopedMemory() {
+    currentProfile = null;
+    currentBusinessAccount = null;
+    userNotifications = [];
+    stockRows = [];
+    cachedOrders = [];
+    cachedOrderItems = [];
+    cachedCustomers = [];
+    cachedQuotes = [];
+    cachedSubscriptions = [];
+    cachedExpenses = [];
+    cachedSuppliers = [];
+    editingProductId = null;
+    currentAdminView = "dashboard";
+    budgetBuilderState = { budget: 5000, category: "all", items: [] };
+    accountButtonAvatarUrl = "";
+    accountButtonAvatarPath = "";
+    accountAvatarRequestId += 1;
+    if (profilePhotoPreviewUrl) {
+      URL.revokeObjectURL(profilePhotoPreviewUrl);
+      profilePhotoPreviewUrl = null;
+    }
+    stopAccountPresence();
+    stopNotificationsRealtime();
+    stopDashboardPresencePolling();
+    closeModal();
+    closeAdmin();
+  }
   async function syncAuth(user) {
     const syncSequence = ++authSyncSequence;
     const nextUser = user || null;
@@ -2330,14 +2379,7 @@
     const identityChanged = previousUserId !== nextUserId;
 
     if (identityChanged) {
-      currentBusinessAccount = null;
-      currentProfile = null;
-      userNotifications = [];
-      accountButtonAvatarUrl = "";
-      accountButtonAvatarPath = "";
-      accountAvatarRequestId += 1;
-      stopAccountPresence();
-      stopNotificationsRealtime();
+      resetUserScopedMemory();
       updateAccountButtons();
     }
 
@@ -3140,7 +3182,8 @@
   }
   function closeAdmin() {
     setAdminMobileMenuOpen(false);
-    $("adminPanel").classList.add("hidden");
+    const panel = $("adminPanel");
+    if (panel) panel.classList.add("hidden");
     document.body.classList.remove("admin-management-open");
     stopDashboardPresencePolling();
   }
@@ -4611,18 +4654,56 @@
   }
 
 
-  function captureSalesReferral() {
+  function normalizeSalesReferralCode(value) {
+    const code = String(value || "").toUpperCase().replace(/[^A-Z0-9_-]/g, "").slice(0, 30);
+    return code.length >= 3 ? code : "";
+  }
+  function saveSalesReferralCode(code) {
+    const normalized = normalizeSalesReferralCode(code);
+    if (!normalized) return "";
+    currentSalesReferralCode = normalized;
     try {
-      const params = new URLSearchParams(window.location.search || ""), raw = params.get("ref") || params.get("code") || "";
-      const normalized = raw.toUpperCase().replace(/[^A-Z0-9_-]/g, "").slice(0, 30);
-      if (normalized.length >= 3) { localStorage.setItem("sama_pack_sales_referral_code_v1", normalized); currentSalesReferralCode = normalized; }
-      else currentSalesReferralCode = localStorage.getItem("sama_pack_sales_referral_code_v1") || "";
-    } catch { currentSalesReferralCode = ""; }
+      localStorage.setItem(SALES_REFERRAL_KEY, JSON.stringify({ code: normalized, capturedAt: Date.now() }));
+      localStorage.removeItem(LEGACY_SALES_REFERRAL_KEY);
+    } catch { /* Le suivi fonctionne en mémoire si le stockage est indisponible. */ }
+    return normalized;
+  }
+  function readSalesReferralCode() {
+    try {
+      const raw = localStorage.getItem(SALES_REFERRAL_KEY);
+      if (raw) {
+        let saved = null;
+        try { saved = JSON.parse(raw); } catch { saved = null; }
+        const code = normalizeSalesReferralCode(saved?.code);
+        const capturedAt = Number(saved?.capturedAt);
+        const age = Date.now() - capturedAt;
+        if (code && Number.isFinite(capturedAt) && capturedAt > 0 && age >= 0 && age <= SALES_REFERRAL_TTL_MS) {
+          return code;
+        }
+        localStorage.removeItem(SALES_REFERRAL_KEY);
+      }
+
+      // Migration douce de l'ancien code : on le conserve encore 30 jours
+      // à compter de cette première lecture, puis l'ancien emplacement disparaît.
+      const legacyCode = normalizeSalesReferralCode(localStorage.getItem(LEGACY_SALES_REFERRAL_KEY));
+      if (legacyCode) {
+        localStorage.setItem(SALES_REFERRAL_KEY, JSON.stringify({ code: legacyCode, capturedAt: Date.now() }));
+        localStorage.removeItem(LEGACY_SALES_REFERRAL_KEY);
+        return legacyCode;
+      }
+      localStorage.removeItem(LEGACY_SALES_REFERRAL_KEY);
+    } catch { /* Les codes commerciaux restent facultatifs. */ }
+    return "";
+  }
+  function captureSalesReferral() {
+    const params = new URLSearchParams(window.location.search || "");
+    const code = normalizeSalesReferralCode(params.get("ref") || params.get("code") || "");
+    currentSalesReferralCode = code ? saveSalesReferralCode(code) : readSalesReferralCode();
     return currentSalesReferralCode;
   }
   function getSalesReferralCode() {
     if (currentSalesReferralCode) return currentSalesReferralCode;
-    try { currentSalesReferralCode = localStorage.getItem("sama_pack_sales_referral_code_v1") || ""; } catch { currentSalesReferralCode = ""; }
+    currentSalesReferralCode = readSalesReferralCode();
     return currentSalesReferralCode;
   }
 
