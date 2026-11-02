@@ -814,6 +814,9 @@
       const pricing = readProductPricing(data);
       if (name.length < 2) return toast("Le nom de l’article doit contenir au moins 2 caractères.", true);
       if (pricing.error) return toast(pricing.error, true);
+      if (editingCatalogItemId && current.sale_unit !== pricing.saleUnit && current.promo_active === true && Number(current.promo_price) > 0) {
+        return toast("Cet article a une promotion active. Désactive-la ou actualise son prix promotionnel avant de changer le mode de vente.", true);
+      }
       if (data.get("availability_status") === "available" && pricing.salePrice <= 0) return toast("Définis un prix de vente supérieur à zéro avant de marquer l’article disponible.", true);
       const payload = {
         name,
