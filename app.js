@@ -66,7 +66,11 @@
   }
   function resolveProductImageUrl(path) {
     const value = String(path || "").trim();
-    return /^https?:\/\//i.test(value) ? value : value.replace(/^\//, "");
+    const githubImagePrefix = "https://raw.githubusercontent.com/Ahmadou98/sama-pack/main/";
+    if (value.startsWith(githubImagePrefix)) {
+      return "https://cdn.jsdelivr.net/gh/Ahmadou98/sama-pack@main/" + value.slice(githubImagePrefix.length);
+    }
+    return /^https?:\/\//i.test(value) ? value : value.replace(/^\/+/, "");
   }
   function selectProductImage(button) {
     const gallery = button?.closest(".product-detail-gallery");
@@ -860,6 +864,36 @@
     await loadPublicData();
     await renderIndividualCatalogAdmin();
   }
+  async function optimizeProductImage(file) {
+    if (!file || file.size < 180 * 1024 || typeof window.createImageBitmap !== "function") return file;
+
+    let bitmap = null;
+    try {
+      bitmap = await window.createImageBitmap(file);
+      const maxSide = 1280;
+      const scale = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height));
+      const width = Math.max(1, Math.round(bitmap.width * scale));
+      const height = Math.max(1, Math.round(bitmap.height * scale));
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      const context = canvas.getContext("2d");
+      if (!context || typeof canvas.toBlob !== "function") return file;
+      context.drawImage(bitmap, 0, 0, width, height);
+
+      const blob = await new Promise(resolve => canvas.toBlob(resolve, "image/webp", 0.82));
+      if (!blob || blob.type !== "image/webp" || blob.size <= 0 || blob.size >= file.size * 0.92) return file;
+
+      const baseName = String(file.name || "photo").replace(/\.[^.]+$/, "") || "photo";
+      return new File([blob], baseName + ".webp", { type: "image/webp", lastModified: file.lastModified });
+    } catch (error) {
+      console.warn("Compression de la photo ignorée; le fichier original sera conservé.", error);
+      return file;
+    } finally {
+      bitmap?.close?.();
+    }
+  }
+
   async function uploadProductImages(files, productId, existingImages = []) {
     const selected = Array.from(files || []).filter(file => file instanceof File && file.size > 0);
     if (selected.length + existingImages.length > 8) return { error: "Un article peut contenir au maximum 8 photos. Retire des photos ou coche le remplacement." };
@@ -869,9 +903,14 @@
     }
     const images = [...existingImages];
     for (const file of selected) {
-      const ext = file.type === "image/jpeg" ? "jpg" : file.type === "image/png" ? "png" : "webp";
+      const uploadFile = await optimizeProductImage(file);
+      const ext = uploadFile.type === "image/jpeg" ? "jpg" : uploadFile.type === "image/png" ? "png" : "webp";
       const path = String(productId) + "/" + Date.now() + "-" + Math.random().toString(36).slice(2, 8) + "." + ext;
-      const { data, error } = await client.storage.from("sama-pack-products").upload(path, file, { cacheControl: "3600", upsert: false, contentType: file.type });
+      const { data, error } = await client.storage.from("sama-pack-products").upload(path, uploadFile, {
+        cacheControl: "31536000",
+        upsert: false,
+        contentType: uploadFile.type
+      });
       if (error) return { error: "Envoi d’une photo impossible : " + errorMessage(error) };
       images.push(client.storage.from("sama-pack-products").getPublicUrl(data.path).data.publicUrl);
     }
@@ -1229,7 +1268,7 @@
     if (!p.image_path) return `<div class="${klass}">${fallback}</div>`;
     const path = p.image_path;
     const src = /^https?:\/\//i.test(path) ? path : path.replace(/^\//, "");
-    return `<div class="${klass} product-image-frame"><img class="product-photo" src="${esc(src)}" alt="${esc(p.name)}" loading="lazy" onerror="this.remove();this.parentElement.classList.remove('product-image-frame');this.parentElement.innerHTML='${fallback.replace(/'/g,"&#039;").replace(/`/g,"&#096;")}'"></div>`;
+    return `<div class="${klass} product-image-frame"><img class="product-photo" src="${esc(src)}" alt="${esc(p.name)}" loading="lazy" decoding="async" fetchpriority="low" onerror="this.remove();this.parentElement.classList.remove('product-image-frame');this.parentElement.innerHTML='${fallback.replace(/'/g,"&#039;").replace(/`/g,"&#096;")}'"></div>`;
   }
   function updateSEOProductMeta(selector, value) {
     const node = document.querySelector(selector);
@@ -1273,7 +1312,7 @@
       catch { return ""; }
     }).filter(Boolean);
     const picture = paths.length
-      ? '<div class="seo-product-photo-wrap"><img class="seo-product-photo" src="' + esc(resolveProductImageUrl(paths[0])) + '" alt="' + esc(p.name) + '" loading="eager" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'grid\'"><div class="product-placeholder" style="display:none">' + cleaningBottleSvg() + '</div></div>'
+      ? '<div class="seo-product-photo-wrap"><img class="seo-product-photo" src="' + esc(resolveProductImageUrl(paths[0])) + '" alt="' + esc(p.name) + '" loading="eager" decoding="async" fetchpriority="high" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'grid\'"><div class="product-placeholder" style="display:none">' + cleaningBottleSvg() + '</div></div>'
       : '<div class="seo-product-photo-wrap"><div class="product-placeholder">' + cleaningBottleSvg() + '</div></div>';
     const list = Array.isArray(p.items) && p.items.length
       ? '<h2>Composition et caractéristiques</h2><ul class="seo-product-list">' + p.items.map(item => '<li>' + esc(item) + '</li>').join("") + '</ul>'
@@ -1340,7 +1379,7 @@
     const src = resolveProductImageUrl(path);
     const photo = path
       ? '<div class="product-detail-gallery"><div class="product-detail-image-wrap"><img class="product-photo product-photo-detail" src="' + esc(src) + '" alt="' + esc(p.name) + '" loading="lazy" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'grid\'"><div class="product-placeholder" style="display:none">' + cleaningBottleSvg() + '</div></div>' +
-        (images.length > 1 ? '<div class="product-image-thumbnails" aria-label="Photos du produit">' + images.map((image, index) => '<button type="button" class="product-image-thumb ' + (index === 0 ? 'is-active' : '') + '" data-image-src="' + esc(resolveProductImageUrl(image)) + '" data-image-alt="' + esc(p.name + ' — photo ' + (index + 1)) + '" onclick="selectProductImage(this)" aria-label="Afficher la photo ' + (index + 1) + '"><img src="' + esc(resolveProductImageUrl(image)) + '" alt="" loading="lazy"></button>').join('') + '</div>' : '') + '</div>'
+        (images.length > 1 ? '<div class="product-image-thumbnails" aria-label="Photos du produit">' + images.map((image, index) => '<button type="button" class="product-image-thumb ' + (index === 0 ? 'is-active' : '') + '" data-image-src="' + esc(resolveProductImageUrl(image)) + '" data-image-alt="' + esc(p.name + ' — photo ' + (index + 1)) + '" onclick="selectProductImage(this)" aria-label="Afficher la photo ' + (index + 1) + '"><img src="' + esc(resolveProductImageUrl(image)) + '" alt="" loading="lazy" decoding="async"></button>').join('') + '</div>' : '') + '</div>'
       : '<div class="product-detail-placeholder product-placeholder">' + cleaningBottleSvg() + '</div>';
     const canAdd = canSellProduct(p);
     showModal('<div class="modal-head"><div><div class="eyebrow">' + esc(p.cat) + '</div><h2>' + esc(p.name) + '</h2></div><button class="close" onclick="closeModal()">✕</button></div>' + photo + '<div class="product-detail-meta">' + availabilityBadgeHtml(p) + '</div><div id="productRatingSummaryDetail">' + renderProductRatingSummary(p.id) + '</div><p>' + esc(p.desc) + '</p>' + productHowToLinkHtml(p) + '<ul class="pack-items">' + p.items.map(i => '<li>' + esc(i) + '</li>').join('') + '</ul><div class="price-row">' + priceDisplayHtml(p) + '<button class="btn primary" ' + (canAdd ? 'onclick="addToCart(\'' + esc(p.id) + '\');closeModal()"' : 'disabled') + '>' + (p.availability_status === "out_of_stock" ? "Rupture de stock" : canAdd ? "Ajouter au panier" : "Prix à confirmer") + '</button></div><section id="productReviewsPanel" class="product-reviews-panel" data-product-id="' + esc(p.id) + '"><p class="review-loading">Chargement des avis…</p></section>');
