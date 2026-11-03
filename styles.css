@@ -5060,3 +5060,25 @@ body.admin-management-open .info-floating-header {
 .reference-price-admin-heading { color:var(--ink); font-size:12px; font-weight:900; }
 .reference-price-admin-fields label { display:grid; gap:6px; color:var(--muted); font-size:11px; }
 @media(max-width:600px) { .reference-price-admin-fields { grid-template-columns:1fr; } .reference-price-admin-heading, .reference-price-admin-fields .small-note, .reference-price-admin-fields .reference-price-note-field { grid-column:1; } }
+
+
+/* Prix actuel, prix barré et économie — présentation uniforme du catalogue */
+.price-display { display:flex; flex-direction:column; align-items:flex-start; gap:4px; min-width:0; }
+.price-display-main { display:flex; align-items:baseline; flex-wrap:wrap; column-gap:10px; row-gap:3px; }
+.price-display .current-price { color:var(--green); font-size:22px; font-weight:950; line-height:1.15; white-space:nowrap; }
+.reference-price-wrap { display:inline-flex; align-items:baseline; flex-wrap:wrap; gap:5px; }
+.reference-price-label { color:var(--muted); font-size:10px; font-weight:700; line-height:1.2; }
+.price-display .old-price { color:#94a3b8; font-size:13px; font-weight:650; text-decoration:line-through; text-decoration-thickness:1.5px; text-decoration-color:#94a3b8; white-space:nowrap; }
+.price-savings { color:#15803d; font-size:12px; font-weight:750; line-height:1.25; }
+.price-savings strong { color:#166534; font-weight:950; }
+.price-display .promo-label { display:inline-flex; align-self:flex-start; text-transform:uppercase; letter-spacing:.04em; }
+.product-card .price-display { gap:3px; }
+.product-card .price-display .current-price { font-size:20px; }
+.product-card .price-display .old-price { font-size:12px; }
+.product-card .price-display .price-savings { font-size:11px; }
+@media(max-width:700px) {
+  .product-card .price-display .current-price { font-size:15px; }
+  .product-card .price-display .old-price { font-size:10px; }
+  .product-card .price-display .reference-price-label { font-size:9px; }
+  .product-card .price-display .price-savings { font-size:10px; }
+}
