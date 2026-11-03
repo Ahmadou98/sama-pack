@@ -167,19 +167,28 @@
     return Number.isFinite(regular) && Number.isFinite(special) && special >= 0 && special < regular;
   }
   function getEffectivePrice(p) { return hasPromotion(p) ? Number(p.promo_price) : Number(p?.price || 0); }
-  function priceDisplayHtml(p) {
-    const unitLabel = getSaleUnitKey(p) === "carton" ? '<small class="price-unit-label">par colis</small>' : "";
+  function priceDisplayHtml(p, options = {}) {
     const promotionActive = hasPromotion(p);
     const regularPrice = Number(p?.price || 0);
+    const effectivePrice = getEffectivePrice(p);
     const referencePrice = p?.reference_price == null ? null : Number(p.reference_price);
     const hasValidReference = Number.isFinite(referencePrice) && referencePrice > regularPrice;
-    const crossedPrice = hasValidReference
-      ? `<span class="reference-price-wrap"><span class="reference-price-label">${p.reference_price_basis === "previous_price" ? "Ancien prix" : "Prix conseillé"}</span><span class="old-price">${money(referencePrice)}</span></span>`
-      : promotionActive
-        ? `<span class="reference-price-wrap"><span class="reference-price-label">Prix normal</span><span class="old-price">${money(regularPrice)}</span></span>`
-        : "";
-    const priceBlock = `<div class="promo-price-block"><div class="price">${money(getEffectivePrice(p))}${unitLabel}</div>${crossedPrice}</div>`;
-    return priceBlock + (promotionActive ? `<span class="promo-label">${esc(p.promo_label || "Offre spéciale")}</span>` : "");
+    const crossedPrice = hasValidReference ? referencePrice : promotionActive ? regularPrice : null;
+    const savings = crossedPrice == null ? 0 : Math.max(0, crossedPrice - effectivePrice);
+    const unitLabel = getSaleUnitKey(p) === "carton" ? '<small class="price-unit-label">par colis</small>' : "";
+    const referenceLabel = hasValidReference
+      ? (p.reference_price_basis === "previous_price" ? "Ancien prix" : "Prix conseillé")
+      : "Prix normal";
+    const crossedPriceHtml = savings > 0
+      ? `<span class="reference-price-wrap"><span class="reference-price-label">${referenceLabel}</span><del class="old-price">${money(crossedPrice)}</del></span>`
+      : "";
+    const savingsHtml = savings > 0
+      ? `<div class="price-savings">Économisez <strong>${money(savings)}</strong></div>`
+      : "";
+    const promotionBadge = promotionActive && options.showPromotionBadge !== false
+      ? '<span class="promo-label">PROMOTION</span>'
+      : "";
+    return `<div class="price-display"><div class="price-display-main"><span class="price current-price">${money(effectivePrice)}${unitLabel}</span>${crossedPriceHtml}</div>${savingsHtml}${promotionBadge}</div>`;
   }
 
   function readReferencePrice(formData, salePrice) {
@@ -1493,7 +1502,7 @@
     const out = p.availability_status === "out_of_stock";
     const canAdd = canSellProduct(p);
     const description = p.catalog_type === "product" && p.desc ? `<p class="product-desc">${esc(p.desc)}</p>` : "";
-    return `<article class="product-card"><div class="pack-visual ${hasImage ? "has-photo" : ""}">${photo}${fallback}${hasPromotion(p) ? `<span class="product-promo-ribbon">${esc(p.promo_label || "Promo")}</span>` : ""}</div><div class="product-body">${availabilityBadgeHtml(p)}<div class="product-cat">${esc(p.cat)}</div><a class="product-name-link" href="fiche-produit.html?ref=${encodeURIComponent(p.id)}">${esc(p.name)}</a>${description}${renderProductRatingSummary(p.id)}<div class="price-row">${priceDisplayHtml(p)}</div><div class="product-actions"><button class="btn ghost" onclick="openProduct('${esc(p.id)}')">Détails</button><button class="btn primary" onclick="addToCart('${esc(p.id)}')" ${canAdd ? "" : "disabled"}>${out ? "Rupture" : canAdd ? "Ajouter" : "Prix à confirmer"}</button></div></div></article>`;
+    return `<article class="product-card"><div class="pack-visual ${hasImage ? "has-photo" : ""}">${photo}${fallback}${hasPromotion(p) ? `<span class="product-promo-ribbon">PROMOTION</span>` : ""}</div><div class="product-body">${availabilityBadgeHtml(p)}<div class="product-cat">${esc(p.cat)}</div><a class="product-name-link" href="fiche-produit.html?ref=${encodeURIComponent(p.id)}">${esc(p.name)}</a>${description}${renderProductRatingSummary(p.id)}<div class="price-row">${priceDisplayHtml(p, { showPromotionBadge: false })}</div><div class="product-actions"><button class="btn ghost" onclick="openProduct('${esc(p.id)}')">Détails</button><button class="btn primary" onclick="addToCart('${esc(p.id)}')" ${canAdd ? "" : "disabled"}>${out ? "Rupture" : canAdd ? "Ajouter" : "Prix à confirmer"}</button></div></div></article>`;
   }
 
   function openProduct(id) {
