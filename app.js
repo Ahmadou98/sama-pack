@@ -1147,7 +1147,7 @@
       const description = String(item.desc || item.description || "").replace(/\s+/g, " ").trim();
       const shortDescription = description.length > 92 ? description.slice(0, 89).replace(/\s+\S*$/, "") + "…" : description;
       const catalogUrl = targetType === "product" ? "produits.html" : "/#catalogue";
-      const promoLabel = hasPromotion(item) ? '<span class="catalog-discovery-promo-label">' + esc(item.promo_label || "Offre spéciale") + '</span>' : "";
+      const promoLabel = hasPromotion(item) ? '<span class="catalog-discovery-promo-label">PROMOTION</span>' : "";
 
       host.innerHTML =
         '<div class="catalog-discovery-card">' +
@@ -1159,7 +1159,7 @@
             '<div class="catalog-discovery-details"><span class="catalog-discovery-type">' + esc(subtitle) + '</span>' +
               '<strong class="catalog-discovery-name">' + esc(item.name) + '</strong>' +
               (shortDescription ? '<p class="catalog-discovery-description">' + esc(shortDescription) + '</p>' : '') +
-              '<div class="catalog-discovery-price">' + priceDisplayHtml(item) + '</div>' +
+              '<div class="catalog-discovery-price">' + priceDisplayHtml(item, { showPromotionBadge: false }) + '</div>' +
             '</div>' +
           '</div>' +
           '<div class="catalog-discovery-actions">' +
