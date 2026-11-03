@@ -186,7 +186,7 @@
     const raw = String(formData.get("reference_price") || "").trim();
     const basis = String(formData.get("reference_price_basis") || "").trim();
     const note = String(formData.get("reference_price_note") || "").trim();
-    if (!raw) return { reference_price: null, reference_price_basis: null, reference_price_note: null };
+    if (!raw) return { payload: { reference_price: null, reference_price_basis: null }, note: "" };
     const referencePrice = Number(raw);
     if (!Number.isFinite(referencePrice) || referencePrice <= 0 || !Number.isInteger(referencePrice)) {
       return { error: "Le prix de référence doit être un montant positif en FCFA." };
@@ -200,14 +200,23 @@
     if (!note) {
       return { error: "Ajoute la période de l’ancien prix ou la source du prix conseillé." };
     }
-    return {
-      reference_price: referencePrice,
-      reference_price_basis: basis,
-      reference_price_note: note
-    };
+    return { payload: { reference_price: referencePrice, reference_price_basis: basis }, note };
   }
 
-  function referencePriceAdminFields(product = {}) {
+  async function saveProductReferencePriceNote(productId, note) {
+    if (!isGeneralAdmin()) return new Error("Seul le propriétaire peut modifier la justification du prix de référence.");
+    const value = String(note || "").trim();
+    if (!value) {
+      const { error } = await client.from("product_reference_price_notes").delete().eq("product_id", String(productId));
+      return error || null;
+    }
+    const { error } = await client.from("product_reference_price_notes").upsert({
+      product_id: String(productId), note: value, updated_at: new Date().toISOString()
+    }, { onConflict: "product_id" });
+    return error || null;
+  }
+
+  function referencePriceAdminFields(product = {}, privateNote = "") {
     const basis = String(product.reference_price_basis || "");
     const value = product.reference_price == null ? "" : Number(product.reference_price);
     return `<section class="reference-price-admin-fields full">
@@ -223,9 +232,9 @@
         </select>
       </label>
       <label class="reference-price-note-field">Période ou source (interne)
-        <input class="input" name="reference_price_note" type="text" maxlength="240" value="${esc(product.reference_price_note || "")}" placeholder="Ex. prix appliqué en octobre 2026 / catalogue fournisseur 2026">
+        <input class="input" name="reference_price_note" type="text" maxlength="240" value="${esc(privateNote)}" placeholder="Ex. prix appliqué en octobre 2026 / catalogue fournisseur 2026">
       </label>
-      <p class="small-note full">À renseigner uniquement avec une référence vérifiable. Le montant doit être supérieur au prix de vente normal. Cette justification reste réservée à l’administration.</p>
+      <p class="small-note full">À renseigner uniquement avec une référence vérifiable. Le montant doit être supérieur au prix de vente normal. Cette justification reste réservée au propriétaire.</p>
     </section>`;
   }
   function loadCart() {
@@ -779,7 +788,7 @@
     const host = $("adminContent");
     if (!host || !client || !isAdmin()) return;
     const { data: rows, error } = await client.from("products")
-      .select("id,public_ref,availability_status,name,catalog_type,sale_unit,category,price,reference_price,reference_price_basis,reference_price_note,description,items,image_path,image_paths,youtube_howto_url,active,promo_active,promo_price,promo_label,promo_started_at,promo_end_at")
+      .select("id,public_ref,availability_status,name,catalog_type,sale_unit,category,price,reference_price,reference_price_basis,description,items,image_path,image_paths,youtube_howto_url,active,promo_active,promo_price,promo_label,promo_started_at,promo_end_at")
       .in("catalog_type", ["product", "tool"])
       .order("name", { ascending: true });
     if (error) {
@@ -800,7 +809,10 @@
       client.from("product_supplier_links").select("product_id,supplier_id,supplier_ref,carton_price,units_per_carton,source_url,research_note"),
       client.from("suppliers").select("id,name").order("name", { ascending: true })
     ]);
-    const dataError = costResult.error || linkResult.error || supplierResult.error;
+    const referenceNotesResult = rows?.length
+      ? await client.from("product_reference_price_notes").select("product_id,note").in("product_id", rows.map(row => row.id))
+      : { data: [], error: null };
+    const dataError = costResult.error || linkResult.error || supplierResult.error || referenceNotesResult.error;
     if (dataError) {
       host.innerHTML = '<div class="panel"><h3>Catalogue individuel</h3><p>Impossible de charger les prix ou les fournisseurs associés.</p></div>';
       console.warn("Catalog admin metadata load failed", dataError);
@@ -810,10 +822,11 @@
     const suppliers = supplierResult.data || [];
     const supplierById = new Map(suppliers.map(row => [row.id, row]));
     const linksById = new Map((linkResult.data || []).map(row => [row.product_id, row]));
+    const referenceNotesById = new Map((referenceNotesResult.data || []).map(row => [row.product_id, row.note]));
     const catalogRows = (rows || []).map(row => {
       const link = linksById.get(row.id) || {};
       return { ...row, ...(costsById.get(row.id) || { supplier_price: null, margin_percent: null }),
-        ...link, supplier_name: supplierById.get(link.supplier_id)?.name || "" };
+        ...link, reference_price_note: referenceNotesById.get(row.id) || "", supplier_name: supplierById.get(link.supplier_id)?.name || "" };
     });
     const editing = editingCatalogItemId ? catalogRows.find(row => row.id === editingCatalogItemId) : null;
     if (editingCatalogItemId && !editing) {
@@ -840,7 +853,7 @@
         <label>Prix de vente calculé (FCFA) *<input class="input selling-price-input" name="price" type="number" required min="0" step="1" value="${Number(current.price || 0)}" ${current.supplier_price != null && current.margin_percent != null ? "readonly" : ""}></label>
         <label>Disponibilité au catalogue<select class="input" name="availability_status"><option value="available" ${(current.availability_status || "out_of_stock") === "available" ? "selected" : ""}>Disponible</option><option value="out_of_stock" ${(current.availability_status || "out_of_stock") === "out_of_stock" ? "selected" : ""}>Rupture de stock</option></select></label>
         <p class="small-note price-calculation-feedback full" data-pricing-feedback>Renseigne le coût fournisseur et la marge pour calculer automatiquement le prix de vente.</p>
-        ${referencePriceAdminFields(current)}
+        ${referencePriceAdminFields(current, current.reference_price_note)}
         <label class="full">Description<textarea class="input" name="description" maxlength="1200" rows="4" placeholder="Description fidèle et vérifiée de l’article.">${esc(current.description || "")}</textarea></label>
         <label class="full">Lien de la vidéo du mode d’emploi (facultatif)<input class="input" name="youtube_howto_url" type="url" maxlength="1000" value="${esc(current.youtube_howto_url || "")}" placeholder="https://youtu.be/..."></label><p class="small-note full">Le lien apparaîtra sur la fiche uniquement lorsqu’une vidéo YouTube est renseignée.</p>
         <label class="full">Image principale (URL HTTPS ou chemin)<input class="input" name="image_path" maxlength="1000" value="${esc(current.image_path || "")}" placeholder="https://… ou images/produit.jpg"></label><p class="small-note full">Photos actuellement enregistrées : ${getProductImages(current).length}. Jusqu’à 8 photos par article.</p><label class="full">Photos supplémentaires (JPG, PNG ou WebP · 5 Mo maximum par photo)<input class="input" name="image_files" type="file" accept="image/jpeg,image/png,image/webp" multiple></label><label class="check-label full"><input type="checkbox" name="replace_images"> Remplacer les photos actuelles par les nouvelles (ou les supprimer si aucune photo n’est choisie)</label>
@@ -882,7 +895,7 @@
         catalog_type: data.get("catalog_type") === "tool" ? "tool" : "product",
         category: String(data.get("category") || "").trim() || (data.get("catalog_type") === "tool" ? "Outils de nettoyage" : "Produits de nettoyage"),
         price: pricing.salePrice,
-        ...referencePricing,
+        ...referencePricing.payload,
         sale_unit: pricing.saleUnit,
         description: String(data.get("description") || "").trim(),
         youtube_howto_url: null,
@@ -914,6 +927,8 @@
           result = await client.from("products").insert({ ...payload, id: productId, promo_active: false, promo_price: null, promo_label: "Offre spéciale" });
         }
         if (result.error) return toast(errorMessage(result.error), true);
+        const referenceNoteError = await saveProductReferencePriceNote(productId, referencePricing.note);
+        if (referenceNoteError) return toast("Article enregistré, mais la justification du prix de référence n’a pas pu être enregistrée : " + errorMessage(referenceNoteError), true);
         const pricingError = await saveProductPricing(productId, pricing);
         if (pricingError) return toast("Article enregistré, mais le coût fournisseur ou la marge n’a pas pu être enregistré : " + errorMessage(pricingError), true);
         const supplierError = await saveProductSupplierLink(productId, data, editing || {});
@@ -1024,7 +1039,7 @@
   async function loadPublicData() {
     if (!client) return;
     const { data: rows, error } = await client.from("products")
-      .select("id,public_ref,availability_status,name,catalog_type,sale_unit,category,price,reference_price,reference_price_basis,reference_price_note,description,items,image_path,image_paths,youtube_howto_url,active,promo_active,promo_price,promo_label,promo_started_at,promo_end_at")
+      .select("id,public_ref,availability_status,name,catalog_type,sale_unit,category,price,reference_price,reference_price_basis,description,items,image_path,image_paths,youtube_howto_url,active,promo_active,promo_price,promo_label,promo_started_at,promo_end_at")
       .order("id", { ascending: true });
     if (!error && Array.isArray(rows)) {
       products = rows.map(normalizeProduct);
@@ -4224,6 +4239,11 @@
           rows.map(p => '<tr><td>' + esc(p.public_ref || p.id) + '</td><td><strong>' + esc(p.name) + '</strong><br><span class="small-note">' + esc(p.category || "") + '</span></td><td>' + money(p.price) + '</td><td>' + availabilityBadgeHtml(p) + '</td></tr>').join("") +
           '</tbody></table></div>' : '<div class="empty">Aucun pack publié.</div>') + '</div>';
     }
+    const referenceNotesResult = baseRows.length
+      ? await client.from("product_reference_price_notes").select("product_id,note").in("product_id", baseRows.map(row => row.id))
+      : { data: [], error: null };
+    if (referenceNotesResult.error) throw referenceNotesResult.error;
+    const referenceNotesById = new Map((referenceNotesResult.data || []).map(row => [row.product_id, row.note]));
     const [costResult, linkResult, supplierResult] = await Promise.all([
       client.from("product_costs").select("product_id,supplier_price,supplier_unit_price,margin_percent"),
       client.from("product_supplier_links").select("product_id,supplier_id,supplier_ref,carton_price,units_per_carton,source_url,research_note"),
@@ -4239,7 +4259,7 @@
     const rows = baseRows.map(row => {
       const link = linksById.get(row.id) || {};
       return { ...row, ...(costsById.get(row.id) || { supplier_price: null, margin_percent: null }),
-        ...link, supplier_name: supplierById.get(link.supplier_id)?.name || "" };
+        ...link, reference_price_note: referenceNotesById.get(row.id) || "", supplier_name: supplierById.get(link.supplier_id)?.name || "" };
     });
     products = rows.map(normalizeProduct); updateCategoryFilter(); renderProducts(); renderTop(); renderPromoCarousel();
     const editing = editingProductId ? products.find(p => p.id === editingProductId) : null;
@@ -4248,7 +4268,7 @@
     const idLabel = editing ? editing.id : nextProductId();
     const supplierOptions = '<option value="">— Aucun fournisseur associé —</option>' + suppliers.map(s => `<option value="${esc(s.id)}" ${editing?.supplier_id === s.id ? "selected" : ""}>${esc(s.name)}</option>`).join("");
     const tableHtml = rows.length ? `<div class="table-wrap"><table class="table"><thead><tr><th>Réf. SAMA-PACK</th><th>Pack</th><th>Fournisseur / réf. fournisseur</th><th>Coût fournisseur</th><th>Marge</th><th>Prix de vente</th><th>Disponibilité</th><th>Publication</th><th>Actions</th></tr></thead><tbody>${rows.filter(p=>p.catalog_type === "pack").map(p=>`<tr data-admin-search-row data-search="${esc([p.public_ref,p.id,p.name,p.cat,p.supplier_name,p.supplier_ref].join(" ").toLowerCase())}"><td><strong>${esc(p.public_ref || "—")}</strong></td><td><strong>${esc(p.name)}</strong><br><span class="small-note">${esc(p.cat)}</span></td><td>${esc(p.supplier_name || "—")}<br><span class="small-note">${esc(p.supplier_ref || "Réf. non renseignée")}</span></td><td>${p.supplier_price == null ? "—" : money(p.supplier_price)}${p.carton_price == null ? "" : `<br><span class="small-note">Colis : ${money(p.carton_price)} HT</span>`}</td><td>${p.margin_percent == null ? "—" : Number(p.margin_percent)+" %"}</td><td>${money(p.price)}</td><td>${availabilityBadgeHtml(p)}</td><td><span class="status ${p.active?"delivered":"cancelled"}">${p.active?"Publié":"Masqué"}</span></td><td><div class="table-actions"><button class="btn small ghost" onclick="editPack('${esc(p.id)}')">Modifier</button><button class="btn small ${p.active?"ghost":"secondary"}" onclick="togglePack('${esc(p.id)}',${!p.active})">${p.active?"Masquer":"Publier"}</button></div></td></tr>`).join("")}</tbody></table></div>` : '<div class="empty">Aucun pack enregistré.</div>';
-    return `<div class="panel"><div class="admin-panel-head"><h3>${formTitle}</h3><span class="small-note">ID interne : ${esc(idLabel)} · Réf. publique : ${esc(editing?.public_ref || "attribuée automatiquement")}</span></div><form id="packForm" class="admin-form"><label class="full">Référence publique SAMA-PACK<input class="input" readonly value="${esc(editing?.public_ref || "Attribuée automatiquement à l’enregistrement")}"></label><label class="full">Nom du pack<input class="input" name="name" required maxlength="150" placeholder="Nom du pack" value="${esc(editing?.name||"")}"></label><label>Catégorie<input class="input" name="category" required maxlength="80" placeholder="Catégorie" value="${esc(editing?.cat||"")}"></label><label>Fournisseur associé<select class="input" name="supplier_id">${supplierOptions}</select></label><label>Référence chez le fournisseur<input class="input" name="supplier_ref" maxlength="100" placeholder="Réf. fournisseur (facultatif)" value="${esc(editing?.supplier_ref||"")}"></label><label>Coût d’achat total du pack (FCFA HT)<input class="input" name="supplier_price" type="number" min="0" step="0.01" placeholder="Coût de revient du pack" value="${editing?.supplier_price == null ? "" : Number(editing.supplier_price)}"></label><label>Marge souhaitée / majoration (%)<input class="input" name="margin_percent" type="number" min="0" max="1000" step="0.1" placeholder="Ex. 30" value="${editing?.margin_percent == null ? "" : Number(editing.margin_percent)}"></label><label>Prix du colis fournisseur (FCFA HT)<input class="input" name="supplier_carton_price" type="number" min="0" step="0.01" value="${editing?.carton_price == null ? "" : Number(editing.carton_price)}" placeholder="Optionnel"></label><label>Unités / lots par colis<input class="input" name="supplier_units_per_carton" maxlength="80" value="${esc(editing?.units_per_carton||"")}" placeholder="Ex. 12 pièces / colis"></label><label>Prix de vente calculé (FCFA)<input class="input selling-price-input" name="price" type="number" min="0" step="1" required placeholder="Prix en FCFA" value="${editing ? Number(editing.price) : ""}" ${editing?.supplier_price != null && editing?.margin_percent != null ? "readonly" : ""}></label><label>Disponibilité<select class="input" name="availability_status"><option value="available" ${(editing?.availability_status || "out_of_stock") === "available" ? "selected" : ""}>Disponible</option><option value="out_of_stock" ${(editing?.availability_status || "out_of_stock") === "out_of_stock" ? "selected" : ""}>Rupture de stock</option></select></label><p class="small-note price-calculation-feedback full" data-pricing-feedback>Renseigne le coût d’achat et la marge souhaitée pour calculer le prix de vente automatiquement.</p>${referencePriceAdminFields(editing || {})}<textarea class="input full" name="description" required maxlength="1500" placeholder="Description du pack">${esc(editing?.desc||"")}</textarea><label class="full">Lien de la vidéo du mode d’emploi (facultatif)<input class="input" name="youtube_howto_url" type="url" maxlength="1000" value="${esc(editing?.youtube_howto_url||"")}" placeholder="https://youtu.be/..."></label><p class="small-note full">Le lien apparaîtra sur la fiche uniquement lorsqu’une vidéo YouTube est renseignée.</p><textarea class="input full" name="items" required placeholder="Composition : un élément par ligne">${esc(itemsStr)}</textarea><input class="input full" name="image_path" maxlength="500" placeholder="Chemin de l’image ou URL (facultatif)" value="${esc(editing?.image_path||"")}"><div class="promo-admin-fields full"><label class="check-label"><input type="checkbox" name="promo_active" ${editing?.promo_active===true && (!editing?.promo_end_at || (Number.isFinite(new Date(editing.promo_end_at).getTime()) && new Date(editing.promo_end_at).getTime() > Date.now())) ? "checked" : ""}> Afficher ce pack dans les promotions</label><label>Prix promotionnel (FCFA)<input class="input" name="promo_price" type="number" min="0" step="1" placeholder="Ex. 12 000" value="${editing?.promo_price == null ? "" : Number(editing.promo_price)}"></label><label>Texte de la promotion<input class="input" name="promo_label" maxlength="80" placeholder="Vente flash" value="${esc(editing?.promo_label||"Vente flash")}"></label><label class="full">Date et heure de fin de la vente flash<input class="input" type="datetime-local" name="promo_end_at" value="${esc(toLocalDateTimeInput(editing?.promo_end_at))}"></label><p class="small-note">Le prix promotionnel doit être inférieur au prix normal. La date de fin désactive la réduction à son échéance.</p></div><p class="small-note full">Photos actuellement enregistrées : ${getProductImages(editing || {}).length}. Jusqu’à 8 photos par pack.</p><label class="full">Photos du pack (JPG, PNG ou WebP · 5 Mo maximum par photo)<input class="input" name="image_files" type="file" accept="image/jpeg,image/png,image/webp" multiple></label><label class="check-label full"><input type="checkbox" name="replace_images"> Remplacer les photos actuelles par les nouvelles (ou les supprimer si aucune photo n’est choisie)</label><label class="check-label full"><input type="checkbox" name="active" ${editing?.active===true?"checked":""}> Publier ce pack dans le catalogue</label><div class="form-actions full"><button class="btn primary" type="submit">${editing ? "Enregistrer les modifications" : "Créer le pack masqué"}</button>${editing ? `<button class="btn ghost" type="button" onclick="cancelPackEdit()">Annuler</button>` : ""}</div></form></div><div style="height:16px"></div><div class="panel"><div class="admin-panel-head"><h3>Catalogue complet (${rows.filter(p=>p.catalog_type === "pack").length} packs)</h3><span class="small-note">Les packs masqués restent dans la gestion et le stock.</span></div>${tableHtml}</div>`;
+    return `<div class="panel"><div class="admin-panel-head"><h3>${formTitle}</h3><span class="small-note">ID interne : ${esc(idLabel)} · Réf. publique : ${esc(editing?.public_ref || "attribuée automatiquement")}</span></div><form id="packForm" class="admin-form"><label class="full">Référence publique SAMA-PACK<input class="input" readonly value="${esc(editing?.public_ref || "Attribuée automatiquement à l’enregistrement")}"></label><label class="full">Nom du pack<input class="input" name="name" required maxlength="150" placeholder="Nom du pack" value="${esc(editing?.name||"")}"></label><label>Catégorie<input class="input" name="category" required maxlength="80" placeholder="Catégorie" value="${esc(editing?.cat||"")}"></label><label>Fournisseur associé<select class="input" name="supplier_id">${supplierOptions}</select></label><label>Référence chez le fournisseur<input class="input" name="supplier_ref" maxlength="100" placeholder="Réf. fournisseur (facultatif)" value="${esc(editing?.supplier_ref||"")}"></label><label>Coût d’achat total du pack (FCFA HT)<input class="input" name="supplier_price" type="number" min="0" step="0.01" placeholder="Coût de revient du pack" value="${editing?.supplier_price == null ? "" : Number(editing.supplier_price)}"></label><label>Marge souhaitée / majoration (%)<input class="input" name="margin_percent" type="number" min="0" max="1000" step="0.1" placeholder="Ex. 30" value="${editing?.margin_percent == null ? "" : Number(editing.margin_percent)}"></label><label>Prix du colis fournisseur (FCFA HT)<input class="input" name="supplier_carton_price" type="number" min="0" step="0.01" value="${editing?.carton_price == null ? "" : Number(editing.carton_price)}" placeholder="Optionnel"></label><label>Unités / lots par colis<input class="input" name="supplier_units_per_carton" maxlength="80" value="${esc(editing?.units_per_carton||"")}" placeholder="Ex. 12 pièces / colis"></label><label>Prix de vente calculé (FCFA)<input class="input selling-price-input" name="price" type="number" min="0" step="1" required placeholder="Prix en FCFA" value="${editing ? Number(editing.price) : ""}" ${editing?.supplier_price != null && editing?.margin_percent != null ? "readonly" : ""}></label><label>Disponibilité<select class="input" name="availability_status"><option value="available" ${(editing?.availability_status || "out_of_stock") === "available" ? "selected" : ""}>Disponible</option><option value="out_of_stock" ${(editing?.availability_status || "out_of_stock") === "out_of_stock" ? "selected" : ""}>Rupture de stock</option></select></label><p class="small-note price-calculation-feedback full" data-pricing-feedback>Renseigne le coût d’achat et la marge souhaitée pour calculer le prix de vente automatiquement.</p>${referencePriceAdminFields(editing || {}, editing?.reference_price_note || "")}<textarea class="input full" name="description" required maxlength="1500" placeholder="Description du pack">${esc(editing?.desc||"")}</textarea><label class="full">Lien de la vidéo du mode d’emploi (facultatif)<input class="input" name="youtube_howto_url" type="url" maxlength="1000" value="${esc(editing?.youtube_howto_url||"")}" placeholder="https://youtu.be/..."></label><p class="small-note full">Le lien apparaîtra sur la fiche uniquement lorsqu’une vidéo YouTube est renseignée.</p><textarea class="input full" name="items" required placeholder="Composition : un élément par ligne">${esc(itemsStr)}</textarea><input class="input full" name="image_path" maxlength="500" placeholder="Chemin de l’image ou URL (facultatif)" value="${esc(editing?.image_path||"")}"><div class="promo-admin-fields full"><label class="check-label"><input type="checkbox" name="promo_active" ${editing?.promo_active===true && (!editing?.promo_end_at || (Number.isFinite(new Date(editing.promo_end_at).getTime()) && new Date(editing.promo_end_at).getTime() > Date.now())) ? "checked" : ""}> Afficher ce pack dans les promotions</label><label>Prix promotionnel (FCFA)<input class="input" name="promo_price" type="number" min="0" step="1" placeholder="Ex. 12 000" value="${editing?.promo_price == null ? "" : Number(editing.promo_price)}"></label><label>Texte de la promotion<input class="input" name="promo_label" maxlength="80" placeholder="Vente flash" value="${esc(editing?.promo_label||"Vente flash")}"></label><label class="full">Date et heure de fin de la vente flash<input class="input" type="datetime-local" name="promo_end_at" value="${esc(toLocalDateTimeInput(editing?.promo_end_at))}"></label><p class="small-note">Le prix promotionnel doit être inférieur au prix normal. La date de fin désactive la réduction à son échéance.</p></div><p class="small-note full">Photos actuellement enregistrées : ${getProductImages(editing || {}).length}. Jusqu’à 8 photos par pack.</p><label class="full">Photos du pack (JPG, PNG ou WebP · 5 Mo maximum par photo)<input class="input" name="image_files" type="file" accept="image/jpeg,image/png,image/webp" multiple></label><label class="check-label full"><input type="checkbox" name="replace_images"> Remplacer les photos actuelles par les nouvelles (ou les supprimer si aucune photo n’est choisie)</label><label class="check-label full"><input type="checkbox" name="active" ${editing?.active===true?"checked":""}> Publier ce pack dans le catalogue</label><div class="form-actions full"><button class="btn primary" type="submit">${editing ? "Enregistrer les modifications" : "Créer le pack masqué"}</button>${editing ? `<button class="btn ghost" type="button" onclick="cancelPackEdit()">Annuler</button>` : ""}</div></form></div><div style="height:16px"></div><div class="panel"><div class="admin-panel-head"><h3>Catalogue complet (${rows.filter(p=>p.catalog_type === "pack").length} packs)</h3><span class="small-note">Les packs masqués restent dans la gestion et le stock.</span></div>${tableHtml}</div>`;
   }
 
   function editPack(id) { editingProductId = id; showAdminView("packs"); }
@@ -4569,7 +4589,7 @@
     if (view === "packs" || view === "products") {
       const form = $("packForm"); if (form) { bindProductPriceCalculator(form); form.onsubmit = async e => {
         e.preventDefault(); if (!isAdmin()) return toast("Accès refusé.", true); setBusy(form,true,"Enregistrement…");
-        const fd = new FormData(form); const pricing = readProductPricing(fd); if (pricing.error) { setBusy(form,false); return toast(pricing.error,true); } const referencePricing = readReferencePrice(fd, pricing.salePrice); if (referencePricing.error) { setBusy(form,false); return toast(referencePricing.error,true); } const uploadFiles = fd.getAll("image_files"); const promoPriceInput = String(fd.get("promo_price")||"").trim(); const promoEndInput = String(fd.get("promo_end_at")||"").trim(); const payload = { name:String(fd.get("name")||"").trim(),category:String(fd.get("category")||"").trim(),price:pricing.salePrice,...referencePricing,description:String(fd.get("description")||"").trim(),items:String(fd.get("items")||"").split(/\r?\n/).map(x=>x.trim()).filter(Boolean),image_path:String(fd.get("image_path")||"").trim(),active:fd.get("active")==="on",availability_status:fd.get("availability_status")==="available"?"available":"out_of_stock",promo_active:fd.get("promo_active")==="on",promo_price:promoPriceInput === "" ? null : Number(promoPriceInput),promo_label:String(fd.get("promo_label")||"Vente flash").trim() || "Vente flash",promo_end_at:promoEndInput ? new Date(promoEndInput).toISOString() : null };
+        const fd = new FormData(form); const pricing = readProductPricing(fd); if (pricing.error) { setBusy(form,false); return toast(pricing.error,true); } const referencePricing = readReferencePrice(fd, pricing.salePrice); if (referencePricing.error) { setBusy(form,false); return toast(referencePricing.error,true); } const uploadFiles = fd.getAll("image_files"); const promoPriceInput = String(fd.get("promo_price")||"").trim(); const promoEndInput = String(fd.get("promo_end_at")||"").trim(); const payload = { name:String(fd.get("name")||"").trim(),category:String(fd.get("category")||"").trim(),price:pricing.salePrice,...referencePricing.payload,description:String(fd.get("description")||"").trim(),items:String(fd.get("items")||"").split(/\r?\n/).map(x=>x.trim()).filter(Boolean),image_path:String(fd.get("image_path")||"").trim(),active:fd.get("active")==="on",availability_status:fd.get("availability_status")==="available"?"available":"out_of_stock",promo_active:fd.get("promo_active")==="on",promo_price:promoPriceInput === "" ? null : Number(promoPriceInput),promo_label:String(fd.get("promo_label")||"Vente flash").trim() || "Vente flash",promo_end_at:promoEndInput ? new Date(promoEndInput).toISOString() : null };
         const youtubeHowToUrl = normalizeYouTubeHowToUrl(fd.get("youtube_howto_url"));
         if (youtubeHowToUrl === null) { setBusy(form,false); return toast("Saisis un lien vidéo YouTube valide (youtu.be ou youtube.com).",true); }
         payload.youtube_howto_url = youtubeHowToUrl || null;
@@ -4588,6 +4608,8 @@
         if (editingProductId) result = await client.from("products").update(payload).eq("id",editingProductId);
         else result = await client.from("products").insert({id:productId,...payload});
         if (result.error) { setBusy(form,false); return toast(errorMessage(result.error),true); }
+        const referenceNoteError = await saveProductReferencePriceNote(productId, referencePricing.note);
+        if (referenceNoteError) { setBusy(form,false); return toast("Pack enregistré, mais la justification du prix de référence n’a pas pu être enregistrée : " + errorMessage(referenceNoteError),true); }
         const pricingError = await saveProductPricing(productId, pricing);
         if (pricingError) { setBusy(form,false); return toast("Pack enregistré, mais le coût fournisseur ou la marge n’a pas pu être enregistré : " + errorMessage(pricingError),true); }
         const supplierError = await saveProductSupplierLink(productId, fd);
