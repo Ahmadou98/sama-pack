@@ -24,6 +24,40 @@
 
   let client = null;
   let products = [];
+  // Ordre aléatoire propre à chaque chargement de page, conservé pendant les filtres et les rendus.
+  const catalogDisplayOrders = Object.create(null);
+  function shuffleCatalogIds(ids) {
+    for (let i = ids.length - 1; i > 0; i -= 1) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [ids[i], ids[j]] = [ids[j], ids[i]];
+    }
+    return ids;
+  }
+  function displayOrderedCatalogItems(items, catalogType) {
+    const list = Array.isArray(items) ? items.slice() : [];
+    const type = String(catalogType || "all");
+    if (!catalogDisplayOrders[type]) {
+      const source = type === "budget"
+        ? products.filter(item => item && item.catalog_type !== "pack")
+        : products.filter(item => item && item.catalog_type === type);
+      catalogDisplayOrders[type] = shuffleCatalogIds(
+        [...new Set(source.map(item => String(item.id)).filter(Boolean))]
+      );
+    }
+    const order = catalogDisplayOrders[type];
+    const known = new Set(order);
+    const additions = [...new Set(
+      list.map(item => String(item?.id ?? "")).filter(id => id && !known.has(id))
+    )];
+    shuffleCatalogIds(additions).forEach(id => {
+      order.splice(Math.floor(Math.random() * (order.length + 1)), 0, id);
+    });
+    const rank = new Map(order.map((id, index) => [id, index]));
+    return list.sort((a, b) =>
+      (rank.get(String(a.id)) ?? Number.MAX_SAFE_INTEGER) -
+      (rank.get(String(b.id)) ?? Number.MAX_SAFE_INTEGER)
+    );
+  }
   let catalogLoadFailed = false;
   let currentUser = null;
   let currentProfile = null;
@@ -565,11 +599,11 @@
     const productGrid = $("individualProductGrid");
     const toolGrid = $("cleaningToolGrid");
     if (productGrid) {
-      const items = products.filter(p => p.active && p.catalog_type === "product");
+      const items = displayOrderedCatalogItems(products.filter(p => p.active && p.catalog_type === "product"), "product");
       productGrid.innerHTML = items.map(productCard).join("") || '<div class="empty individual-catalog-empty">Les produits de nettoyage à l’unité ou par colis seront bientôt disponibles.</div>';
     }
     if (toolGrid) {
-      const items = products.filter(p => p.active && p.catalog_type === "tool");
+      const items = displayOrderedCatalogItems(products.filter(p => p.active && p.catalog_type === "tool"), "tool");
       toolGrid.innerHTML = items.map(productCard).join("") || '<div class="empty individual-catalog-empty">Les outils et matériels de nettoyage seront bientôt disponibles.</div>';
     }
   }
@@ -1303,7 +1337,7 @@
 
   function renderTop() {
     const el = $("heroTopPacks"); if (!el) return;
-    const tops = products.filter(p => p.active && p.catalog_type === "pack").sort((a,b) => Number(hasPromotion(b)) - Number(hasPromotion(a))).slice(0, 3);
+    const tops = displayOrderedCatalogItems(products.filter(p => p.active && p.catalog_type === "pack"), "pack").sort((a,b) => Number(hasPromotion(b)) - Number(hasPromotion(a))).slice(0, 3);
     el.innerHTML = tops.map(p => `<div class="mini-pack"><div class="mini-icon">${iconById[p.id] || "📦"}</div><div><strong>${esc(p.name)}</strong><small>${esc(publicProductRef(p))} · ${availabilityStatusLabel(p.availability_status)} · ${money(getEffectivePrice(p))}${hasPromotion(p) ? " · Promo" : ""}</small></div></div>`).join("") || '<div class="empty">Les packs seront bientôt disponibles.</div>';
   }
   function promoImageOnly(p) {
@@ -1329,7 +1363,7 @@
   function renderPromoCarousel() {
     const section = $("promoSection"), carousel = $("promoCarousel"), dots = $("promoDots");
     if (!section || !carousel) return;
-    const promos = products.filter(p => p.active && p.catalog_type === "pack" && p.availability_status !== "out_of_stock" && Number(p.price) > 0 && hasPromotion(p));
+    const promos = displayOrderedCatalogItems(products.filter(p => p.active && p.catalog_type === "pack" && p.availability_status !== "out_of_stock" && Number(p.price) > 0 && hasPromotion(p)), "pack");
     section.classList.remove("hidden");
     const topPacks = $("heroTopPacks");
     if (topPacks) topPacks.classList.remove("hidden");
@@ -1467,7 +1501,7 @@
     const q = String($("searchBox")?.value || "").toLowerCase().trim();
     const c = $("categoryFilter")?.value || "all";
     const currentType = getCurrentCatalogType();
-    const arr = products.filter(p => p.active && p.catalog_type === currentType && (c === "all" || p.cat === c) && [p.name,p.public_ref,p.desc,p.cat,...p.items].join(" ").toLowerCase().includes(q));
+    const arr = displayOrderedCatalogItems(products.filter(p => p.active && p.catalog_type === currentType && (c === "all" || p.cat === c) && [p.name,p.public_ref,p.desc,p.cat,...p.items].join(" ").toLowerCase().includes(q)), currentType);
     const pages = Math.max(1, Math.ceil(arr.length / PRODUCTS_PER_PAGE));
     currentProductPage = Math.min(Math.max(1, currentProductPage), pages);
     const start = (currentProductPage - 1) * PRODUCTS_PER_PAGE;
@@ -1557,8 +1591,8 @@
   function changeQty(id, delta) { const x = cart.find(i => i.id === id); if (!x) return; if (getCartLineModeMismatch(x)) return toast("Le mode de vente a changé. Retire cet article puis ajoute-le à nouveau.", true); x.qty += delta; if (x.qty <= 0) cart = cart.filter(i => i.id !== id); if (x.qty > 99) x.qty = 99; saveAndRenderCart(); }
 
   function getBudgetBuilderProducts(category = "all") {
-    return products.filter(p => p && p.catalog_type !== "pack" && canSellProduct(p) &&
-      (category === "all" || String(p.cat || "") === category));
+    return displayOrderedCatalogItems(products.filter(p => p && p.catalog_type !== "pack" && canSellProduct(p) &&
+      (category === "all" || String(p.cat || "") === category)), "budget");
   }
   function budgetBuilderImage(p) {
     const path = String(p?.image_path || "").trim();
