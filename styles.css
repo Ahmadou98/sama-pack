@@ -5080,3 +5080,37 @@ body.admin-management-open .info-floating-header {
   .product-card .price-display .reference-price-label { font-size:9px; }
   .product-card .price-display .price-savings { font-size:10px; }
 }
+
+
+/* Partage des produits */
+.product-card .pack-visual { position:relative; }
+.product-share-button {
+  position:absolute; top:10px; right:10px; z-index:5;
+  display:grid; place-items:center; width:40px; height:40px;
+  padding:0; border:1px solid rgba(22,101,52,.14); border-radius:50%;
+  color:#166534; background:rgba(255,255,255,.96);
+  box-shadow:0 3px 12px rgba(15,23,42,.14); cursor:pointer;
+  transition:transform .18s ease, background .18s ease, box-shadow .18s ease;
+}
+.product-share-button:hover { transform:translateY(-1px); background:#fff; box-shadow:0 5px 16px rgba(15,23,42,.2); }
+.product-share-button svg { width:19px; height:19px; }
+.product-detail-share-button { flex:0 0 auto!important; }
+.product-share-intro { margin:14px 0; color:#475569; font-weight:700; }
+.product-share-options { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; margin:16px 0; }
+.product-share-option {
+  min-height:76px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:7px;
+  padding:12px 8px; border:1px solid var(--line); border-radius:14px;
+  color:#166534; background:#fff; text-decoration:none; font-size:13px; font-weight:800;
+}
+.product-share-option:hover { background:#f0fdf4; border-color:#86efac; }
+.product-share-network-icon { display:grid; place-items:center; width:28px; height:28px; border-radius:50%; background:#dcfce7; color:#166534; font-size:15px; font-weight:900; }
+.product-share-copy { display:flex; align-items:center; gap:10px; padding:10px; background:#f8fafc; border:1px solid var(--line); border-radius:12px; }
+.product-share-link { min-width:0; flex:1; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; color:#475569; font-size:11px; }
+.product-share-copy .btn { flex:0 0 auto; }
+@media(max-width:600px) {
+  .product-share-button { width:36px; height:36px; top:8px; right:8px; }
+  .product-share-options { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .product-share-copy { align-items:stretch; flex-direction:column; }
+  .product-share-link { width:100%; padding:4px 2px; }
+  .product-share-copy .btn { width:100%; }
+}
