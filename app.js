@@ -4741,7 +4741,7 @@
     const socialLinks = s.social_links && typeof s.social_links === "object" && !Array.isArray(s.social_links) ? s.social_links : {};
     const socialSettingsHtml = SOCIAL_NETWORKS.map(network => {
       const config = socialLinks[network.key] || {};
-      return '<div class="social-setting-row"><label class="check-label"><input type="checkbox" name="social_' + network.key + '_enabled" ' + (config.enabled === true ? "checked" : "") + '> Afficher ' + esc(network.label) + '</label><label class="social-setting-url">Lien ' + esc(network.label) + '<input class="input" name="social_' + network.key + '_url" type="url" inputmode="url" placeholder="https://..." value="' + esc(config.url || "") + '"></label></div>';
+      return '<div class="social-setting-row"><label class="check-label"><input type="checkbox" name="social_' + network.key + '_enabled" ' + (config.enabled === true ? "checked" : "") + '> Afficher ' + esc(network.label) + '</label><label class="social-setting-url">Lien ' + esc(network.label) + '<input class="input" name="social_' + network.key + '_url" type="text" inputmode="url" maxlength="500" placeholder="https://..." value="' + esc(config.url || "") + '"></label></div>';
     }).join("");
     return `<div class="panel"><h3>Paramètres de Sama-Pack</h3><form id="settingsForm" class="admin-form">
       <label>Nom de l’entreprise<input class="input" name="company" required value="${esc(s.company||"SAMA-PACK")}"></label>
