@@ -1471,6 +1471,14 @@
     updateSEOProductMeta('meta[property="og:title"]', title);
     updateSEOProductMeta('meta[property="og:description"]', description);
     updateSEOProductMeta('meta[property="og:url"]', canonical);
+    const ogImageUrl = (() => {
+      const firstImage = getProductImages(p)[0];
+      if (!firstImage) return "";
+      try { return new URL(resolveProductImageUrl(firstImage), window.location.origin + "/").href; }
+      catch { return ""; }
+    })();
+    updateSEOProductMeta('meta[property="og:image"]', ogImageUrl);
+    updateSEOProductMeta('meta[property="og:image:alt"]', p.name);
     const category = String(p.cat || p.category || (p.catalog_type === "pack" ? "Packs ménagers" : "Produits de nettoyage"));
     $("seoProductCategory").textContent = category;
     const paths = getProductImages(p);
@@ -1485,9 +1493,10 @@
       ? '<h2>Composition et caractéristiques</h2><ul class="seo-product-list">' + p.items.map(item => '<li>' + esc(item) + '</li>').join("") + '</ul>'
       : "";
     const status = p.availability_status === "out_of_stock" ? "Actuellement en rupture de stock." : "Article disponible à la commande, sous réserve de confirmation au moment de valider le panier.";
-    host.innerHTML = '<article class="seo-product-layout">' + picture + '<div class="seo-product-info"><div class="eyebrow">' + esc(category) + ' · ' + esc(publicProductRef(p)) + '</div><h1>' + esc(p.name) + '</h1><div id="seoProductRatingSummary">' + renderProductRatingSummary(p.id) + '</div><p>' + esc(p.desc || p.description || "") + '</p>' + productHowToLinkHtml(p) + '<p class="small-note">' + esc(status) + '</p>' + list + '<div class="seo-product-price">' + priceDisplayHtml(p) + '</div><div class="product-actions"><button class="btn primary" type="button" id="seoAddToCartBtn" ' + (canSellProduct(p) ? "" : "disabled") + '>' + (p.availability_status === "out_of_stock" ? "Rupture de stock" : canSellProduct(p) ? "Ajouter au panier" : "Prix à confirmer") + '</button><button class="btn ghost" type="button" id="seoOpenCartBtn">Voir le panier</button></div><a class="btn ghost" href="' + (p.catalog_type === "product" ? "produits.html" : p.catalog_type === "tool" ? "outils.html" : "/#catalogue") + '">Retour au catalogue</a></div></article><section id="productReviewsPanel" class="product-reviews-panel" data-product-id="' + esc(p.id) + '"><p class="review-loading">Chargement des avis…</p></section>';
+    host.innerHTML = '<article class="seo-product-layout">' + picture + '<div class="seo-product-info"><div class="eyebrow">' + esc(category) + ' · ' + esc(publicProductRef(p)) + '</div><h1>' + esc(p.name) + '</h1><div id="seoProductRatingSummary">' + renderProductRatingSummary(p.id) + '</div><p>' + esc(p.desc || p.description || "") + '</p>' + productHowToLinkHtml(p) + '<p class="small-note">' + esc(status) + '</p>' + list + '<div class="seo-product-price">' + priceDisplayHtml(p) + '</div><div class="product-actions"><button class="btn primary" type="button" id="seoAddToCartBtn" ' + (canSellProduct(p) ? "" : "disabled") + '>' + (p.availability_status === "out_of_stock" ? "Rupture de stock" : canSellProduct(p) ? "Ajouter au panier" : "Prix à confirmer") + '</button><button class="btn ghost" type="button" id="seoOpenCartBtn">Voir le panier</button><button class="btn ghost product-detail-share-button" type="button" id="seoShareProductBtn">Partager</button></div><a class="btn ghost" href="' + (p.catalog_type === "product" ? "produits.html" : p.catalog_type === "tool" ? "outils.html" : "/#catalogue") + '">Retour au catalogue</a></div></article><section id="productReviewsPanel" class="product-reviews-panel" data-product-id="' + esc(p.id) + '"><p class="review-loading">Chargement des avis…</p></section>';
     $("seoAddToCartBtn")?.addEventListener("click", () => addToCart(p.id));
     $("seoOpenCartBtn")?.addEventListener("click", renderCartModal);
+    $("seoShareProductBtn")?.addEventListener("click", () => shareProduct(p.id));
     const offer = { "@type":"Offer", "priceCurrency":"XOF", "price":getEffectivePrice(p), "availability":p.availability_status === "out_of_stock" ? "https://schema.org/OutOfStock" : "https://schema.org/InStock", "url":canonical };
     const schema = { "@context":"https://schema.org", "@type":"Product", "name":p.name, "description":plainDesc, "sku":publicProductRef(p), "offers":offer };
     if (images.length) schema.image = images;
@@ -1526,6 +1535,74 @@
     </svg>`;
   }
 
+
+  function getProductShareData(id) {
+    const product = getP(id);
+    if (!product || product.active !== true) return null;
+    const url = new URL("fiche-produit.html", window.location.origin);
+    url.searchParams.set("ref", String(product.id));
+    const title = String(product.name || "Produit SAMA-PACK").trim();
+    const text = "Découvrez " + title + " chez SAMA-PACK à Dakar.";
+    return { product, title: title + " | SAMA-PACK", text, url: url.href };
+  }
+
+  async function copyProductLink(id) {
+    const data = getProductShareData(id);
+    if (!data) return toast("Ce produit n’est plus disponible au partage.", true);
+    try {
+      if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(data.url);
+      else {
+        const field = document.createElement("textarea");
+        field.value = data.url;
+        field.setAttribute("readonly", "");
+        field.style.position = "fixed";
+        field.style.opacity = "0";
+        document.body.appendChild(field);
+        field.select();
+        const copied = document.execCommand("copy");
+        field.remove();
+        if (!copied) throw new Error("Copie non prise en charge par ce navigateur.");
+      }
+      toast("Lien du produit copié. Tu peux maintenant le partager.");
+    } catch (error) {
+      console.warn("Copie du lien produit impossible.", error);
+      toast("Impossible de copier le lien. Réessaie depuis ton navigateur.", true);
+    }
+  }
+
+  async function shareProduct(id) {
+    const data = getProductShareData(id);
+    if (!data) return toast("Ce produit n’est plus disponible au partage.", true);
+    if (typeof navigator.share === "function") {
+      try {
+        await navigator.share({ title: data.title, text: data.text, url: data.url });
+        return;
+      } catch (error) {
+        if (error?.name === "AbortError") return;
+        console.warn("Partage natif indisponible, ouverture des options de partage.", error);
+      }
+    }
+    const encodedUrl = encodeURIComponent(data.url);
+    const encodedText = encodeURIComponent(data.text);
+    const fullMessage = encodeURIComponent(data.text + " " + data.url);
+    const options = [
+      { label: "WhatsApp", icon: "◉", href: "https://wa.me/?text=" + fullMessage },
+      { label: "Facebook", icon: "f", href: "https://www.facebook.com/sharer/sharer.php?u=" + encodedUrl },
+      { label: "Telegram", icon: "➤", href: "https://t.me/share/url?url=" + encodedUrl + "&text=" + encodedText },
+      { label: "X", icon: "𝕏", href: "https://twitter.com/intent/tweet?text=" + encodedText + "&url=" + encodedUrl },
+      { label: "LinkedIn", icon: "in", href: "https://www.linkedin.com/sharing/share-offsite/?url=" + encodedUrl }
+    ];
+    showModal(
+      '<div class="modal-head"><div><div class="eyebrow">FAIRE CONNAÎTRE CE PRODUIT</div><h2>Partager ce produit</h2></div><button class="close" type="button" onclick="closeModal()" aria-label="Fermer">✕</button></div>' +
+      '<p class="product-share-intro">' + esc(data.product.name) + '</p>' +
+      '<div class="product-share-options">' + options.map(option =>
+        '<a class="product-share-option" href="' + esc(option.href) + '" target="_blank" rel="noopener noreferrer"><span class="product-share-network-icon" aria-hidden="true">' + option.icon + '</span><span>' + esc(option.label) + '</span></a>'
+      ).join("") + '</div>' +
+      '<div class="product-share-copy"><span class="product-share-link" title="' + esc(data.url) + '">' + esc(data.url) + '</span><button class="btn primary" type="button" data-product-id="' + esc(data.product.id) + '" onclick="copyProductLink(this.dataset.productId)">Copier le lien</button></div>' +
+      '<p class="small-note">Tu peux aussi coller ce lien dans Instagram, SMS ou toute autre application.</p>'
+    );
+  }
+
   function productCard(p) {
     const images = getProductImages(p);
     const path = images[0] || "";
@@ -1536,7 +1613,7 @@
     const out = p.availability_status === "out_of_stock";
     const canAdd = canSellProduct(p);
     const description = p.catalog_type === "product" && p.desc ? `<p class="product-desc">${esc(p.desc)}</p>` : "";
-    return `<article class="product-card"><div class="pack-visual ${hasImage ? "has-photo" : ""}">${photo}${fallback}${hasPromotion(p) ? `<span class="product-promo-ribbon">PROMOTION</span>` : ""}</div><div class="product-body">${availabilityBadgeHtml(p)}<div class="product-cat">${esc(p.cat)}</div><a class="product-name-link" href="fiche-produit.html?ref=${encodeURIComponent(p.id)}">${esc(p.name)}</a>${description}${renderProductRatingSummary(p.id)}<div class="price-row">${priceDisplayHtml(p, { showPromotionBadge: false })}</div><div class="product-actions"><button class="btn ghost" onclick="openProduct('${esc(p.id)}')">Détails</button><button class="btn primary" onclick="addToCart('${esc(p.id)}')" ${canAdd ? "" : "disabled"}>${out ? "Rupture" : canAdd ? "Ajouter" : "Prix à confirmer"}</button></div></div></article>`;
+    return `<article class="product-card"><div class="pack-visual ${hasImage ? "has-photo" : ""}">${photo}${fallback}<button class="product-share-button" type="button" data-product-id="${esc(p.id)}" onclick="shareProduct(this.dataset.productId)" aria-label="Partager ${esc(p.name)}" title="Partager ce produit"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 16V3m0 0L7.5 7.5M12 3l4.5 4.5M5 13.5v5A2.5 2.5 0 0 0 7.5 21h9a2.5 2.5 0 0 0 2.5-2.5v-5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>${hasPromotion(p) ? `<span class="product-promo-ribbon">PROMOTION</span>` : ""}</div><div class="product-body">${availabilityBadgeHtml(p)}<div class="product-cat">${esc(p.cat)}</div><a class="product-name-link" href="fiche-produit.html?ref=${encodeURIComponent(p.id)}">${esc(p.name)}</a>${description}${renderProductRatingSummary(p.id)}<div class="price-row">${priceDisplayHtml(p, { showPromotionBadge: false })}</div><div class="product-actions"><button class="btn ghost" onclick="openProduct('${esc(p.id)}')">Détails</button><button class="btn primary" onclick="addToCart('${esc(p.id)}')" ${canAdd ? "" : "disabled"}>${out ? "Rupture" : canAdd ? "Ajouter" : "Prix à confirmer"}</button></div></div></article>`;
   }
 
   function openProduct(id) {
@@ -5016,7 +5093,7 @@
 
   // Functions called by inline storefront/admin controls.
   Object.assign(window,{
-    updateContactMessageStatus,openProduct,addToCart,closeModal,changeQty,checkoutModal,retryOrderPayment,resendPaymentConfirmation,
+    updateContactMessageStatus,openProduct,addToCart,shareProduct,copyProductLink,closeModal,changeQty,checkoutModal,retryOrderPayment,resendPaymentConfirmation,
     showAccountHome,reorderOrder,openBudgetPackBuilder,suggestBudgetPack,changeBudgetBuilderQty,addBudgetPackToCart,signOut,
     renderAuthForm,resetPassword,enableBrowserNotifications,loadAndShowNotifications,markNotificationRead,showAdminView,
     editPack,cancelPackEdit,togglePack,setOrderStatus,showOrder,setQuoteStatus,goToProductPage,movePromo,goToPromo,
