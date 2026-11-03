@@ -5117,6 +5117,9 @@ body.admin-management-open .info-floating-header {
 
 
 /* Réseaux sociaux configurables — section Suivez-nous */
+.footer:has(.social-follow-section) { padding-top: 0; }
+.footer .social-follow-section { margin-top: 0; }
+.footer .social-follow-link { display: inline-flex; margin-top: 0; color: inherit; font-size: inherit; }
 .social-follow-section {
   width: 100%;
   padding: 30px 0 26px;
