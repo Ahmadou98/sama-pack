@@ -5053,8 +5053,6 @@ body.admin-management-open .info-floating-header {
 
 
 /* Prix de référence justifié — affichage public et formulaire d’administration */
-.reference-price-wrap { display:flex; align-items:baseline; flex-wrap:wrap; gap:5px; }
-.reference-price-label { color:var(--muted); font-size:10px; font-weight:750; line-height:1.25; }
 .reference-price-admin-fields { display:grid; grid-template-columns:1fr 1fr; gap:10px; padding:13px; border:1px dashed #cbd5e1; border-radius:13px; background:#f8fafc; }
 .reference-price-admin-heading, .reference-price-admin-fields .small-note, .reference-price-admin-fields .reference-price-note-field { grid-column:1/-1; }
 .reference-price-admin-heading { color:var(--ink); font-size:12px; font-weight:900; }
