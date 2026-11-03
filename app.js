@@ -186,7 +186,7 @@
     const raw = String(formData.get("reference_price") || "").trim();
     const basis = String(formData.get("reference_price_basis") || "").trim();
     const note = String(formData.get("reference_price_note") || "").trim();
-    if (!raw) return { reference_price: null, reference_price_basis: null, reference_price_note: null };
+    if (!raw) return { reference_price: null, reference_price_basis: null, referencePriceNote: null };
     const referencePrice = Number(raw);
     if (!Number.isFinite(referencePrice) || referencePrice <= 0 || !Number.isInteger(referencePrice)) {
       return { error: "Le prix de référence doit être un montant positif en FCFA." };
@@ -203,8 +203,22 @@
     return {
       reference_price: referencePrice,
       reference_price_basis: basis,
-      reference_price_note: note
+      referencePriceNote: note
     };
+  }
+
+  async function loadProductReferencePriceNotes() {
+    const { data, error } = await client.rpc("sama_get_product_reference_price_notes");
+    if (error) return { data: null, error };
+    return { data: data && typeof data === "object" && !Array.isArray(data) ? data : {}, error: null };
+  }
+
+  async function saveProductReferencePriceNote(productId, note) {
+    const { error } = await client.rpc("sama_set_product_reference_price_note", {
+      p_product_id: String(productId),
+      p_note: String(note || "").trim() || null
+    });
+    return error || null;
   }
 
   function referencePriceAdminFields(product = {}) {
@@ -779,7 +793,7 @@
     const host = $("adminContent");
     if (!host || !client || !isAdmin()) return;
     const { data: rows, error } = await client.from("products")
-      .select("id,public_ref,availability_status,name,catalog_type,sale_unit,category,price,reference_price,reference_price_basis,reference_price_note,description,items,image_path,image_paths,youtube_howto_url,active,promo_active,promo_price,promo_label,promo_started_at,promo_end_at")
+      .select("id,public_ref,availability_status,name,catalog_type,sale_unit,category,price,reference_price,reference_price_basis,description,items,image_path,image_paths,youtube_howto_url,active,promo_active,promo_price,promo_label,promo_started_at,promo_end_at")
       .in("catalog_type", ["product", "tool"])
       .order("name", { ascending: true });
     if (error) {
@@ -795,6 +809,8 @@
           '</tbody></table></div>' : '<div class="empty">Aucun produit ou outil publié.</div>') + '</div>';
       return;
     }
+    const referenceNotesResult = await loadProductReferencePriceNotes();
+    if (referenceNotesResult.error) throw referenceNotesResult.error;
     const [costResult, linkResult, supplierResult] = await Promise.all([
       client.from("product_costs").select("product_id,supplier_price,supplier_unit_price,margin_percent"),
       client.from("product_supplier_links").select("product_id,supplier_id,supplier_ref,carton_price,units_per_carton,source_url,research_note"),
@@ -812,7 +828,8 @@
     const linksById = new Map((linkResult.data || []).map(row => [row.product_id, row]));
     const catalogRows = (rows || []).map(row => {
       const link = linksById.get(row.id) || {};
-      return { ...row, ...(costsById.get(row.id) || { supplier_price: null, margin_percent: null }),
+      return { ...row, reference_price_note: referenceNotesResult.data[row.id] || "",
+        ...(costsById.get(row.id) || { supplier_price: null, margin_percent: null }),
         ...link, supplier_name: supplierById.get(link.supplier_id)?.name || "" };
     });
     const editing = editingCatalogItemId ? catalogRows.find(row => row.id === editingCatalogItemId) : null;
@@ -882,7 +899,8 @@
         catalog_type: data.get("catalog_type") === "tool" ? "tool" : "product",
         category: String(data.get("category") || "").trim() || (data.get("catalog_type") === "tool" ? "Outils de nettoyage" : "Produits de nettoyage"),
         price: pricing.salePrice,
-        ...referencePricing,
+        reference_price: referencePricing.reference_price,
+        reference_price_basis: referencePricing.reference_price_basis,
         sale_unit: pricing.saleUnit,
         description: String(data.get("description") || "").trim(),
         youtube_howto_url: null,
@@ -914,6 +932,8 @@
           result = await client.from("products").insert({ ...payload, id: productId, promo_active: false, promo_price: null, promo_label: "Offre spéciale" });
         }
         if (result.error) return toast(errorMessage(result.error), true);
+        const referenceNoteError = await saveProductReferencePriceNote(productId, referencePricing.referencePriceNote);
+        if (referenceNoteError) return toast("Article enregistré, mais la justification interne du prix de référence n’a pas pu être enregistrée : " + errorMessage(referenceNoteError), true);
         const pricingError = await saveProductPricing(productId, pricing);
         if (pricingError) return toast("Article enregistré, mais le coût fournisseur ou la marge n’a pas pu être enregistré : " + errorMessage(pricingError), true);
         const supplierError = await saveProductSupplierLink(productId, data, editing || {});
@@ -1024,7 +1044,7 @@
   async function loadPublicData() {
     if (!client) return;
     const { data: rows, error } = await client.from("products")
-      .select("id,public_ref,availability_status,name,catalog_type,sale_unit,category,price,reference_price,reference_price_basis,reference_price_note,description,items,image_path,image_paths,youtube_howto_url,active,promo_active,promo_price,promo_label,promo_started_at,promo_end_at")
+      .select("id,public_ref,availability_status,name,catalog_type,sale_unit,category,price,reference_price,reference_price_basis,description,items,image_path,image_paths,youtube_howto_url,active,promo_active,promo_price,promo_label,promo_started_at,promo_end_at")
       .order("id", { ascending: true });
     if (!error && Array.isArray(rows)) {
       products = rows.map(normalizeProduct);
@@ -4224,6 +4244,8 @@
           rows.map(p => '<tr><td>' + esc(p.public_ref || p.id) + '</td><td><strong>' + esc(p.name) + '</strong><br><span class="small-note">' + esc(p.category || "") + '</span></td><td>' + money(p.price) + '</td><td>' + availabilityBadgeHtml(p) + '</td></tr>').join("") +
           '</tbody></table></div>' : '<div class="empty">Aucun pack publié.</div>') + '</div>';
     }
+    const referenceNotesResult = await loadProductReferencePriceNotes();
+    if (referenceNotesResult.error) throw referenceNotesResult.error;
     const [costResult, linkResult, supplierResult] = await Promise.all([
       client.from("product_costs").select("product_id,supplier_price,supplier_unit_price,margin_percent"),
       client.from("product_supplier_links").select("product_id,supplier_id,supplier_ref,carton_price,units_per_carton,source_url,research_note"),
@@ -4238,7 +4260,8 @@
     const linksById = new Map((linkResult.data || []).map(row => [row.product_id, row]));
     const rows = baseRows.map(row => {
       const link = linksById.get(row.id) || {};
-      return { ...row, ...(costsById.get(row.id) || { supplier_price: null, margin_percent: null }),
+      return { ...row, reference_price_note: referenceNotesResult.data[row.id] || "",
+        ...(costsById.get(row.id) || { supplier_price: null, margin_percent: null }),
         ...link, supplier_name: supplierById.get(link.supplier_id)?.name || "" };
     });
     products = rows.map(normalizeProduct); updateCategoryFilter(); renderProducts(); renderTop(); renderPromoCarousel();
@@ -4569,7 +4592,7 @@
     if (view === "packs" || view === "products") {
       const form = $("packForm"); if (form) { bindProductPriceCalculator(form); form.onsubmit = async e => {
         e.preventDefault(); if (!isAdmin()) return toast("Accès refusé.", true); setBusy(form,true,"Enregistrement…");
-        const fd = new FormData(form); const pricing = readProductPricing(fd); if (pricing.error) { setBusy(form,false); return toast(pricing.error,true); } const referencePricing = readReferencePrice(fd, pricing.salePrice); if (referencePricing.error) { setBusy(form,false); return toast(referencePricing.error,true); } const uploadFiles = fd.getAll("image_files"); const promoPriceInput = String(fd.get("promo_price")||"").trim(); const promoEndInput = String(fd.get("promo_end_at")||"").trim(); const payload = { name:String(fd.get("name")||"").trim(),category:String(fd.get("category")||"").trim(),price:pricing.salePrice,...referencePricing,description:String(fd.get("description")||"").trim(),items:String(fd.get("items")||"").split(/\r?\n/).map(x=>x.trim()).filter(Boolean),image_path:String(fd.get("image_path")||"").trim(),active:fd.get("active")==="on",availability_status:fd.get("availability_status")==="available"?"available":"out_of_stock",promo_active:fd.get("promo_active")==="on",promo_price:promoPriceInput === "" ? null : Number(promoPriceInput),promo_label:String(fd.get("promo_label")||"Vente flash").trim() || "Vente flash",promo_end_at:promoEndInput ? new Date(promoEndInput).toISOString() : null };
+        const fd = new FormData(form); const pricing = readProductPricing(fd); if (pricing.error) { setBusy(form,false); return toast(pricing.error,true); } const referencePricing = readReferencePrice(fd, pricing.salePrice); if (referencePricing.error) { setBusy(form,false); return toast(referencePricing.error,true); } const uploadFiles = fd.getAll("image_files"); const promoPriceInput = String(fd.get("promo_price")||"").trim(); const promoEndInput = String(fd.get("promo_end_at")||"").trim(); const payload = { name:String(fd.get("name")||"").trim(),category:String(fd.get("category")||"").trim(),price:pricing.salePrice,reference_price:referencePricing.reference_price,reference_price_basis:referencePricing.reference_price_basis,description:String(fd.get("description")||"").trim(),items:String(fd.get("items")||"").split(/\r?\n/).map(x=>x.trim()).filter(Boolean),image_path:String(fd.get("image_path")||"").trim(),active:fd.get("active")==="on",availability_status:fd.get("availability_status")==="available"?"available":"out_of_stock",promo_active:fd.get("promo_active")==="on",promo_price:promoPriceInput === "" ? null : Number(promoPriceInput),promo_label:String(fd.get("promo_label")||"Vente flash").trim() || "Vente flash",promo_end_at:promoEndInput ? new Date(promoEndInput).toISOString() : null };
         const youtubeHowToUrl = normalizeYouTubeHowToUrl(fd.get("youtube_howto_url"));
         if (youtubeHowToUrl === null) { setBusy(form,false); return toast("Saisis un lien vidéo YouTube valide (youtu.be ou youtube.com).",true); }
         payload.youtube_howto_url = youtubeHowToUrl || null;
@@ -4588,6 +4611,8 @@
         if (editingProductId) result = await client.from("products").update(payload).eq("id",editingProductId);
         else result = await client.from("products").insert({id:productId,...payload});
         if (result.error) { setBusy(form,false); return toast(errorMessage(result.error),true); }
+        const referenceNoteError = await saveProductReferencePriceNote(productId, referencePricing.referencePriceNote);
+        if (referenceNoteError) { setBusy(form,false); return toast("Pack enregistré, mais la justification interne du prix de référence n’a pas pu être enregistrée : " + errorMessage(referenceNoteError),true); }
         const pricingError = await saveProductPricing(productId, pricing);
         if (pricingError) { setBusy(form,false); return toast("Pack enregistré, mais le coût fournisseur ou la marge n’a pas pu être enregistré : " + errorMessage(pricingError),true); }
         const supplierError = await saveProductSupplierLink(productId, fd);
