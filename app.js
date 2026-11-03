@@ -20,6 +20,14 @@
   let promoCountdownTimer = null;
   const FALLBACK_PRODUCTS = [];
   const iconById = {SP01:"🧼",SP02:"👶",SP03:"🧽",SP04:"🧼",SP05:"💼",SP06:"🍳",SP07:"🌸",SP08:"🏡",SP09:"🎉",SP10:"🏪"};
+  const SOCIAL_NETWORKS = [
+    { key: "facebook", label: "Facebook", icon: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13.5 21v-8h2.7l.4-3.1h-3.1V8c0-.9.3-1.5 1.6-1.5h1.7V3.7c-.3 0-1.4-.1-2.6-.1-2.6 0-4.4 1.6-4.4 4.6v1.7H7v3.1h2.8v8z"/></svg>' },
+    { key: "instagram", label: "Instagram", icon: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.2" y="3.2" width="17.6" height="17.6" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.7" cy="6.5" r="1" class="social-icon-dot"/></svg>' },
+    { key: "tiktok", label: "TikTok", icon: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14.2 3h3.1c.2 2 1.3 3.7 3.2 4.5v3.2a9 9 0 0 1-3.2-1.1v6.1a6.2 6.2 0 1 1-6.2-6.2c.4 0 .8 0 1.2.1v3.4a2.9 2.9 0 1 0 1.9 2.7z"/></svg>' },
+    { key: "linkedin", label: "LinkedIn", icon: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5.2 8.7H2.1V21h3.1zM3.7 3a1.8 1.8 0 1 0 0 3.6 1.8 1.8 0 0 0 0-3.6M21.9 13.9c0-3.7-2-5.4-4.7-5.4a4.1 4.1 0 0 0-3.7 2v-1.8h-3V21h3.1v-6.1c0-1.6.3-3.2 2.3-3.2s2 1.9 2 3.3V21h3.1z"/></svg>' },
+    { key: "youtube", label: "YouTube", icon: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M23 7.1a3 3 0 0 0-2.1-2.2C19 4.4 12 4.4 12 4.4s-7 0-8.9.5A3 3 0 0 0 1 7.1 31 31 0 0 0 .5 12a31 31 0 0 0 .5 4.9 3 3 0 0 0 2.1 2.2c1.9.5 8.9.5 8.9.5s7 0 8.9-.5a3 3 0 0 0 2.1-2.2 31 31 0 0 0 .5-4.9 31 31 0 0 0-.5-4.9M9.6 15.7V8.3l6.3 3.7z"/></svg>' },
+    { key: "x", label: "X", icon: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18.9 2H22l-6.8 7.8L23.2 22h-6.3L12 14.7 5.6 22H2.5l7.3-8.4L1.8 2h6.5l4.5 6.7zm-1.1 18h1.7L7.3 3.9H5.5z"/></svg>' }
+  ];
   const $ = (id) => document.getElementById(id);
 
   let client = null;
@@ -83,7 +91,7 @@
   let currentSalesReferralCode = "";
   let cachedExpenses = [];
   let cachedSuppliers = [];
-  let appSettings = { company: "SAMA-PACK", whatsapp: "", contactEmail: "", deliveryFee: 1500, currency: "FCFA", homepageBackgroundUrl: "", maintenanceMode: false, maintenanceMessage: "Notre site est temporairement indisponible pour une opération de maintenance. Nous serons de retour très bientôt." };
+  let appSettings = { company: "SAMA-PACK", whatsapp: "", contactEmail: "", deliveryFee: 1500, currency: "FCFA", homepageBackgroundUrl: "", socialLinks: {}, maintenanceMode: false, maintenanceMessage: "Notre site est temporairement indisponible pour une opération de maintenance. Nous serons de retour très bientôt." };
   let cart = loadCart();
   let budgetBuilderState = { budget: 5000, category: "all", items: [] };
 
@@ -1102,12 +1110,12 @@
       { data: publicContactEmail, error: contactEmailError },
       { data: siteControl, error: siteControlError }
     ] = await Promise.all([
-      client.from("settings").select("id,company,whatsapp,delivery_fee,currency,homepage_background_url").eq("id", true).maybeSingle(),
+      client.from("settings").select("id,company,whatsapp,delivery_fee,currency,homepage_background_url,social_links").eq("id", true).maybeSingle(),
       client.rpc("sama_public_contact_email"),
       client.from("site_control").select("id,maintenance_mode,maintenance_message").eq("id", true).maybeSingle()
     ]);
     if (!settingError && setting) {
-      appSettings = { ...appSettings, company: setting.company || "SAMA-PACK", whatsapp: String(setting.whatsapp || ""), contactEmail: String(publicContactEmail || "").trim(), deliveryFee: Number(setting.delivery_fee || 0), currency: setting.currency || "FCFA", homepageBackgroundUrl: String(setting.homepage_background_url || "") };
+      appSettings = { ...appSettings, company: setting.company || "SAMA-PACK", whatsapp: String(setting.whatsapp || ""), contactEmail: String(publicContactEmail || "").trim(), deliveryFee: Number(setting.delivery_fee || 0), currency: setting.currency || "FCFA", homepageBackgroundUrl: String(setting.homepage_background_url || ""), socialLinks: setting.social_links && typeof setting.social_links === "object" && !Array.isArray(setting.social_links) ? setting.social_links : {} };
       applyHomepageBackground();
     } else if (settingError) console.warn("Paramètres distants indisponibles.", settingError);
     if (!siteControlError && siteControl) {
@@ -1115,6 +1123,7 @@
       appSettings.maintenanceMessage = String(siteControl.maintenance_message || "").trim() || "Notre site est temporairement indisponible pour une opération de maintenance. Nous serons de retour très bientôt.";
     } else if (siteControlError) console.warn("État de maintenance indisponible; le site reste accessible.", siteControlError);
     if (contactEmailError) console.warn("Adresse e-mail publique indisponible.", contactEmailError);
+    renderSocialFollowSection();
     await loadProductReviewStats();
     const count = $("packCount"); if (count) count.textContent = String(products.filter(p => p.active && p.catalog_type === "pack").length);
     updateContact(); updateCategoryFilter(); renderTop(); renderProducts(); renderPromoCarousel(); updateCartCount();
@@ -1245,6 +1254,48 @@
     filter.innerHTML = '<option value="all">Toutes les catégories</option>' + categories.map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join("");
     filter.value = categories.includes(old) ? old : "all";
   }
+
+  function normalizeSocialUrl(value) {
+    const raw = String(value || "").trim();
+    if (!raw) return "";
+    try {
+      const url = new URL(raw);
+      if (url.protocol !== "https:" || !url.hostname || url.username || url.password) return "";
+      return url.toString();
+    } catch {
+      return "";
+    }
+  }
+
+  function renderSocialFollowSection() {
+    const footer = document.querySelector("footer.footer");
+    const existing = document.getElementById("socialFollowSection");
+    if (!footer) { existing?.remove(); return; }
+    const links = appSettings.socialLinks && typeof appSettings.socialLinks === "object"
+      ? appSettings.socialLinks : {};
+    const active = SOCIAL_NETWORKS.map(network => {
+      const config = links[network.key] || {};
+      const url = normalizeSocialUrl(config.url);
+      return config.enabled === true && url ? { ...network, url } : null;
+    }).filter(Boolean);
+
+    if (!active.length) { existing?.remove(); return; }
+    const section = existing || document.createElement("section");
+    section.id = "socialFollowSection";
+    section.className = "social-follow-section";
+    section.setAttribute("aria-label", "Suivez SAMA-PACK sur les réseaux sociaux");
+    section.innerHTML = '<div class="wrap social-follow-inner">' +
+      '<div class="social-follow-copy"><span class="eyebrow">RESTONS CONNECTÉS</span><h2>Suivez-nous</h2><p>Retrouvez SAMA-PACK sur nos réseaux sociaux.</p></div>' +
+      '<nav class="social-follow-links" aria-label="Réseaux sociaux">' +
+      active.map(network => '<a class="social-follow-link social-' + esc(network.key) + '" href="' + esc(network.url) + '" target="_blank" rel="noopener noreferrer" aria-label="Suivre SAMA-PACK sur ' + esc(network.label) + '" title="' + esc(network.label) + '">' +
+        '<span class="social-follow-icon">' + network.icon + '</span><span class="social-follow-label">' + esc(network.label) + '</span></a>').join("") +
+      '</nav></div>';
+    if (!existing) {
+      const footerGrid = footer.querySelector(".footer-grid");
+      footer.insertBefore(section, footerGrid || footer.firstChild);
+    }
+  }
+
   function updateContact() {
     const n = waNumber();
     const email = String(appSettings.contactEmail || "").trim();
@@ -4676,7 +4727,7 @@
       { data: notificationSettings, error: notificationError },
       { data: siteControl, error: siteControlError }
     ] = await Promise.all([
-      client.from("settings").select("id,company,whatsapp,delivery_fee,currency,homepage_background_url,payment_fee_percent").eq("id",true).maybeSingle(),
+      client.from("settings").select("id,company,whatsapp,delivery_fee,currency,homepage_background_url,payment_fee_percent,social_links").eq("id",true).maybeSingle(),
       client.from("notification_settings").select("id,order_notification_email").eq("id",true).maybeSingle(),
       client.from("site_control").select("id,maintenance_mode,maintenance_message").eq("id",true).maybeSingle()
     ]);
@@ -4687,6 +4738,11 @@
     const control = siteControl || {};
     const notificationEmail = notificationSettings?.order_notification_email || "";
     const backgroundUrl = String(s.homepage_background_url || "");
+    const socialLinks = s.social_links && typeof s.social_links === "object" && !Array.isArray(s.social_links) ? s.social_links : {};
+    const socialSettingsHtml = SOCIAL_NETWORKS.map(network => {
+      const config = socialLinks[network.key] || {};
+      return '<div class="social-setting-row"><label class="check-label"><input type="checkbox" name="social_' + network.key + '_enabled" ' + (config.enabled === true ? "checked" : "") + '> Afficher ' + esc(network.label) + '</label><label class="social-setting-url">Lien ' + esc(network.label) + '<input class="input" name="social_' + network.key + '_url" type="url" inputmode="url" placeholder="https://..." value="' + esc(config.url || "") + '"></label></div>';
+    }).join("");
     return `<div class="panel"><h3>Paramètres de Sama-Pack</h3><form id="settingsForm" class="admin-form">
       <label>Nom de l’entreprise<input class="input" name="company" required value="${esc(s.company||"SAMA-PACK")}"></label>
       <label>WhatsApp professionnel (ex. 22177…)<input class="input" name="whatsapp" value="${esc(s.whatsapp||"")}"></label>
@@ -4698,6 +4754,7 @@
       ${backgroundUrl ? `<div class="homepage-bg-preview-wrap full"><span class="small-note">Image actuellement enregistrée</span><img class="homepage-bg-preview" src="${esc(backgroundUrl)}" alt="Aperçu du fond de l’accueil"></div>` : '<p class="small-note full">Aucune image personnalisée : le fond vert clair par défaut sera utilisé.</p>'}
       <p class="small-note full">Si tu sélectionnes un fichier, il remplace l’URL ci-dessus. Pour revenir au fond par défaut, vide l’URL et enregistre sans choisir de fichier.</p>
       <label class="full">E-mail de contact officiel et de réception des commandes/devis<input class="input" name="order_notification_email" type="email" placeholder="Adresse e-mail professionnelle" value="${esc(notificationEmail)}"></label>
+      <div class="settings-social-card full"><div class="eyebrow">PRÉSENCE EN LIGNE</div><h3>Suivez-nous</h3><p class="small-note">Configure les liens de tes réseaux sociaux et active uniquement ceux sur lesquels SAMA-PACK est présent. Les réseaux désactivés ne seront pas affichés sur le site.</p><div class="social-settings-grid">${socialSettingsHtml}</div></div>
       <div class="settings-maintenance-card full">
          <div class="eyebrow">DISPONIBILITÉ DU SITE</div>
          <h3>Mode maintenance</h3>
@@ -4892,6 +4949,17 @@
         setBusy(form, true, "Enregistrement…");
         const f = new FormData(form);
         const file = f.get("homepage_background_file");
+        const socialLinks = {};
+        for (const network of SOCIAL_NETWORKS) {
+          const enabled = f.get("social_" + network.key + "_enabled") === "on";
+          const rawUrl = String(f.get("social_" + network.key + "_url") || "").trim();
+          const url = normalizeSocialUrl(rawUrl);
+          if (enabled && !url) {
+            setBusy(form, false);
+            return toast("Ajoute un lien HTTPS valide pour " + network.label + " ou désactive son affichage.", true);
+          }
+          socialLinks[network.key] = { enabled, url };
+        }
         let homepageBackgroundUrl = String(f.get("homepage_background_url") || "").trim();
         if (file instanceof File && file.size > 0) {
           const allowed = ["image/jpeg", "image/png", "image/webp"];
@@ -4915,7 +4983,8 @@
           delivery_fee:Number(f.get("delivery_fee")),
           payment_fee_percent:Math.max(0,Math.min(100,Number(f.get("payment_fee_percent")||0))),
           currency:String(f.get("currency")||"FCFA").trim(),
-          homepage_background_url: homepageBackgroundUrl
+          homepage_background_url: homepageBackgroundUrl,
+          social_links: socialLinks
         }).eq("id",true);
         if (error) { setBusy(form,false); return toast(errorMessage(error),true); }
         const { error: siteControlError } = await client.from("site_control").update({
@@ -4927,7 +4996,7 @@
         const emailResult = await client.from("notification_settings").update({order_notification_email:String(f.get("order_notification_email")||"").trim()}).eq("id",true);
         setBusy(form,false);
         if (emailResult.error) { await loadPublicData(); return toast("Paramètres boutique enregistrés, mais l’e-mail n’a pas pu être enregistré : "+errorMessage(emailResult.error),true); }
-        toast("Paramètres enregistrés. Le WhatsApp et l’e-mail de contact sont mis à jour sur la boutique.");
+        toast("Paramètres enregistrés. Les coordonnées et réseaux sociaux sont mis à jour sur la boutique.");
         await loadPublicData();
         applySiteMaintenance();
         await showAdminView("settings");
