@@ -299,6 +299,11 @@ async function serveSitemap(request, env) {
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
+    // URL canonique : www.sama-pack.store redirige définitivement vers sama-pack.store.
+    if (url.hostname.toLowerCase() === "www.sama-pack.store") {
+      url.hostname = "sama-pack.store";
+      return Response.redirect(url.toString(), 301);
+    }
     if (request.method !== "GET" && request.method !== "HEAD") return env.ASSETS.fetch(request);
     if (url.pathname === "/sitemap.xml") {
       try {
