@@ -3,6 +3,37 @@
   "use strict";
   const header = document.querySelector(".info-floating-header");
   if (!header || header.dataset.sharedHeaderReady === "true") return;
+
+  // Après un vrai rechargement manuel, revenir à l’accueil pour remettre les ventes flash en évidence.
+  // Les retours de paiement, les actions demandées par lien et les autres espaces restent intacts.
+  try {
+    const navigationEntry = window.performance?.getEntriesByType?.("navigation")?.[0];
+    const legacyNavigationType = window.performance?.navigation?.type;
+    const isReload = navigationEntry?.type === "reload" || (!navigationEntry && legacyNavigationType === 1);
+    const pathname = window.location.pathname.replace(/\/+$/, "") || "/";
+    const storefrontPaths = new Set([
+      "/", "/index.html", "/produits.html", "/outils.html", "/fiche-produit.html",
+      "/comment-ca-marche.html", "/conditions-vente.html", "/confidentialite.html",
+      "/contact.html", "/livraison-retours.html"
+    ]);
+    if (isReload && storefrontPaths.has(pathname)) {
+      const params = new URLSearchParams(window.location.search || "");
+      const returnParams = [
+        "spAction", "connexion", "token",
+        "paydunya_order_id", "paydunya_cancelled_order_id",
+        "paytech_order_id", "paytech_cancelled_order_id"
+      ];
+      const isSpecialReturn = returnParams.some(key => params.has(key));
+      const isHome = pathname === "/" || pathname === "/index.html";
+      if (!isSpecialReturn && (!isHome || window.location.hash)) {
+        window.location.replace("/");
+        return;
+      }
+    }
+  } catch (error) {
+    console.warn("Réinitialisation de la page d’accueil ignorée.", error);
+  }
+
   header.dataset.sharedHeaderReady = "true";
 
   const shell = header.querySelector(".mobile-menu-shell");
