@@ -1498,10 +1498,10 @@
     let ref = "";
     try { ref = new URLSearchParams(window.location.search).get("ref") || ""; } catch { ref = ""; }
     const p = products.find(item => item.active && (item.id === ref || item.public_ref === ref));
-    const canonical = p ? "https://sama-pack.store/fiche-produit.html?ref=" + encodeURIComponent(p.id) : "https://sama-pack.store/fiche-produit.html";
-    const canonicalNode = document.querySelector('link[rel="canonical"]');
-    if (canonicalNode) canonicalNode.setAttribute("href", canonical);
+    const canonical = p ? "https://sama-pack.store/fiche-produit.html?ref=" + encodeURIComponent(p.id) : "";
     if (!p) {
+      // Une référence absente ou non publiée ne doit pas conserver de canonique générique.
+      document.querySelector('link[rel="canonical"]')?.remove();
       document.title = catalogLoadFailed ? "Catalogue indisponible | SAMA-PACK" : "Article indisponible | SAMA-PACK";
       updateSEOProductMeta('meta[name="description"]', "Consultez les produits de nettoyage et les packs disponibles chez SAMA-PACK à Dakar.");
       updateSEOProductMeta('meta[name="robots"]', "noindex,follow");
@@ -1513,6 +1513,14 @@
       const jsonld = $("productJsonLd"); if (jsonld) jsonld.textContent = "{}";
       return;
     }
+    // Une fiche valide reçoit une seule canonique, propre à son identifiant stable.
+    let canonicalNode = document.querySelector('link[rel="canonical"]');
+    if (!canonicalNode) {
+      canonicalNode = document.createElement("link");
+      canonicalNode.setAttribute("rel", "canonical");
+      document.head.appendChild(canonicalNode);
+    }
+    canonicalNode.setAttribute("href", canonical);
     const title = p.name + " | SAMA-PACK à Dakar";
     const plainDesc = String(p.desc || p.description || ("Découvrez " + p.name + " chez SAMA-PACK à Dakar.")).replace(/\s+/g, " ").trim();
     const description = plainDesc.length > 155 ? plainDesc.slice(0,152).replace(/\s+\S*$/,"") + "…" : plainDesc;
