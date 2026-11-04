@@ -1598,11 +1598,17 @@
     const pages = Math.max(1, Math.ceil(arr.length / PRODUCTS_PER_PAGE));
     currentProductPage = Math.min(Math.max(1, currentProductPage), pages);
     const start = (currentProductPage - 1) * PRODUCTS_PER_PAGE;
+    const emptyMessage = currentType === "product"
+      ? "Aucun produit ne correspond à votre recherche."
+      : currentType === "tool"
+        ? "Aucun outil ne correspond à votre recherche."
+        : "Aucun pack ne correspond à votre recherche.";
+    const itemLabel = currentType === "product" ? "produits" : currentType === "tool" ? "outils" : "packs";
     grid.innerHTML = catalogLoadFailed
       ? '<div class="product-load-error"><strong>Le catalogue est momentanément indisponible.</strong><p>Pour éviter de te présenter des prix obsolètes, les articles ne sont pas affichés. Vérifie ta connexion puis réessaie.</p><button class="btn ghost" type="button" onclick="window.location.reload()">Réessayer</button></div>'
-      : arr.slice(start, start + PRODUCTS_PER_PAGE).map(productCard).join("") || '<div class="empty">' + (currentType === "product" ? "Aucun produit ne correspond à votre recherche." : "Aucun pack ne correspond à votre recherche.") + '</div>';
+      : arr.slice(start, start + PRODUCTS_PER_PAGE).map(productCard).join("") || '<div class="empty">' + emptyMessage + '</div>';
     const pagination = $("productPagination");
-    if (pagination) pagination.innerHTML = arr.length > PRODUCTS_PER_PAGE ? `<button class="btn ghost small" ${currentProductPage === 1 ? "disabled" : ""} onclick="goToProductPage(${currentProductPage - 1})">← Précédent</button><span>Page ${currentProductPage} / ${pages} · ${arr.length} packs</span><button class="btn ghost small" ${currentProductPage === pages ? "disabled" : ""} onclick="goToProductPage(${currentProductPage + 1})">Suivant →</button>` : "";
+    if (pagination) pagination.innerHTML = arr.length > PRODUCTS_PER_PAGE ? `<button class="btn ghost small" ${currentProductPage === 1 ? "disabled" : ""} onclick="goToProductPage(${currentProductPage - 1})">← Précédent</button><span>Page ${currentProductPage} / ${pages} · ${arr.length} ${itemLabel}</span><button class="btn ghost small" ${currentProductPage === pages ? "disabled" : ""} onclick="goToProductPage(${currentProductPage + 1})">Suivant →</button>` : "";
     renderIndividualCatalogs();
   }
   function goToProductPage(page) {

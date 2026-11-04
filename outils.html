@@ -4,16 +4,16 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#166534">
-<meta name="description" content="La sélection d’outils et de matériels de nettoyage SAMA-PACK est en cours de préparation à Dakar.">
-<meta name="robots" content="noindex,follow">
+<meta name="description" content="Découvrez les outils et matériels de nettoyage SAMA-PACK : brosses, balais, accessoires et équipements pour l’entretien à Dakar.">
+<meta name="robots" content="index,follow,max-image-preview:large">
 <link rel="canonical" href="https://sama-pack.store/outils.html">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Sama-Pack">
-<meta property="og:title" content="Outils de nettoyage | SAMA-PACK">
-<meta property="og:description" content="Découvrez les outils et matériels de nettoyage disponibles chez SAMA-PACK à Dakar. Consultez le catalogue et commandez en ligne.">
+<meta property="og:title" content="Outils de nettoyage à Dakar | SAMA-PACK">
+<meta property="og:description" content="Découvrez les outils et matériels de nettoyage SAMA-PACK : brosses, balais, accessoires et équipements à Dakar.">
 <meta property="og:url" content="https://sama-pack.store/outils.html">
 <script type="application/ld+json">{"@context":"https://schema.org","@type":"WebSite","name":"Sama-Pack","url":"https://sama-pack.store/","inLanguage":"fr-SN","description":"Packs de nettoyage et d’hygiène pour les familles et les professionnels à Dakar, Sénégal."}</script>
-<title>Outils de nettoyage | SAMA-PACK</title>
+<title>Outils de nettoyage à Dakar | SAMA-PACK</title>
 <link rel="stylesheet" href="styles.css?v=20261103-social-follow-v1">
 <link rel="stylesheet" href="product-visual.css?v=20261102-v1">
 <script src="header.js?v=20261104-home-on-reload-v1" defer></script>
@@ -69,11 +69,17 @@
 </header>
 
 <main>
-<section class="section alt">
-  <div class="wrap catalog-unavailable">
-    <div class="eyebrow">CATALOGUE</div><h1>Outils de nettoyage</h1>
-    <p>Notre sélection d’outils n’est pas encore publiée. En attendant, retrouvez les produits d’entretien disponibles à l’unité ou choisissez un pack prêt à commander.</p>
-    <div class="catalog-unavailable-actions"><a class="btn primary" href="produits.html">Voir les produits à l’unité</a><a class="btn ghost" href="/#catalogue">Découvrir les packs</a></div>
+<section id="catalogue" class="section individual-catalog-section alt">
+  <div class="wrap">
+    <div class="section-head">
+      <div><div class="eyebrow">MATÉRIEL ET ACCESSOIRES</div><h1>Outils de nettoyage</h1><p>Retrouvez nos accessoires et matériels pour faciliter l’entretien de la maison et des espaces professionnels. Consultez les détails et vérifiez la disponibilité de chaque référence.</p></div>
+      <div class="controls">
+        <input id="searchBox" class="input" type="search" placeholder="Rechercher un outil…" aria-label="Rechercher un outil">
+        <select id="categoryFilter" class="input" aria-label="Filtrer par catégorie"><option value="all">Toutes les catégories</option></select>
+      </div>
+    </div>
+    <div id="productGrid" class="product-grid individual-catalog-grid"></div>
+    <div id="productPagination" class="product-pagination" aria-label="Pagination des outils"></div>
   </div>
 </section>
 </main>
@@ -85,6 +91,6 @@
 <script src="admin-panel.js?v=20261102-shared-admin-panel-v1" defer></script>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/dist/umd/supabase.js" defer></script>
-<script src="app.js?v=20261103-social-follow-v1" defer></script>
+<script src="app.js?v=20261104-tools-catalog-v1" defer></script>
 </body>
 </html>
