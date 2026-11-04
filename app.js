@@ -5208,7 +5208,7 @@
     selectReviewRating,editProspect,deleteProspect,setProspectStatus,editCatalogItem,archiveCatalogItem,removeAdmin,
     openSubscriptionEditor,addSubscriptionLine,removeSubscriptionLine,toggleSubscriptionStatus,prepareSubscriptionOrder,
     advanceSubscriptionReminder,deleteSubscription,openOrderWhatsApp,openB2BWorkspace,addB2BLine,removeB2BLine,
-    submitB2BQuantityOrder,submitB2BQuote,setOrderDeliveryCost,toggleSalesCode,deleteSalesCode,copySalesLink,
+    submitB2BQuantityOrder,submitB2BQuote,setOrderDeliveryCost,toggleSalesCode,deleteSalesCode,copySalesLink,selectProductImage,
     showCustomerProfile,sendMonthlyMarketingNow,
     SamaPackHeaderActions: { cart: renderCartModal, account: openAccountModal, notifications: loadAndShowNotifications, manage: openAdmin }
   });
