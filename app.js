@@ -891,7 +891,7 @@
     const current = editing || {};
     const itemsText = Array.isArray(current.items) ? current.items.join("\n") : "";
     const supplierOptions = '<option value="">— Aucun fournisseur associé —</option>' + suppliers.map(s => `<option value="${esc(s.id)}" ${current.supplier_id === s.id ? "selected" : ""}>${esc(s.name)}</option>`).join("");
-    const formHtml = `<div class="panel"><div class="section-head"><div><div class="eyebrow">CATALOGUE CLIENT</div><h3>${editing ? "Modifier un article" : "Ajouter un produit ou un outil"}</h3></div>${editing ? '<button type="button" class="btn ghost small" onclick="editCatalogItem(\'\')">Annuler</button>' : ""}</div>
+    const formHtml = `<div class="panel"><div class="section-head"><div><div class="eyebrow">CATALOGUE CLIENT</div><h3>${editing ? "Modifier un article" : "Ajouter un produit ou un outil"}</h3></div>${editing ? '<button type="button" class="btn ghost small" data-cancel-catalog-edit>Annuler</button>' : ""}</div>
       <p class="small-note">Les nouveaux articles sont masqués par défaut. Les prix fournisseur, références internes fournisseur et coûts restent réservés à l’administration.</p>
       <form id="individualCatalogForm" class="admin-form">
         <label class="full">Référence publique SAMA-PACK<input class="input" readonly value="${esc(current.public_ref || "Attribuée automatiquement à l’enregistrement")}"></label>
@@ -921,9 +921,28 @@
       <td>${esc(row.supplier_name || "—")}<br><span class="small-note">${esc(row.supplier_ref || "Réf. non renseignée")}</span></td>
       <td>${row.supplier_price == null ? "—" : money(row.supplier_price) + " / " + getSaleUnitLabel(row)}${row.supplier_unit_price == null || row.sale_unit !== "carton" ? "" : `<br><span class="small-note">Coût unitaire conservé : ${money(row.supplier_unit_price)} HT</span>`}${row.carton_price == null ? "" : `<br><span class="small-note">Référence colis fournisseur : ${money(row.carton_price)} HT</span>`}</td><td>${row.margin_percent == null ? "—" : Number(row.margin_percent) + " %"}</td><td>${money(row.price)} / ${esc(getSaleUnitLabel(row))}</td>
       <td>${availabilityBadgeHtml(row)}</td><td>${row.active ? '<span class="status delivered">Publié</span>' : '<span class="status cancelled">Masqué</span>'}</td>
-      <td><div class="prospect-actions"><button class="btn ghost small" onclick="editCatalogItem('${esc(row.id)}')">Modifier</button><button class="btn ghost small" onclick="archiveCatalogItem('${esc(row.id)}',${row.active ? "false" : "true"})">${row.active ? "Masquer" : Number(row.price) <= 0 ? "Saisir le prix" : !getProductImages(row).length ? "Ajouter une photo" : "Publier"}</button></div></td>
+      <td><div class="prospect-actions"><button type="button" class="btn ghost small" data-edit-catalog-item="${esc(row.id)}">Modifier</button><button class="btn ghost small" onclick="archiveCatalogItem('${esc(row.id)}',${row.active ? "false" : "true"})">${row.active ? "Masquer" : Number(row.price) <= 0 ? "Saisir le prix" : !getProductImages(row).length ? "Ajouter une photo" : "Publier"}</button></div></td>
     </tr>`).join("")}</tbody></table></div>` : '<div class="empty">Aucun produit individuel ni outil enregistré.</div>';
     host.innerHTML = `${formHtml}<div class="panel"><div class="section-head"><div><div class="eyebrow">GESTION DES ARTICLES</div><h3>Produits et outils enregistrés (${catalogRows.length})</h3></div></div><label class="catalog-admin-search-label">Recherche par référence SAMA-PACK, désignation ou fournisseur<input class="input" id="catalogAdminSearch" type="search" placeholder="Ex. SP-PROD-120, vaisselle, SNAD…"></label>${listHtml}</div>`;
+    // Relier les actions après le rendu, sans gestionnaires inline.
+    host.querySelectorAll("[data-edit-catalog-item]").forEach(button => {
+      button.addEventListener("click", async () => {
+        const productId = button.getAttribute("data-edit-catalog-item") || "";
+        if (!productId) return toast("Référence de l’article manquante.", true);
+        button.disabled = true;
+        try {
+          await editCatalogItem(productId);
+        } catch (error) {
+          console.error("Catalog item edit failed", error);
+          toast("Impossible d’ouvrir la fiche : " + errorMessage(error), true);
+        } finally {
+          if (button.isConnected) button.disabled = false;
+        }
+      });
+    });
+    host.querySelector("[data-cancel-catalog-edit]")?.addEventListener("click", () => {
+      editCatalogItem("");
+    });
     const search = $("catalogAdminSearch");
     if (search) search.addEventListener("input", () => {
       const query = search.value.toLowerCase().trim();
@@ -1002,9 +1021,15 @@
   }
 
   async function editCatalogItem(id) {
-    editingCatalogItemId = id || null;
-    await renderIndividualCatalogAdmin();
-    if (editingCatalogItemId) $("adminContent")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    if (!isGeneralAdmin()) return toast("La modification des articles est réservée à l’administrateur général.", true);
+    editingCatalogItemId = id ? String(id).trim() : null;
+    // Passer par le chargeur central pour afficher les erreurs de lecture Supabase.
+    await showAdminView("catalogs");
+    if (!editingCatalogItemId) return;
+    const form = $("individualCatalogForm");
+    if (!form) return;
+    form.scrollIntoView({ behavior: "smooth", block: "start" });
+    form.querySelector('[name="name"]')?.focus({ preventScroll: true });
   }
 
   async function archiveCatalogItem(id, active) {
