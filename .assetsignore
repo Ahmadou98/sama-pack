@@ -19,6 +19,9 @@ wrangler.toml
 /supabase/
 /supabase/**
 
+# Worker source is executed server-side and must never be published as a static asset
+/worker.js
+
 # Exclude internal maintenance scripts, notes and local build artifacts
 *.py
 **/*.py
