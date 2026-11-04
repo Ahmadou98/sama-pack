@@ -891,7 +891,7 @@
     const current = editing || {};
     const itemsText = Array.isArray(current.items) ? current.items.join("\n") : "";
     const supplierOptions = '<option value="">— Aucun fournisseur associé —</option>' + suppliers.map(s => `<option value="${esc(s.id)}" ${current.supplier_id === s.id ? "selected" : ""}>${esc(s.name)}</option>`).join("");
-    const formHtml = `<div class="panel"><div class="section-head"><div><div class="eyebrow">CATALOGUE CLIENT</div><h3>${editing ? "Modifier un article" : "Ajouter un produit ou un outil"}</h3></div>${editing ? '<button type="button" class="btn ghost small" data-cancel-catalog-editAnnuler</button>' : ""}</div>
+    const formHtml = `<div class="panel"><div class="section-head"><div><div class="eyebrow">CATALOGUE CLIENT</div><h3>${editing ? "Modifier un article" : "Ajouter un produit ou un outil"}</h3></div>${editing ? '<button type="button" class="btn ghost small" data-cancel-catalog-edit>Annuler</button>' : ""}</div>
       <p class="small-note">Les nouveaux articles sont masqués par défaut. Les prix fournisseur, références internes fournisseur et coûts restent réservés à l’administration.</p>
       <form id="individualCatalogForm" class="admin-form">
         <label class="full">Référence publique SAMA-PACK<input class="input" readonly value="${esc(current.public_ref || "Attribuée automatiquement à l’enregistrement")}"></label>
