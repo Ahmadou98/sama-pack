@@ -1507,7 +1507,7 @@
       updateSEOProductMeta('meta[name="robots"]', "noindex,follow");
       updateSEOProductMeta('meta[property="og:title"]', document.title);
       updateSEOProductMeta('meta[property="og:description"]', "Retournez au catalogue SAMA-PACK pour consulter les articles disponibles.");
-      updateSEOProductMeta('meta[property="og:url"]', canonical);
+      updateSEOProductMeta('meta[property="og:url"]', window.location.href);
       $("seoProductCategory").textContent = "Fiche indisponible";
       host.innerHTML = '<div class="panel"><h1>' + (catalogLoadFailed ? "Catalogue temporairement indisponible" : "Article introuvable") + '</h1><p>' + (catalogLoadFailed ? "Les données et prix n’ont pas pu être actualisés. Réessaie dans quelques instants." : "Cette fiche n’est pas publiée ou la référence n’existe plus.") + '</p><div class="hero-actions"><a class="btn primary" href="/#catalogue">Voir les packs</a><a class="btn ghost" href="produits.html">Voir les produits</a></div><button class="btn ghost" type="button" onclick="window.location.reload()">Réessayer</button></div>';
       const jsonld = $("productJsonLd"); if (jsonld) jsonld.textContent = "{}";
