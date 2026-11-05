@@ -5933,3 +5933,322 @@ body.admin-management-open .info-floating-header {
     transition: none !important;
   }
 }
+
+
+/* ==========================================================================
+   SAMA-PACK — Accueil mobile compact (scroll fatigue / conversion)
+   Strictement limité à l'accueil et aux écrans <= 768px.
+   Le rendu desktop et le catalogue restent inchangés.
+   ========================================================================== */
+@media (max-width: 768px) {
+  /* Hero plus court : titre, description et appels à l'action côte à côte. */
+  #home.hero {
+    padding: clamp(17px, 3vw, 24px) 0;
+  }
+  #home .hero-grid {
+    display: grid;
+    width: min(calc(100% - 28px), 560px);
+    max-width: 560px;
+    grid-template-columns: minmax(0, 1fr);
+    align-items: start;
+    gap: 14px;
+  }
+  #home .hero-content {
+    min-width: 0;
+  }
+  #home .hero-content h1 {
+    max-width: 17ch;
+    margin: 7px 0 8px;
+    font-size: clamp(29px, 5.2vw, 35px);
+    line-height: 1.04;
+    letter-spacing: -.045em;
+    text-wrap: balance;
+  }
+  #home .hero-content > p {
+    max-width: 48ch;
+    margin: 0;
+    font-size: clamp(12px, 1.8vw, 13px);
+    line-height: 1.45;
+  }
+  #home .hero-actions {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    align-items: stretch;
+    gap: 8px;
+    margin: 12px 0 0;
+  }
+  #home .hero-actions .btn {
+    display: inline-flex;
+    flex: 1 1 0;
+    justify-content: center;
+    align-items: center;
+    width: auto;
+    min-width: 0;
+    min-height: 40px;
+    padding: 8px 7px;
+    border-radius: 10px;
+    font-size: 11px;
+    line-height: 1.2;
+    text-align: center;
+    white-space: normal;
+  }
+
+  /* Réassurance : trois cartes sur un rail tactile à défilement horizontal. */
+  #home .trust-row {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    align-items: stretch;
+    width: 100%;
+    max-width: 100%;
+    gap: 10px;
+    margin: 12px 0 0;
+    padding: 2px 1px 7px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    white-space: nowrap;
+    scroll-snap-type: x mandatory;
+    scroll-padding-inline: 1px;
+    overscroll-behavior-x: contain;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+  #home .trust-row::-webkit-scrollbar {
+    display: none;
+  }
+  #home .trust-row > .trust-item {
+    display: flex;
+    flex: 0 0 70vw;
+    flex-direction: row;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 11px;
+    width: 70vw;
+    max-width: none;
+    min-width: 0;
+    min-height: 66px;
+    padding: 10px 13px;
+    border: 1px solid #e2e8e5;
+    border-radius: 13px;
+    background: rgba(247, 249, 248, .97);
+    box-shadow: 0 4px 12px rgba(15, 45, 28, .045);
+    text-align: left;
+    white-space: normal;
+    scroll-snap-align: start;
+    scroll-snap-stop: always;
+  }
+  #home .trust-row > .trust-item + .trust-item {
+    border-left: 1px solid #e2e8e5;
+  }
+  #home .trust-icon {
+    flex: 0 0 34px;
+    width: 34px;
+    height: 34px;
+    border-radius: 10px;
+  }
+  #home .trust-icon svg {
+    width: 18px;
+    height: 18px;
+  }
+  #home .trust-copy {
+    justify-items: start;
+    gap: 3px;
+    min-width: 0;
+    text-align: left;
+  }
+  #home .trust-copy strong {
+    font-size: 18px;
+    line-height: 1.05;
+  }
+  #home .trust-copy span {
+    margin: 0;
+    font-size: 10px;
+    line-height: 1.3;
+    overflow-wrap: anywhere;
+  }
+
+  /* Fond personnalisé : cartes lisibles et contrastées sur l'image du hero. */
+  #home.hero.has-custom-bg .trust-row > .trust-item {
+    border: 1px solid rgba(255,255,255,.24);
+    background: rgba(7, 28, 17, .48);
+    box-shadow: 0 5px 15px rgba(0,0,0,.10);
+  }
+  #home.hero.has-custom-bg .trust-row > .trust-item + .trust-item {
+    border-left: 1px solid rgba(255,255,255,.24);
+  }
+  #home.hero.has-custom-bg .trust-icon {
+    color: #fff;
+    background: rgba(255,255,255,.14);
+    border-color: rgba(255,255,255,.18);
+  }
+  #home.hero.has-custom-bg .trust-copy strong { color: #fff; }
+  #home.hero.has-custom-bg .trust-copy span { color: rgba(255,255,255,.86); }
+
+  /* Vente flash : photo à gauche, contenu/prix/chrono à droite. */
+  #home .hero-promo-panel {
+    width: 100%;
+    max-width: none;
+    min-width: 0;
+    margin: 0;
+  }
+  #home .hero-promo-panel .flash-section-header {
+    align-items: center;
+    gap: 8px;
+    margin: 0 0 8px;
+  }
+  #home .hero-promo-panel .flash-section-header h2 {
+    margin: 2px 0 0;
+    font-size: 21px;
+    line-height: 1.08;
+  }
+  #home .hero-promo-panel .flash-section-header p { display: none; }
+  #home .hero-promo-panel .flash-arrows { flex: 0 0 auto; gap: 5px; }
+  #home .hero-promo-panel .flash-arrows .btn {
+    width: 30px;
+    height: 30px;
+    min-height: 30px;
+    padding: 0;
+  }
+  #home .hero-promo-panel .flash-slide {
+    display: grid;
+    grid-template-columns: minmax(94px, 31%) minmax(0, 1fr);
+    align-items: stretch;
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+    border-radius: 13px;
+  }
+  #home .hero-promo-panel .flash-photo {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    min-width: 0;
+    min-height: 132px;
+    height: 100%;
+    padding: 7px;
+    overflow: hidden;
+  }
+  #home .hero-promo-panel .flash-photo .promo-visual,
+  #home .hero-promo-panel .flash-photo .product-image-frame {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    min-width: 0;
+    min-height: 0;
+    height: 100%;
+    padding: 0;
+  }
+  #home .hero-promo-panel .flash-photo .product-photo {
+    display: block;
+    width: 100%;
+    height: 100%;
+    max-height: 152px;
+    object-fit: contain;
+    object-position: center;
+  }
+  #home .hero-promo-panel .flash-content {
+    display: flex;
+    flex-direction: column;
+    align-self: stretch;
+    min-width: 0;
+    min-height: 0;
+    height: 100%;
+    gap: 7px;
+    margin: 0;
+    padding: 10px 10px 11px;
+    border: 0;
+    border-left: 1px solid #edf1ee;
+    border-radius: 0 13px 13px 0;
+    background: #fff;
+    box-shadow: none;
+  }
+  #home .hero-promo-panel .flash-kickers { gap: 4px; }
+  #home .hero-promo-panel .flash-copy-main { min-width: 0; }
+  #home .hero-promo-panel .flash-copy-main h3 {
+    display: -webkit-box;
+    overflow: hidden;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    margin: 0;
+    font-size: 14px;
+    line-height: 1.2;
+    overflow-wrap: anywhere;
+  }
+  #home .hero-promo-panel .flash-copy-main p {
+    display: none !important;
+  }
+  #home .hero-promo-panel .flash-price-row {
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 4px 6px;
+  }
+  #home .hero-promo-panel .flash-price-row strong {
+    font-size: clamp(17px, 4.5vw, 21px);
+    line-height: 1.1;
+  }
+  #home .hero-promo-panel .flash-countdown {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 4px;
+    min-width: 0;
+    padding: 5px 6px;
+  }
+  #home .hero-promo-panel .flash-countdown span { font-size: 7px; }
+  #home .hero-promo-panel .flash-countdown strong {
+    font-size: 9px;
+    line-height: 1.15;
+  }
+  /* Affiche aussi le libellé d'offre en cours lorsqu'aucune échéance n'est définie. */
+  #home .hero-promo-panel .flash-countdown.is-open { display: flex; }
+  #home .hero-promo-panel .flash-countdown.is-open strong { font-size: 10px; }
+  #home .hero-promo-panel .promo-actions {
+    display: grid;
+    grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr);
+    align-items: stretch;
+    gap: 5px;
+    width: 100%;
+    margin-top: auto;
+  }
+  #home .hero-promo-panel .flash-detail-btn,
+  #home .hero-promo-panel .flash-add-btn {
+    min-width: 0;
+    min-height: 35px;
+    padding: 7px 5px;
+    border-radius: 8px;
+    font-size: 9px;
+    line-height: 1.15;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+  #home .hero-promo-panel .flash-dots { margin-top: 7px; }
+  #home .hero-promo-panel .flash-dots .promo-dot { width: 6px; height: 6px; }
+  #home .hero-promo-panel .flash-dots .promo-dot.active { width: 17px; }
+
+  /* Les animations ne doivent pas imposer de mouvement sur les préférences réduites. */
+  @media (prefers-reduced-motion: reduce) {
+    #home .trust-row { scroll-behavior: auto; }
+    #home .hero-promo-panel .flash-slide,
+    #home .hero-promo-panel .flash-photo img,
+    #home .hero-promo-panel .flash-detail-btn,
+    #home .hero-promo-panel .flash-add-btn {
+      animation: none !important;
+      transition: none !important;
+    }
+  }
+}
+@media (max-width: 600px) {
+  #home .hero-grid {
+    width: min(calc(100% - 28px), 520px);
+    max-width: 520px;
+  }
+  #home .hero-content h1 {
+    font-size: clamp(29px, 8.2vw, 34px);
+  }
+  #home .hero-promo-panel .flash-slide {
+    grid-template-columns: minmax(88px, 32%) minmax(0, 1fr);
+  }
+}
