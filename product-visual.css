@@ -49,3 +49,246 @@
     transition: none;
   }
 }
+
+
+/* ==========================================================================
+   SAMA-PACK — Correctif catalogue : grille compacte et cartes homogènes
+   Cette feuille est chargée après styles.css afin de fixer les règles finales.
+   ========================================================================== */
+
+/* Grille desktop : quatre cartes par ligne, sans débordement horizontal. */
+.product-grid,
+.individual-catalog-grid {
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 20px;
+  align-items: stretch;
+}
+
+/* Les cartes occupent strictement la largeur de leur cellule de grille. */
+.product-grid > .product-card,
+.individual-catalog-grid > .product-card {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: none;
+  min-width: 0;
+  height: 100%;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  border-radius: 16px;
+}
+
+/* Cadre image carré : l'image est contenue, jamais étirée ni débordante. */
+.product-card .pack-visual.product-image-wrapper {
+  position: relative;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 100%;
+  height: auto;
+  min-width: 0;
+  min-height: 0 !important;
+  aspect-ratio: 1 / 1;
+  padding: 0;
+  overflow: hidden;
+  isolation: isolate;
+  background: radial-gradient(circle at 50% 40%, #fff 0%, #f6faf7 100%);
+}
+
+.product-card .pack-visual.product-image-wrapper.has-photo {
+  width: 100%;
+  height: auto;
+  min-height: 0 !important;
+  aspect-ratio: 1 / 1;
+  padding: 0;
+  background: radial-gradient(circle at 50% 40%, #fff 0%, #f6faf7 100%);
+}
+
+.product-card .pack-visual.product-image-wrapper.has-photo > .product-photo {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  max-width: 100%;
+  max-height: 100%;
+  margin: 0;
+  padding: 9px;
+  object-fit: contain;
+  object-position: center;
+  opacity: 1;
+  transition: opacity .22s ease, transform .3s ease, filter .22s ease;
+}
+
+/* Produit sans photo et image de secours : occupent le même cadre carré. */
+.product-card .product-image-wrapper > .product-placeholder {
+  display: grid;
+  place-items: center;
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  margin: 0;
+}
+.product-card .pack-visual.product-image-wrapper.has-photo > .product-placeholder.photo-fallback {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  padding: 0;
+}
+.product-card .product-image-wrapper .photo-fallback .cleaning-bottle-icon,
+.product-card .product-image-wrapper > .product-placeholder .cleaning-bottle-icon {
+  width: min(30%, 66px);
+  height: auto;
+  max-height: 70%;
+}
+
+/* Badge promotion au-dessus de la photographie, sans modifier le flux. */
+.product-card .product-image-wrapper > .product-promo-ribbon {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 10;
+  margin: 0;
+  pointer-events: none;
+}
+
+/* Corps extensible et actions alignées en bas de chaque ligne de cartes. */
+.product-card > .product-body {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  padding: 15px;
+  gap: 9px;
+}
+.product-card .product-cat,
+.product-card .product-name-link,
+.product-card .product-desc,
+.product-card .price-row {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.product-card .product-name-link {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+  line-height: 1.3;
+}
+.product-card .product-desc {
+  -webkit-line-clamp: 3;
+  line-height: 1.45;
+}
+.product-card .price-row {
+  margin-top: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+}
+.product-card .product-actions {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+  width: 100%;
+  margin-top: auto;
+  padding-top: 7px;
+}
+.product-card .product-actions .btn {
+  flex: 1 1 0;
+  min-width: 0;
+  width: 100%;
+  min-height: 40px;
+  padding: 9px 8px;
+  white-space: normal;
+  line-height: 1.2;
+}
+
+/* Transition d'image utilisée par le cycle JavaScript de 800 ms. */
+.product-card .product-image-wrapper > .product-photo.is-fading {
+  opacity: 0;
+}
+
+/* Tablettes : trois colonnes fixes et un espacement modéré. */
+@media (min-width: 601px) and (max-width: 1024px) {
+  .product-grid,
+  .individual-catalog-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 16px;
+  }
+  .product-card > .product-body {
+    padding: 13px;
+  }
+}
+
+/* Mobiles : deux colonnes ; aucun effet automatique de survol. */
+@media (max-width: 600px) {
+  .product-grid,
+  .individual-catalog-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+  }
+  .product-card,
+  .individual-catalog-grid .product-card {
+    min-width: 0;
+    border-radius: 13px;
+  }
+  .product-card > .product-body {
+    padding: 10px;
+    gap: 7px;
+  }
+  .product-card .product-name-link {
+    font-size: 13px;
+    line-height: 1.3;
+  }
+  .product-card .product-desc {
+    font-size: 11px;
+    line-height: 1.35;
+  }
+  .product-card .price {
+    font-size: 15px;
+  }
+  .product-card .product-actions,
+  .individual-catalog-grid .product-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 6px;
+    margin-top: auto;
+  }
+  .product-card .product-actions .btn,
+  .individual-catalog-grid .product-actions .btn {
+    width: 100%;
+    min-width: 0;
+    min-height: 36px;
+    padding: 8px 5px;
+    font-size: 11px;
+  }
+  .product-card .product-image-wrapper > .product-photo {
+    padding: 6px;
+    object-fit: contain;
+    object-position: center;
+  }
+}
+
+/* Zoom léger réservé aux pointeurs précis ; garde-fou contre le clipping. */
+@media (hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference) {
+  .product-card:hover .product-image-wrapper.has-photo > .product-photo {
+    transform: scale(1.025);
+  }
+}
+
+/* Accessibilité : aucune transition non essentielle si le mouvement est réduit. */
+@media (prefers-reduced-motion: reduce) {
+  .product-card .product-image-wrapper > .product-photo {
+    transition: none !important;
+  }
+}
