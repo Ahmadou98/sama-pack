@@ -7637,3 +7637,45 @@ body {
   #adminPanel .admin-icon-button,
   #adminPanel .admin-store-button { transition: none; }
 }
+
+
+/* Contrôle d'effacement de la recherche de la barre d'outils. */
+#adminPanel .admin-filter-reset {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 0 10px;
+  border: 1px solid #e5ece6;
+  border-radius: 9px;
+  background: #fff;
+  color: #66796c;
+  font: inherit;
+  font-size: 10px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: border-color .15s ease, background .15s ease, color .15s ease;
+}
+#adminPanel .admin-filter-reset svg { width: 14px; height: 14px; }
+#adminPanel .admin-filter-reset:hover {
+  border-color: #b9d6c0;
+  background: #f4faf5;
+  color: #23613b;
+}
+#adminPanel .admin-filter-reset:focus-visible {
+  outline: 2px solid #23834b;
+  outline-offset: 2px;
+}
+#adminPanel .admin-empty-state { display: none; }
+#adminPanel .admin-content.is-empty {
+  display: grid;
+  min-height: 260px;
+  align-content: center;
+  justify-items: stretch;
+}
+#adminPanel .admin-content.is-empty > :not(.admin-empty-state) { display: none !important; }
+#adminPanel .admin-content.is-empty > .admin-empty-state { display: grid; }
+@media (max-width: 600px) {
+  #adminPanel .admin-filter-reset { min-height: 34px; padding: 0 9px; }
+}
