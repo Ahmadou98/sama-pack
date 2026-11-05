@@ -3924,7 +3924,7 @@
   }
   function actionLabel(action) { return ({pack_created:"Pack créé",pack_updated:"Pack modifié",pack_deleted:"Pack supprimé",order_status_changed:"Statut de commande modifié",order_placed:"Commande passée",admin_bootstrap:"Premier administrateur configuré",admin_invited:"Administrateur invité",admin_removed:"Droits administrateur retirés",settings_updated:"Paramètres modifiés",stock_created:"Stock créé",stock_updated:"Stock modifié",supplier_created:"Fournisseur ajouté",supplier_updated:"Fournisseur modifié",supplier_deleted:"Fournisseur supprimé",expense_created:"Dépense ajoutée",expense_updated:"Dépense modifiée",expense_deleted:"Dépense supprimée",quote_created:"Demande de devis reçue",quote_updated:"Devis modifié",quote_deleted:"Devis supprimé"})[action] || action || "Action"; }
   function updateAdminContext() {
-    const name = String(currentProfile?.full_name || currentUser?.email || "Compte de gestion");
+    const name = String(currentProfile?.full_name || currentUser?.user_metadata?.full_name || currentUser?.email || "Compte de gestion").trim();
     const role = isGeneralAdmin() ? "Administrateur général" : "Administrateur";
     const panel = $("adminPanel");
     if (panel) {
@@ -3932,10 +3932,21 @@
       panel.classList.toggle("is-role-admin", isAdmin() && !isGeneralAdmin());
       panel.dataset.managementRole = isGeneralAdmin() ? "general-admin" : "admin";
     }
+
+    const profileName = $("adminUserName");
+    if (profileName) profileName.textContent = name || "Compte de gestion";
+    const profileRole = $("adminFlag");
+    if (profileRole) profileRole.textContent = role;
+    const avatar = $("adminUserAvatar");
+    if (avatar) {
+      avatar.textContent = name.split(/\s+/).filter(Boolean).slice(0, 2)
+        .map(part => part.charAt(0).toLocaleUpperCase("fr")).join("") || "SP";
+    }
+    const profileButton = $("adminAccountBtn");
+    if (profileButton) profileButton.setAttribute("aria-label", "Ouvrir le compte de " + name + " · " + role);
+
     const context = $("adminContext");
-    if (context) context.textContent = role + " · " + name;
-    const flag = $("adminFlag");
-    if (flag) flag.textContent = "ESPACE DE GESTION · " + role.toLocaleUpperCase("fr") + " · " + name;
+    if (context) context.textContent = "Gestion commerciale · " + role;
   }
 
   function applyAdminNavigationSearch() {
@@ -4014,8 +4025,11 @@
     const globalSearch = $("adminGlobalSearch"); if (globalSearch) globalSearch.value = "";
     updateAdminContext();
     const titles = {dashboard:"Tableau de bord",orders:"Commandes",customers:"Clients",stock:"Stock",products:"Packs",packs:"Packs",catalogs:"Produits & outils",prospects:"Prospection",admins:"Comptes administrateurs",activity:"Journal des actions",suppliers:"Fournisseurs",expenses:"Dépenses",quotes:"Devis professionnels",settings:"Paramètres",profitability:"Rentabilité",sales_codes:"Codes commerciaux",marketing:"Campagnes e-mail",contacts:"Messages de contact",deliveries:"SAMA-PACK Livraison"};
-    $("adminTitle").textContent = titles[view] || "Gestion";
-    $("adminContent").innerHTML = '<div class="panel loading-panel">Chargement des données…</div>';
+    const sectionTitle = titles[view] || "Gestion";
+    $("adminTitle").textContent = sectionTitle;
+    const breadcrumb = $("adminBreadcrumb");
+    if (breadcrumb) breadcrumb.textContent = sectionTitle;
+    $("adminContent").innerHTML = '<div class="panel loading-panel"><div class="admin-loading-spinner" aria-hidden="true"></div><p>Chargement des données…</p></div>';
     try {
       if (view === "prospects") { await renderProspectsAdmin(); applyAdminResultSearch(); return; }
       if (view === "catalogs") { await renderIndividualCatalogAdmin(); applyAdminResultSearch(); return; }
@@ -4175,8 +4189,7 @@
       { label: "Articles en rupture", value: String(outOfStock), note: "Disponibilité à vérifier", css: "stockout" },
       { label: "Comptes actifs maintenant", value: activeAccounts === null ? "—" : String(activeAccounts), note: `Activité sur 90 s · actualisé à ${now.toLocaleTimeString("fr-SN", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}`, css: "active-users", live: true }
     ];
-    return `${dashboardWarnings.length ? '<div class="panel dashboard-data-warning"><strong>Tableau de bord partiellement chargé.</strong><p>Certains indicateurs sont momentanément indisponibles. Les autres rubriques restent accessibles. Réessaie l’actualisation pour récupérer les données manquantes.</p></div>' : ''}<div class="dashboard-welcome"><div><div class="eyebrow">PILOTAGE COMMERCIAL</div><h2>Vue d’ensemble de SAMA-PACK</h2><p>Suivi des ventes, des commandes, du catalogue et des réapprovisionnements.</p></div><button class="btn ghost small" onclick="showAdminView('dashboard')">Actualiser les données</button></div>
-      <div class="dashboard-kpis">${cards.map(card=>`<article class="dashboard-kpi ${card.css}"><span class="dashboard-kpi-label">${esc(card.label)}</span><strong ${card.live ? 'id="activeAccountsCount"' : ""}>${esc(card.value)}</strong><small ${card.live ? 'id="activeAccountsLastUpdated"' : ""}>${esc(card.note)}</small></article>`).join("")}</div>
+    return `${dashboardWarnings.length ? '<div class="panel dashboard-data-warning"><strong>Tableau de bord partiellement chargé.</strong><p>Certains indicateurs sont momentanément indisponibles. Les autres rubriques restent accessibles. Réessaie l’actualisation pour récupérer les données manquantes.</p></div>' : ''}<div class="dashboard-kpis">${cards.map(card=>`<article class="dashboard-kpi ${card.css}"><span class="dashboard-kpi-label">${esc(card.label)}</span><strong ${card.live ? 'id="activeAccountsCount"' : ""}>${esc(card.value)}</strong><small ${card.live ? 'id="activeAccountsLastUpdated"' : ""}>${esc(card.note)}</small></article>`).join("")}</div>
       <section class="admin-quick-actions" aria-label="Raccourcis de gestion">
         <button class="admin-quick-action" type="button" onclick="showAdminView('orders')"><span class="admin-quick-icon">▤</span><span><strong>Traiter les commandes</strong><small>Suivre paiement, préparation et livraison</small></span><span class="admin-quick-arrow">→</span></button>
         <button class="admin-quick-action" type="button" onclick="showAdminView('packs')"><span class="admin-quick-icon">▣</span><span><strong>Mettre à jour les packs</strong><small>Prix, marges, photos et ventes flash</small></span><span class="admin-quick-arrow">→</span></button>
