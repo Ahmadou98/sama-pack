@@ -6429,3 +6429,73 @@ body.admin-management-open .info-floating-header {
 body {
   background-color: #f8fafc;
 }
+
+
+
+/* Composeur de pack : sélection réellement personnalisable par le client. */
+.budget-builder-choice-section { margin-top: 14px; }
+.budget-builder-choice-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 0 0 8px;
+}
+.budget-builder-choice-heading h3 {
+  margin: 0;
+  color: #244b32;
+  font-size: .92rem;
+  font-weight: 800;
+}
+.budget-builder-choice-heading span {
+  color: #718078;
+  font-size: .72rem;
+  white-space: nowrap;
+}
+.budget-builder-choice-list {
+  display: grid;
+  gap: 7px;
+  max-height: 260px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 1px 3px 3px 1px;
+}
+.budget-builder-choice-item { min-width: 0; }
+.budget-builder-choice-item.is-selected {
+  border-color: #b8ddc4;
+  background: #f8fcf9;
+}
+.budget-builder-add-item {
+  min-width: 82px;
+  min-height: 32px;
+  padding: 6px 9px;
+  border-color: #b8ddc4;
+  color: #087443;
+  font-size: .72rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+.budget-builder-add-item:disabled {
+  cursor: not-allowed;
+  opacity: .48;
+}
+.budget-builder-empty-selection {
+  margin: 0;
+  padding: 12px;
+  border: 1px dashed #d5e5d9;
+  border-radius: 11px;
+  background: #fbfefc;
+  color: #657468;
+  font-size: .82rem;
+  line-height: 1.45;
+}
+@media (max-width: 640px) {
+  .budget-builder-choice-list { max-height: 230px; gap: 6px; }
+  .budget-builder-choice-heading h3 { font-size: .84rem; }
+  .budget-builder-add-item {
+    min-width: 74px;
+    min-height: 30px;
+    padding: 5px 7px;
+    font-size: .68rem;
+  }
+}
