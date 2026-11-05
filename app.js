@@ -2023,7 +2023,7 @@
       categories.map(c => '<option value="' + esc(c) + '">' + esc(c) + '</option>').join("");
     showModal('<section class="budget-builder-modal" aria-labelledby="budgetBuilderTitle">' +
       '<div class="modal-head"><div><div class="eyebrow">PACK PERSONNALISÉ</div><h2 id="budgetBuilderTitle">Compose ton pack selon ton budget</h2></div><button class="close" onclick="closeModal()" aria-label="Fermer">✕</button></div>' +
-      '<p class="budget-builder-intro">Choisis ton budget et, si tu le souhaites, une catégorie. La proposition utilise uniquement les articles publiés, disponibles et dont le prix est confirmé.</p>' +
+      '<p class="budget-builder-intro">Choisis ton budget, puis personnalise la proposition : ajoute ou retire librement des articles et ajuste les quantités sans dépasser ton montant.</p>' +
       '<form id="budgetBuilderForm" class="budget-builder-form">' +
         '<label for="budgetBuilderBudget">Ton budget (FCFA)</label><input id="budgetBuilderBudget" class="input" type="number" inputmode="numeric" min="500" max="250000" step="500" value="5000" required>' +
         '<label for="budgetBuilderCategory">Type de besoin</label><select id="budgetBuilderCategory" class="input">' + categoryOptions + '</select>' +
@@ -2038,44 +2038,89 @@
     $("budgetBuilderBudget").onchange = suggestBudgetPack;
     suggestBudgetPack();
   }
+  function shuffleBudgetBuilderItems(items) {
+    const shuffled = [...items];
+    for (let index = shuffled.length - 1; index > 0; index--) {
+      const swapIndex = Math.floor(Math.random() * (index + 1));
+      [shuffled[index], shuffled[swapIndex]] = [shuffled[swapIndex], shuffled[index]];
+    }
+    return shuffled;
+  }
   function suggestBudgetPack() {
     const budgetInput = $("budgetBuilderBudget"), categoryInput = $("budgetBuilderCategory"), results = $("budgetBuilderResults");
     if (!budgetInput || !categoryInput || !results) return;
     const budget = Math.floor(Number(budgetInput.value));
+    const category = String(categoryInput.value || "all");
     if (!Number.isFinite(budget) || budget < 500 || budget > 250000) {
-      budgetBuilderState.items = [];
+      budgetBuilderState = { budget: 0, category, items: [] };
       results.innerHTML = '<div class="inline-message">Saisis un budget compris entre 500 et 250 000 FCFA.</div>';
       const addButton = $("budgetBuilderAddBtn");
       if (addButton) addButton.disabled = true;
       return;
     }
-    const category = String(categoryInput.value || "all");
+    const previousSignature = (budgetBuilderState.items || [])
+      .map(item => String(item.id)).sort().join("|");
     const candidates = getBudgetBuilderProducts(category).map(p => ({ p, price: getEffectivePrice(p) }))
-      .filter(x => Number.isFinite(x.price) && x.price > 0 && x.price <= budget)
-      .sort((a,b) => a.price - b.price || String(a.p.name).localeCompare(String(b.p.name), "fr"));
-    budgetBuilderState = { budget, category, items: [] };
+      .filter(x => Number.isFinite(x.price) && x.price > 0 && x.price <= budget);
+    if (!candidates.length) {
+      budgetBuilderState = { budget, category, items: [] };
+      renderBudgetBuilderResults();
+      return;
+    }
+
     const buckets = new Map();
-    candidates.forEach(x => {
-      const key = String(x.p.cat || "Autre");
+    candidates.forEach(candidate => {
+      const key = String(candidate.p.cat || "Autre");
       if (!buckets.has(key)) buckets.set(key, []);
-      buckets.get(key).push(x);
+      buckets.get(key).push(candidate);
     });
-    const chosen = new Set(), categoryCounts = new Map();
-    let total = 0;
-    const addCandidate = x => {
-      if (!x || chosen.has(String(x.p.id)) || total + x.price > budget) return;
-      const key = String(x.p.cat || "Autre");
-      chosen.add(String(x.p.id));
-      categoryCounts.set(key, (categoryCounts.get(key) || 0) + 1);
-      budgetBuilderState.items.push({ id: String(x.p.id), qty: 1 });
-      total += x.price;
+    const categoryLimit = category === "all" ? 3 : 6;
+    const createSuggestion = () => {
+      const selected = [];
+      const selectedIds = new Set();
+      const categoryCounts = new Map();
+      const targetSpend = budget * (0.72 + Math.random() * 0.20);
+      let total = 0;
+      const addCandidate = candidate => {
+        if (!candidate || selectedIds.has(String(candidate.p.id))) return false;
+        const key = String(candidate.p.cat || "Autre");
+        if ((categoryCounts.get(key) || 0) >= categoryLimit || total + candidate.price > budget) return false;
+        selectedIds.add(String(candidate.p.id));
+        categoryCounts.set(key, (categoryCounts.get(key) || 0) + 1);
+        selected.push({ id: String(candidate.p.id), qty: 1 });
+        total += candidate.price;
+        return true;
+      };
+
+      // Première passe : varier les familles d’articles quand toutes les catégories sont ouvertes.
+      if (category === "all") {
+        shuffleBudgetBuilderItems([...buckets.keys()]).forEach(key => {
+          if (total >= targetSpend) return;
+          const affordable = shuffleBudgetBuilderItems(buckets.get(key) || [])
+            .find(candidate => total + candidate.price <= budget);
+          if (affordable) addCandidate(affordable);
+        });
+      }
+
+      // Deuxième passe : compléter avec des articles aléatoires, sans dépasser le budget.
+      shuffleBudgetBuilderItems(candidates).forEach(candidate => {
+        if (total >= targetSpend) return;
+        addCandidate(candidate);
+      });
+
+      // Garantir une proposition dès qu’au moins un article peut être acheté.
+      if (!selected.length) addCandidate(shuffleBudgetBuilderItems(candidates)[0]);
+      return selected;
     };
-    [...buckets.keys()].sort((a,b) => (Number(buckets.get(a)?.[0]?.price) || Infinity) - (Number(buckets.get(b)?.[0]?.price) || Infinity) || a.localeCompare(b, "fr")).forEach(key => addCandidate(buckets.get(key)?.[0]));
-    const perCategoryCap = category === "all" ? 3 : 6;
-    candidates.forEach(x => {
-      const key = String(x.p.cat || "Autre");
-      if ((categoryCounts.get(key) || 0) < perCategoryCap) addCandidate(x);
-    });
+
+    let selection = createSuggestion();
+    let signature = selection.map(item => item.id).sort().join("|");
+    // Éviter de reproposer exactement le même ensemble lorsque d’autres combinaisons existent.
+    for (let attempt = 0; attempt < 16 && signature === previousSignature; attempt++) {
+      selection = createSuggestion();
+      signature = selection.map(item => item.id).sort().join("|");
+    }
+    budgetBuilderState = { budget, category, items: selection };
     renderBudgetBuilderResults();
   }
   function renderBudgetBuilderResults() {
@@ -2085,31 +2130,62 @@
       .filter(line => line.product && canSellProduct(line.product));
     const total = lines.reduce((sum, line) => sum + getEffectivePrice(line.product) * line.qty, 0);
     const remaining = Math.max(0, budgetBuilderState.budget - total);
-    if (!lines.length) {
-      results.innerHTML = '<div class="empty">Aucun article ne correspond à ce budget et à ce choix. Augmente ton budget ou choisis une autre catégorie.</div>';
-      if (addButton) addButton.disabled = true;
-      return;
-    }
-    results.innerHTML = '<div class="budget-builder-summary"><div><span>Ta sélection</span><strong>' + lines.length + (lines.length > 1 ? ' articles' : ' article') + '</strong></div><div><span>Total des produits</span><strong>' + money(total) + '</strong></div><div><span>Budget restant</span><strong>' + money(remaining) + '</strong></div></div>' +
-      '<div class="budget-builder-list">' + lines.map(line => {
-        const p = line.product;
-        return '<article class="budget-builder-item"><div class="budget-builder-thumb">' + budgetBuilderImage(p) + '</div><div class="budget-builder-item-copy"><strong>' + esc(p.name) + '</strong><small>' + esc(p.cat || "Article") + ' · ' + money(getEffectivePrice(p)) + ' / ' + esc(getSaleUnitLabel(p)) + '</small></div><div class="qty budget-builder-qty"><button type="button" onclick="changeBudgetBuilderQty(\'' + esc(p.id) + '\',-1)" aria-label="Retirer une unité">−</button><b>' + line.qty + '</b><button type="button" onclick="changeBudgetBuilderQty(\'' + esc(p.id) + '\',1)" aria-label="Ajouter une unité">+</button></div></article>';
-      }).join("") + '</div>';
+    const selectedIds = new Set(lines.map(line => String(line.id)));
+    const available = getBudgetBuilderProducts(budgetBuilderState.category || "all")
+      .map(product => ({ product, price: getEffectivePrice(product) }))
+      .filter(item => Number.isFinite(item.price) && item.price > 0)
+      .sort((a, b) => String(a.product.name || "").localeCompare(String(b.product.name || ""), "fr"));
+    const selectedMarkup = lines.length
+      ? '<div class="budget-builder-choice-list">' + lines.map(line => {
+          const product = line.product;
+          return '<article class="budget-builder-item budget-builder-choice-item is-selected">' +
+            '<div class="budget-builder-thumb">' + budgetBuilderImage(product) + '</div>' +
+            '<div class="budget-builder-item-copy"><strong>' + esc(product.name) + '</strong><small>' + esc(product.cat || "Article") + ' · ' + money(getEffectivePrice(product)) + ' / ' + esc(getSaleUnitLabel(product)) + '</small></div>' +
+            '<div class="qty budget-builder-qty"><button type="button" onclick="changeBudgetBuilderQty(\'' + esc(product.id) + '\',-1)" aria-label="Retirer une unité">−</button><b>' + line.qty + '</b><button type="button" onclick="changeBudgetBuilderQty(\'' + esc(product.id) + '\',1)" aria-label="Ajouter une unité">+</button></div>' +
+          '</article>';
+        }).join("") + '</div>'
+      : '<p class="budget-builder-empty-selection">Aucun article sélectionné pour le moment. Ajoute les articles de ton choix ci-dessous.</p>';
+    const availableMarkup = available.filter(item => !selectedIds.has(String(item.product.id))).map(item => {
+      const product = item.product;
+      const canAdd = item.price <= remaining;
+      const label = item.price > budgetBuilderState.budget ? "Hors budget" : (canAdd ? "+ Ajouter" : "Budget atteint");
+      return '<article class="budget-builder-item budget-builder-choice-item">' +
+        '<div class="budget-builder-thumb">' + budgetBuilderImage(product) + '</div>' +
+        '<div class="budget-builder-item-copy"><strong>' + esc(product.name) + '</strong><small>' + esc(product.cat || "Article") + ' · ' + money(item.price) + ' / ' + esc(getSaleUnitLabel(product)) + '</small></div>' +
+        '<button type="button" class="btn ghost budget-builder-add-item" onclick="changeBudgetBuilderQty(\'' + esc(product.id) + '\',1)"' + (canAdd ? "" : " disabled") + '>' + label + '</button>' +
+      '</article>';
+    }).join("");
+    const availableSection = availableMarkup
+      ? '<section class="budget-builder-choice-section"><div class="budget-builder-choice-heading"><h3>Ajoute les articles de ton choix</h3><span>' + available.filter(item => !selectedIds.has(String(item.product.id))).length + ' disponibles</span></div><div class="budget-builder-choice-list">' + availableMarkup + '</div></section>'
+      : '<p class="budget-builder-empty-selection">Tous les articles de cette catégorie sont déjà dans ta sélection.</p>';
+    results.innerHTML =
+      '<div class="budget-builder-summary"><div><span>Ta sélection</span><strong>' + lines.length + (lines.length > 1 ? ' articles' : ' article') + '</strong></div><div><span>Total des produits</span><strong>' + money(total) + '</strong></div><div><span>Budget restant</span><strong>' + money(remaining) + '</strong></div></div>' +
+      '<section class="budget-builder-choice-section"><div class="budget-builder-choice-heading"><h3>Dans ton pack</h3><span>' + lines.length + ' choisi(s)</span></div>' + selectedMarkup + '</section>' +
+      availableSection;
     if (addButton) addButton.disabled = total <= 0 || total > budgetBuilderState.budget;
   }
   function changeBudgetBuilderQty(id, delta) {
-    const line = budgetBuilderState.items.find(item => item.id === String(id)), product = getP(String(id));
+    const productId = String(id), change = Math.trunc(Number(delta) || 0);
+    const line = budgetBuilderState.items.find(item => item.id === productId), product = getP(productId);
     if (!product || !canSellProduct(product)) return toast("Cet article n’est plus disponible.", true);
-    if (!line && delta > 0) {
-      if (getEffectivePrice(product) > budgetBuilderState.budget) return toast("Cet article dépasse ton budget.", true);
-      budgetBuilderState.items.push({ id: String(id), qty: 1 });
+    if (!change) return;
+    if (!line && change > 0) {
+      const currentTotal = budgetBuilderState.items.reduce((sum, item) => {
+        const selectedProduct = getP(item.id);
+        return sum + (selectedProduct && canSellProduct(selectedProduct) ? getEffectivePrice(selectedProduct) * item.qty : 0);
+      }, 0);
+      if (currentTotal + getEffectivePrice(product) * change > budgetBuilderState.budget) return toast("Cet article dépasserait le budget restant. Retire un autre article ou augmente ton budget.", true);
+      budgetBuilderState.items.push({ id: productId, qty: Math.min(99, change) });
     } else if (line) {
-      const nextQty = line.qty + Number(delta || 0);
-      if (nextQty <= 0) budgetBuilderState.items = budgetBuilderState.items.filter(item => item.id !== String(id));
+      const nextQty = line.qty + change;
+      if (nextQty <= 0) budgetBuilderState.items = budgetBuilderState.items.filter(item => item.id !== productId);
       else if (nextQty > 99) return toast("La quantité maximale est de 99 unités.", true);
       else {
-        const totalWithoutLine = budgetBuilderState.items.filter(item => item.id !== String(id))
-          .reduce((sum, item) => sum + getEffectivePrice(getP(item.id)) * item.qty, 0);
+        const totalWithoutLine = budgetBuilderState.items.filter(item => item.id !== productId)
+          .reduce((sum, item) => {
+            const selectedProduct = getP(item.id);
+            return sum + (selectedProduct && canSellProduct(selectedProduct) ? getEffectivePrice(selectedProduct) * item.qty : 0);
+          }, 0);
         if (totalWithoutLine + getEffectivePrice(product) * nextQty > budgetBuilderState.budget) return toast("Cette quantité dépasserait ton budget.", true);
         line.qty = nextQty;
       }
