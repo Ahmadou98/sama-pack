@@ -5567,6 +5567,7 @@
     if ($("adminAccountBtn")) $("adminAccountBtn").onclick = openAccountModal;
     if ($("adminNavSearch")) $("adminNavSearch").addEventListener("input", applyAdminNavigationSearch);
     if ($("adminGlobalSearch")) $("adminGlobalSearch").addEventListener("input", applyAdminResultSearch);
+    if ($("adminResetFiltersBtn")) $("adminResetFiltersBtn").onclick = () => { const search = $("adminGlobalSearch"); if (search) search.value = ""; applyAdminResultSearch(); search?.focus(); };
     if ($("adminNotificationBtn")) $("adminNotificationBtn").onclick = async () => {
       if (isGeneralAdmin() && "Notification" in window && Notification.permission === "default") {
         try {
