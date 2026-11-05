@@ -3918,7 +3918,9 @@
   }
   function formatAddressDisplay(value) {
     return String(value || "").trim().toLocaleLowerCase("fr")
-      .replace(/(^|[\s,-])([a-zà-öø-ÿ])/giu, (match, separator, letter) => separator + letter.toLocaleUpperCase("fr"));
+      .replace(/(^|[\s,-])([a-zà-öø-ÿ])/giu, (match, separator, letter) => separator + letter.toLocaleUpperCase("fr"))
+      .replace(/\b(des?|du|de la|et|la|le|les|à|au|aux)\b/giu, word => word.toLocaleLowerCase("fr"))
+      .replace(/\b(hlm|vdn|ucad|cices|bp)\b/giu, word => word.toLocaleUpperCase("fr"));
   }
   function actionLabel(action) { return ({pack_created:"Pack créé",pack_updated:"Pack modifié",pack_deleted:"Pack supprimé",order_status_changed:"Statut de commande modifié",order_placed:"Commande passée",admin_bootstrap:"Premier administrateur configuré",admin_invited:"Administrateur invité",admin_removed:"Droits administrateur retirés",settings_updated:"Paramètres modifiés",stock_created:"Stock créé",stock_updated:"Stock modifié",supplier_created:"Fournisseur ajouté",supplier_updated:"Fournisseur modifié",supplier_deleted:"Fournisseur supprimé",expense_created:"Dépense ajoutée",expense_updated:"Dépense modifiée",expense_deleted:"Dépense supprimée",quote_created:"Demande de devis reçue",quote_updated:"Devis modifié",quote_deleted:"Devis supprimé"})[action] || action || "Action"; }
   function updateAdminContext() {
@@ -4418,6 +4420,7 @@
       formatAddressDisplay(o.delivery_zone || customer.zone || "")
     ].filter(Boolean).join(" · ");
     const paymentChoice = paymentChoiceLabel(o.payment_choice || o.payment);
+    const itemCount = lines.reduce((sum, item) => sum + Math.max(0, Number(item.quantity) || 0), 0);
     const balance = Math.max(0, Number(o.total || 0) - Number(o.amount_paid || 0));
     const balanceClass = balance > 0 ? "has-balance" : "is-settled";
     const balanceLabel = balance > 0 && String(o.payment_choice || o.payment || "").toLocaleLowerCase("fr") === "pay_later"
@@ -4435,7 +4438,7 @@
       </div>
       ${orderTrackingHtml(o)}
       <section class="order-details-section">
-        <div class="order-details-section-head"><h3>Articles commandés</h3><span>${lines.length} article${lines.length > 1 ? "s" : ""}</span></div>
+        <div class="order-details-section-head"><h3>Articles commandés</h3><span>${itemCount} article${itemCount > 1 ? "s" : ""}</span></div>
         <ul class="pack-items order-detail-items">${itemsMarkup}</ul>
       </section>
       <section class="order-details-section">
