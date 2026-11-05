@@ -377,6 +377,24 @@
     return "Ton compte ne dispose pas de la permission nécessaire pour ouvrir ce module.";
   }
 
+  /* API légère pour les rubriques qui n'ont encore aucun enregistrement.
+     Elle clone le modèle HTML partagé, puis active le layout d'état vide
+     en ajoutant simplement .is-empty au conteneur de contenu. */
+  function renderAdminEmptyState(title = "Aucune donnée disponible", description = "Les éléments de cette rubrique apparaîtront ici dès qu’ils seront enregistrés.") {
+    const host = $("adminContent");
+    const template = $("adminEmptyStateTemplate");
+    if (!host || !template?.content) return false;
+    const fragment = template.content.cloneNode(true);
+    const heading = fragment.querySelector("h3");
+    const message = fragment.querySelector("p");
+    if (heading) heading.textContent = title;
+    if (message) message.textContent = description;
+    host.replaceChildren(fragment);
+    host.classList.add("is-empty");
+    return true;
+  }
+  window.renderAdminEmptyState = renderAdminEmptyState;
+
 
   const ACCOUNT_PRESENCE_WINDOW_MS = 90 * 1000;
   let presenceHeartbeatTimer = null;
@@ -3924,7 +3942,7 @@
   }
   function actionLabel(action) { return ({pack_created:"Pack créé",pack_updated:"Pack modifié",pack_deleted:"Pack supprimé",order_status_changed:"Statut de commande modifié",order_placed:"Commande passée",admin_bootstrap:"Premier administrateur configuré",admin_invited:"Administrateur invité",admin_removed:"Droits administrateur retirés",settings_updated:"Paramètres modifiés",stock_created:"Stock créé",stock_updated:"Stock modifié",supplier_created:"Fournisseur ajouté",supplier_updated:"Fournisseur modifié",supplier_deleted:"Fournisseur supprimé",expense_created:"Dépense ajoutée",expense_updated:"Dépense modifiée",expense_deleted:"Dépense supprimée",quote_created:"Demande de devis reçue",quote_updated:"Devis modifié",quote_deleted:"Devis supprimé"})[action] || action || "Action"; }
   function updateAdminContext() {
-    const name = String(currentProfile?.full_name || currentUser?.email || "Compte de gestion");
+    const name = String(currentProfile?.full_name || currentUser?.user_metadata?.full_name || currentUser?.email || "Compte de gestion").trim();
     const role = isGeneralAdmin() ? "Administrateur général" : "Administrateur";
     const panel = $("adminPanel");
     if (panel) {
@@ -3932,10 +3950,21 @@
       panel.classList.toggle("is-role-admin", isAdmin() && !isGeneralAdmin());
       panel.dataset.managementRole = isGeneralAdmin() ? "general-admin" : "admin";
     }
+
+    const profileName = $("adminUserName");
+    if (profileName) profileName.textContent = name || "Compte de gestion";
+    const profileRole = $("adminFlag");
+    if (profileRole) profileRole.textContent = role;
+    const avatar = $("adminUserAvatar");
+    if (avatar) {
+      avatar.textContent = name.split(/\s+/).filter(Boolean).slice(0, 2)
+        .map(part => part.charAt(0).toLocaleUpperCase("fr")).join("") || "SP";
+    }
+    const profileButton = $("adminAccountBtn");
+    if (profileButton) profileButton.setAttribute("aria-label", "Ouvrir le compte de " + name + " · " + role);
+
     const context = $("adminContext");
-    if (context) context.textContent = role + " · " + name;
-    const flag = $("adminFlag");
-    if (flag) flag.textContent = "ESPACE DE GESTION · " + role.toLocaleUpperCase("fr") + " · " + name;
+    if (context) context.textContent = "Gestion commerciale · " + role;
   }
 
   function applyAdminNavigationSearch() {
@@ -3956,13 +3985,49 @@
     if (noResults) noResults.classList.toggle("hidden", visibleTotal > 0);
   }
 
+  function getAdminRowStatusLabel(row) {
+    const badge = row.querySelector(".status");
+    if (badge?.textContent.trim()) return badge.textContent.trim();
+    const orderStatusSelect = row.querySelector(".admin-order-col-status select");
+    if (orderStatusSelect) return orderStatusSelect.options[orderStatusSelect.selectedIndex]?.textContent.trim() || orderStatusSelect.value || "";
+    return "";
+  }
+
+  function configureAdminQuickFilters() {
+    const tools = $("adminViewTools");
+    if (!tools) return;
+    $("adminStatusQuickFilter")?.remove();
+
+    const statusLabels = new Map();
+    document.querySelectorAll("#adminContent .table-wrap tbody tr").forEach(row => {
+      const label = getAdminRowStatusLabel(row);
+      const key = label.trim().toLocaleLowerCase("fr");
+      if (key && !statusLabels.has(key)) statusLabels.set(key, label.trim());
+    });
+    if (!statusLabels.size) return;
+
+    const filter = document.createElement("select");
+    filter.id = "adminStatusQuickFilter";
+    filter.className = "input admin-status-filter";
+    filter.setAttribute("aria-label", "Filtrer les résultats par statut");
+    filter.add(new Option("Tous les statuts", ""));
+    statusLabels.forEach((label, key) => filter.add(new Option(label, key)));
+    filter.addEventListener("change", applyAdminResultSearch);
+    const resetButton = $("adminResetFiltersBtn");
+    tools.insertBefore(filter, resetButton || null);
+  }
+
   function applyAdminResultSearch() {
     const query = String($("adminGlobalSearch")?.value || "").trim().toLocaleLowerCase("fr");
+    const statusFilter = String($("adminStatusQuickFilter")?.value || "").trim();
     document.querySelectorAll("#adminContent .table-wrap").forEach(wrap => {
       const rows = [...wrap.querySelectorAll("tbody tr")];
       let visible = 0;
       rows.forEach(row => {
-        const match = !query || row.textContent.toLocaleLowerCase("fr").includes(query);
+        const textMatch = !query || row.textContent.toLocaleLowerCase("fr").includes(query);
+        const rowStatus = getAdminRowStatusLabel(row).toLocaleLowerCase("fr");
+        const statusMatch = !statusFilter || rowStatus === statusFilter;
+        const match = textMatch && statusMatch;
         row.hidden = !match;
         if (match) visible++;
       });
@@ -3970,10 +4035,10 @@
       if (!note && rows.length) {
         note = document.createElement("p");
         note.className = "admin-no-match small-note";
-        note.textContent = "Aucun résultat ne correspond à cette recherche.";
+        note.textContent = "Aucun résultat ne correspond aux filtres sélectionnés.";
         wrap.insertAdjacentElement("afterend", note);
       }
-      if (note) note.classList.toggle("hidden", !query || visible > 0 || !rows.length);
+      if (note) note.classList.toggle("hidden", (!query && !statusFilter) || visible > 0 || !rows.length);
     });
   }
 
@@ -4012,13 +4077,18 @@
       if (generalAdmin) group.removeAttribute("hidden");
     });
     const globalSearch = $("adminGlobalSearch"); if (globalSearch) globalSearch.value = "";
+    $("adminStatusQuickFilter")?.remove();
     updateAdminContext();
     const titles = {dashboard:"Tableau de bord",orders:"Commandes",customers:"Clients",stock:"Stock",products:"Packs",packs:"Packs",catalogs:"Produits & outils",prospects:"Prospection",admins:"Comptes administrateurs",activity:"Journal des actions",suppliers:"Fournisseurs",expenses:"Dépenses",quotes:"Devis professionnels",settings:"Paramètres",profitability:"Rentabilité",sales_codes:"Codes commerciaux",marketing:"Campagnes e-mail",contacts:"Messages de contact",deliveries:"SAMA-PACK Livraison"};
-    $("adminTitle").textContent = titles[view] || "Gestion";
-    $("adminContent").innerHTML = '<div class="panel loading-panel">Chargement des données…</div>';
+    const sectionTitle = titles[view] || "Gestion";
+    $("adminTitle").textContent = sectionTitle;
+    const breadcrumb = $("adminBreadcrumb");
+    if (breadcrumb) breadcrumb.textContent = sectionTitle;
+    $("adminContent").classList.remove("is-empty");
+    $("adminContent").innerHTML = '<div class="panel loading-panel"><div class="admin-loading-spinner" aria-hidden="true"></div><p>Chargement des données…</p></div>';
     try {
-      if (view === "prospects") { await renderProspectsAdmin(); applyAdminResultSearch(); return; }
-      if (view === "catalogs") { await renderIndividualCatalogAdmin(); applyAdminResultSearch(); return; }
+      if (view === "prospects") { await renderProspectsAdmin(); configureAdminQuickFilters(); applyAdminResultSearch(); return; }
+      if (view === "catalogs") { await renderIndividualCatalogAdmin(); configureAdminQuickFilters(); applyAdminResultSearch(); return; }
       let html = "";
       if (view === "dashboard") html = await adminDashboard();
       else if (view === "orders") html = await adminOrders();
@@ -4037,6 +4107,8 @@
       else if (view === "sales_codes") html = await adminSalesCodes();
       else if (view === "settings") html = await adminSettings();
       $("adminContent").innerHTML = html;
+      configureAdminQuickFilters();
+      applyAdminResultSearch();
       bindAdmin(view);
       if (view === "marketing") { const button = $("sendMonthlyMarketingBtn"); if (button) button.onclick = sendMonthlyMarketingNow; }
       if (view === "dashboard") startDashboardPresencePolling();
@@ -4175,8 +4247,7 @@
       { label: "Articles en rupture", value: String(outOfStock), note: "Disponibilité à vérifier", css: "stockout" },
       { label: "Comptes actifs maintenant", value: activeAccounts === null ? "—" : String(activeAccounts), note: `Activité sur 90 s · actualisé à ${now.toLocaleTimeString("fr-SN", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}`, css: "active-users", live: true }
     ];
-    return `${dashboardWarnings.length ? '<div class="panel dashboard-data-warning"><strong>Tableau de bord partiellement chargé.</strong><p>Certains indicateurs sont momentanément indisponibles. Les autres rubriques restent accessibles. Réessaie l’actualisation pour récupérer les données manquantes.</p></div>' : ''}<div class="dashboard-welcome"><div><div class="eyebrow">PILOTAGE COMMERCIAL</div><h2>Vue d’ensemble de SAMA-PACK</h2><p>Suivi des ventes, des commandes, du catalogue et des réapprovisionnements.</p></div><button class="btn ghost small" onclick="showAdminView('dashboard')">Actualiser les données</button></div>
-      <div class="dashboard-kpis">${cards.map(card=>`<article class="dashboard-kpi ${card.css}"><span class="dashboard-kpi-label">${esc(card.label)}</span><strong ${card.live ? 'id="activeAccountsCount"' : ""}>${esc(card.value)}</strong><small ${card.live ? 'id="activeAccountsLastUpdated"' : ""}>${esc(card.note)}</small></article>`).join("")}</div>
+    return `${dashboardWarnings.length ? '<div class="panel dashboard-data-warning"><strong>Tableau de bord partiellement chargé.</strong><p>Certains indicateurs sont momentanément indisponibles. Les autres rubriques restent accessibles. Réessaie l’actualisation pour récupérer les données manquantes.</p></div>' : ''}<div class="dashboard-kpis">${cards.map(card=>`<article class="dashboard-kpi ${card.css}"><span class="dashboard-kpi-label">${esc(card.label)}</span><strong ${card.live ? 'id="activeAccountsCount"' : ""}>${esc(card.value)}</strong><small ${card.live ? 'id="activeAccountsLastUpdated"' : ""}>${esc(card.note)}</small></article>`).join("")}</div>
       <section class="admin-quick-actions" aria-label="Raccourcis de gestion">
         <button class="admin-quick-action" type="button" onclick="showAdminView('orders')"><span class="admin-quick-icon">▤</span><span><strong>Traiter les commandes</strong><small>Suivre paiement, préparation et livraison</small></span><span class="admin-quick-arrow">→</span></button>
         <button class="admin-quick-action" type="button" onclick="showAdminView('packs')"><span class="admin-quick-icon">▣</span><span><strong>Mettre à jour les packs</strong><small>Prix, marges, photos et ventes flash</small></span><span class="admin-quick-arrow">→</span></button>
@@ -5554,6 +5625,14 @@
     if ($("adminAccountBtn")) $("adminAccountBtn").onclick = openAccountModal;
     if ($("adminNavSearch")) $("adminNavSearch").addEventListener("input", applyAdminNavigationSearch);
     if ($("adminGlobalSearch")) $("adminGlobalSearch").addEventListener("input", applyAdminResultSearch);
+    if ($("adminResetFiltersBtn")) $("adminResetFiltersBtn").onclick = () => {
+      const search = $("adminGlobalSearch");
+      if (search) search.value = "";
+      const statusFilter = $("adminStatusQuickFilter");
+      if (statusFilter) statusFilter.value = "";
+      applyAdminResultSearch();
+      search?.focus();
+    };
     if ($("adminNotificationBtn")) $("adminNotificationBtn").onclick = async () => {
       if (isGeneralAdmin() && "Notification" in window && Notification.permission === "default") {
         try {
