@@ -1572,7 +1572,7 @@
       Object.entries(values).forEach(([unit, value]) => {
         const node = el.querySelector(`[data-time-value="${unit}"]`);
         if (!node) return;
-        const next = unit === "days" ? String(value).padStart(2, "0") : String(value).padStart(2, "0");
+        const next = String(value).padStart(2, "0");
         if (node.textContent === next) return;
         node.textContent = next;
         if (!reduced && typeof node.animate === "function") {
