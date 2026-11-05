@@ -3918,7 +3918,7 @@
   }
   function formatAddressDisplay(value) {
     return String(value || "").trim().toLocaleLowerCase("fr")
-      .replace(/(^|[\\s,/-])([a-zà-öø-ÿ])/giu, (match, separator, letter) => separator + letter.toLocaleUpperCase("fr"));
+      .replace(/(^|[\s,-])([a-zà-öø-ÿ])/giu, (match, separator, letter) => separator + letter.toLocaleUpperCase("fr"));
   }
   function actionLabel(action) { return ({pack_created:"Pack créé",pack_updated:"Pack modifié",pack_deleted:"Pack supprimé",order_status_changed:"Statut de commande modifié",order_placed:"Commande passée",admin_bootstrap:"Premier administrateur configuré",admin_invited:"Administrateur invité",admin_removed:"Droits administrateur retirés",settings_updated:"Paramètres modifiés",stock_created:"Stock créé",stock_updated:"Stock modifié",supplier_created:"Fournisseur ajouté",supplier_updated:"Fournisseur modifié",supplier_deleted:"Fournisseur supprimé",expense_created:"Dépense ajoutée",expense_updated:"Dépense modifiée",expense_deleted:"Dépense supprimée",quote_created:"Demande de devis reçue",quote_updated:"Devis modifié",quote_deleted:"Devis supprimé"})[action] || action || "Action"; }
   function updateAdminContext() {
