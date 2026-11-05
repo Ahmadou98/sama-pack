@@ -1852,9 +1852,61 @@
   }
   function renderCartModal() {
     if (isGeneralAdmin()) return toast("Le panier client n’est pas disponible pour l’administrateur général.");
-    if (!cart.length) { showModal(`<div class="modal-head"><h2>Ton panier</h2><button class="close" onclick="closeModal()">✕</button></div><div class="empty">Ton panier est vide.<br><br><a class="btn primary" href="#catalogue" onclick="closeModal()">Voir le catalogue</a></div>`); return; }
+    if (!cart.length) {
+      showModal(`<div class="modal-head"><h2>Ton panier</h2><button class="close" onclick="closeModal()">✕</button></div><div class="empty">Ton panier est vide.<br><br><a class="btn primary" href="#catalogue" onclick="closeModal()">Voir le catalogue</a></div>`);
+      return;
+    }
     const t = cartTotals();
-    showModal(`<div class="modal-head"><div><div class="eyebrow">COMMANDE EN LIGNE</div><h2>Ton panier</h2></div><button class="close" onclick="closeModal()">✕</button></div><div class="cart-list">${cart.map(i => { const p = getP(i.id); if (!p) return ""; return `<div class="cart-item"><div class="cart-product-icon">${cleaningBottleSvg()}</div><div><strong>${esc(p.name)}</strong><div class="small-note">${money(getEffectivePrice(p))} / ${esc(getSaleUnitLabel(p))}</div>${getCartLineModeMismatch(i) ? '<span class="small-note" style="color:#b45309">Mode de vente modifié : retire puis ajoute à nouveau cet article.</span>' : ""}</div><div class="qty"><button onclick="changeQty('${esc(p.id)}',-1)" aria-label="Retirer un ${esc(getSaleUnitLabel(p))}">−</button><b>${i.qty} ${esc(getSaleUnitCountLabel(p,i.qty))}</b><button onclick="changeQty('${esc(p.id)}',1)" aria-label="Ajouter un ${esc(getSaleUnitLabel(p))}">+</button></div></div>`; }).join("")}</div><div class="summary"><div class="summary-row"><span>Sous-total</span><strong>${money(t.subtotal)}</strong></div><div class="summary-row"><span>Livraison</span><strong>${money(t.delivery)}</strong></div><div class="summary-row total"><span>Total estimé</span><strong>${money(t.total)}</strong></div></div><button class="btn primary full" onclick="checkoutModal()">Passer la commande</button>`);
+    const cartQuantity = cart.reduce((sum, item) => sum + Number(item.qty || 0), 0);
+    showModal(`<section class="cart-premium" aria-label="Contenu du panier">
+      <div class="modal-head cart-premium-head">
+        <div><div class="eyebrow">COMMANDE EN LIGNE</div><h2>Ton panier <span class="cart-count-pill" data-odometer>${cartQuantity}</span></h2><p class="cart-premium-subtitle">Vérifie tes articles avant de finaliser.</p></div>
+        <button class="close" onclick="closeModal()" aria-label="Fermer le panier">✕</button>
+      </div>
+      <div class="cart-list">${cart.map(i => {
+        const p = getP(i.id);
+        if (!p) return "";
+        const image = getProductImages(p)[0] || "";
+        const imageUrl = image ? resolveProductImageUrl(image) : "";
+        const thumbnail = imageUrl
+          ? `<div class="cart-product-thumb"><img src="${esc(imageUrl)}" alt="${esc(p.name)}" loading="lazy" decoding="async" onerror="this.closest('.cart-product-thumb').classList.add('is-fallback');this.remove()"><span class="cart-product-thumb-fallback" aria-hidden="true">${cleaningBottleSvg()}</span></div>`
+          : `<div class="cart-product-thumb is-fallback"><span class="cart-product-thumb-fallback" aria-hidden="true">${cleaningBottleSvg()}</span></div>`;
+        return `<article class="cart-item cart-item-premium">
+          ${thumbnail}
+          <div class="cart-product-info">
+            <strong>${esc(p.name)}</strong>
+            <div class="small-note">${money(getEffectivePrice(p))} / ${esc(getSaleUnitLabel(p))}</div>
+            ${getCartLineModeMismatch(i) ? '<span class="small-note cart-mode-warning">Mode de vente modifié : retire puis ajoute à nouveau cet article.</span>' : ""}
+          </div>
+          <div class="qty qty-premium" aria-label="Quantité">
+            <button type="button" onclick="changeQty('${esc(p.id)}',-1)" aria-label="Retirer un ${esc(getSaleUnitLabel(p))}">−</button>
+            <b data-odometer>${i.qty}</b>
+            <button type="button" onclick="changeQty('${esc(p.id)}',1)" aria-label="Ajouter un ${esc(getSaleUnitLabel(p))}">+</button>
+          </div>
+        </article>`;
+      }).join("")}</div>
+      <div class="summary cart-summary-premium">
+        <div class="summary-row"><span>Sous-total</span><strong data-odometer>${money(t.subtotal)}</strong></div>
+        <div class="summary-row"><span>Livraison</span><strong data-odometer>${money(t.delivery)}</strong></div>
+        <div class="summary-row total"><span>Total estimé</span><strong data-odometer>${money(t.total)}</strong></div>
+      </div>
+      <div class="cart-reassurance" aria-label="Informations de livraison et paiement">
+        <span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7h11v10H3zM14 10h4l3 3v4h-7z"/><circle cx="7.5" cy="18" r="1.5"/><circle cx="17.5" cy="18" r="1.5"/></svg>Livraison à Dakar</span>
+        <i aria-hidden="true"></i>
+        <span><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3M12 14v3"/></svg>Paiement en ligne sécurisé</span>
+      </div>
+      <button class="btn primary full cart-checkout-cta" onclick="checkoutModal()"><span>Passer la commande</span><span class="cart-checkout-arrow" aria-hidden="true">→</span></button>
+    </section>`);
+    const modalRoot = $("modalRoot");
+    modalRoot?.querySelectorAll("[data-odometer]").forEach((node, index) => {
+      if (window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches) return;
+      if (typeof node.animate === "function") {
+        node.animate(
+          [{ opacity: .45, transform: "translateY(7px)" }, { opacity: 1, transform: "translateY(0)" }],
+          { duration: 260 + Math.min(index * 18, 90), easing: "cubic-bezier(.2,.7,.25,1)" }
+        );
+      }
+    });
   }
   function changeQty(id, delta) { const x = cart.find(i => i.id === id); if (!x) return; if (getCartLineModeMismatch(x)) return toast("Le mode de vente a changé. Retire cet article puis ajoute-le à nouveau.", true); x.qty += delta; if (x.qty <= 0) cart = cart.filter(i => i.id !== id); if (x.qty > 99) x.qty = 99; saveAndRenderCart(); }
 
