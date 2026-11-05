@@ -6252,3 +6252,9 @@ body.admin-management-open .info-floating-header {
     grid-template-columns: minmax(88px, 32%) minmax(0, 1fr);
   }
 }
+
+
+/* SAMA-PACK — fond global frais pour mieux détacher les cartes du catalogue. */
+body {
+  background-color: #f8fafc;
+}
