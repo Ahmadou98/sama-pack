@@ -125,7 +125,6 @@ body {
 }
 
 
-
 .eyebrow {
   display: inline-block;
   font-size: 11px;
@@ -1823,7 +1822,6 @@ html { scroll-padding-top:88px; }
 }
 
 
-
 /* SAMA-PACK catalogue references, availability and supplier-aware admin search */
 .availability-badge{display:inline-flex;align-items:center;gap:6px;width:max-content;max-width:100%;padding:5px 9px;border-radius:999px;font-size:11px;font-weight:850;line-height:1.25;border:1px solid transparent}
 .availability-badge.is-available{color:#166534;background:#dcfce7;border-color:#bbf7d0}
@@ -1939,7 +1937,6 @@ tr[hidden]{display:none!important}
 @media (max-width:650px) { .dashboard-kpis { grid-template-columns:repeat(2,minmax(0,1fr)); } }
 
 
-
 /* SAMA-PACK payment checkout patch v1 */
 .payment-choice-list { display:grid; gap:10px; padding-top:4px; }
 .payment-choice-list > .eyebrow { margin-bottom:2px; }
@@ -1970,7 +1967,6 @@ tr[hidden]{display:none!important}
 .cart-product-icon{width:42px;height:46px;flex:0 0 42px;display:grid;place-items:center;background:#ecfdf5;border-radius:12px}.cart-product-icon .cleaning-bottle-icon{width:22px;height:31px}
 .catalog-unavailable{min-height:48vh;display:flex;flex-direction:column;align-items:flex-start;justify-content:center;gap:14px}.catalog-unavailable h1{font-size:clamp(32px,4vw,48px);margin:0;line-height:1.08}.catalog-unavailable p{max-width:660px;margin:0;color:var(--muted);font-size:16px;line-height:1.75}.catalog-unavailable-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:8px}
 @media(max-width:700px){.how-teaser{align-items:stretch;flex-direction:column;gap:18px}.how-teaser>.btn{width:100%}.catalog-unavailable{min-height:55vh}.catalog-unavailable-actions{width:100%;flex-direction:column}.catalog-unavailable-actions .btn{width:100%}}
-
 
 
 /* Pack personnalisé : bannière horizontale compacte et illustration line-art */
@@ -2195,7 +2191,6 @@ tr[hidden]{display:none!important}
 }
 .budget-builder-summary span { color: #657468; font-size: .76rem; }
 .budget-builder-summary strong { color: #14532d; font-size: 1rem; overflow-wrap: anywhere; }
-.budget-builder-list { display: grid; gap: 8px; }
 .budget-builder-item {
   display: grid;
   grid-template-columns: 52px minmax(0, 1fr) auto;
@@ -2224,11 +2219,67 @@ tr[hidden]{display:none!important}
 .budget-builder-qty button { width: 30px; height: 30px; }
 .budget-builder-footer { margin-top: 16px; }
 .budget-builder-footer .small-note { margin: 9px 0 0; }
+
+/* Composeur de pack : sélection réellement personnalisable par le client. */
+.budget-builder-choice-section { margin-top: 14px; }
+.budget-builder-choice-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 0 0 8px;
+}
+.budget-builder-choice-heading h3 {
+  margin: 0;
+  color: #244b32;
+  font-size: .92rem;
+  font-weight: 800;
+}
+.budget-builder-choice-heading span {
+  color: #718078;
+  font-size: .72rem;
+  white-space: nowrap;
+}
+.budget-builder-choice-list {
+  display: grid;
+  gap: 7px;
+  max-height: 260px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 1px 3px 3px 1px;
+}
+.budget-builder-choice-item { min-width: 0; }
+.budget-builder-choice-item.is-selected {
+  border-color: #b8ddc4;
+  background: #f8fcf9;
+}
+.budget-builder-add-item {
+  min-width: 82px;
+  min-height: 32px;
+  padding: 6px 9px;
+  border-color: #b8ddc4;
+  color: #087443;
+  font-size: .72rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+.budget-builder-add-item:disabled {
+  cursor: not-allowed;
+  opacity: .48;
+}
+.budget-builder-empty-selection {
+  margin: 0;
+  padding: 12px;
+  border: 1px dashed #d5e5d9;
+  border-radius: 11px;
+  background: #fbfefc;
+  color: #657468;
+  font-size: .82rem;
+  line-height: 1.45;
+}
 .account-order-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 170px; }
 .account-order-actions .btn { white-space: nowrap; }
 @media (max-width: 640px) {
-  .budget-builder-launch { align-items: stretch; flex-direction: column; gap: 14px; margin-bottom: 18px; padding: 17px; }
-  .budget-builder-launch > .btn { width: 100%; }
   .budget-builder-form { grid-template-columns: minmax(0, 1fr); gap: 7px; padding: 13px; }
   #budgetBuilderSuggestBtn { grid-column: auto; margin-top: 7px; }
   .budget-builder-summary { grid-template-columns: 1fr; gap: 7px; }
@@ -2240,6 +2291,16 @@ tr[hidden]{display:none!important}
   .budget-builder-qty { gap: 5px; }
   .budget-builder-qty button { width: 27px; height: 27px; }
   .account-order-actions { min-width: 0; }
+
+  /* Liste des produits personnalisables : limite de hauteur pour préserver le mobile. */
+.budget-builder-choice-list { max-height: 230px; gap: 6px; }
+  .budget-builder-choice-heading h3 { font-size: .84rem; }
+  .budget-builder-add-item {
+    min-width: 74px;
+    min-height: 30px;
+    padding: 5px 7px;
+    font-size: .68rem;
+  }
 }
 
 
@@ -3983,7 +4044,6 @@ body.general-admin-mode .general-admin-account-modal {
 /* Menu hamburger du back-office sur mobile : ouverture verticale dans la hauteur de l'écran. */
 
 
-
 /* Admin inbox: messages submitted through the public contact page */
 .contact-message-body {
   max-width: 620px;
@@ -4739,10 +4799,6 @@ body{padding-top:100px!important}
     display: none !important;
   }
 }
-
-
-
-
 
 
 /* SAMA-PACK — BACK-OFFICE : feuille de style de structure unique */
@@ -6428,74 +6484,4 @@ body.admin-management-open .info-floating-header {
 /* SAMA-PACK — fond global frais pour mieux détacher les cartes du catalogue. */
 body {
   background-color: #f8fafc;
-}
-
-
-
-/* Composeur de pack : sélection réellement personnalisable par le client. */
-.budget-builder-choice-section { margin-top: 14px; }
-.budget-builder-choice-heading {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 10px;
-  margin: 0 0 8px;
-}
-.budget-builder-choice-heading h3 {
-  margin: 0;
-  color: #244b32;
-  font-size: .92rem;
-  font-weight: 800;
-}
-.budget-builder-choice-heading span {
-  color: #718078;
-  font-size: .72rem;
-  white-space: nowrap;
-}
-.budget-builder-choice-list {
-  display: grid;
-  gap: 7px;
-  max-height: 260px;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  padding: 1px 3px 3px 1px;
-}
-.budget-builder-choice-item { min-width: 0; }
-.budget-builder-choice-item.is-selected {
-  border-color: #b8ddc4;
-  background: #f8fcf9;
-}
-.budget-builder-add-item {
-  min-width: 82px;
-  min-height: 32px;
-  padding: 6px 9px;
-  border-color: #b8ddc4;
-  color: #087443;
-  font-size: .72rem;
-  font-weight: 800;
-  white-space: nowrap;
-}
-.budget-builder-add-item:disabled {
-  cursor: not-allowed;
-  opacity: .48;
-}
-.budget-builder-empty-selection {
-  margin: 0;
-  padding: 12px;
-  border: 1px dashed #d5e5d9;
-  border-radius: 11px;
-  background: #fbfefc;
-  color: #657468;
-  font-size: .82rem;
-  line-height: 1.45;
-}
-@media (max-width: 640px) {
-  .budget-builder-choice-list { max-height: 230px; gap: 6px; }
-  .budget-builder-choice-heading h3 { font-size: .84rem; }
-  .budget-builder-add-item {
-    min-width: 74px;
-    min-height: 30px;
-    padding: 5px 7px;
-    font-size: .68rem;
-  }
 }
