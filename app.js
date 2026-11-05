@@ -3898,6 +3898,28 @@
   }
   function statusLabel(status) { return ({new:"Reçue",confirmed:"Confirmée",processing:"En préparation",prepared:"Préparée",out_for_delivery:"En cours de livraison",delivered:"Livrée",cancelled:"Annulée",awaiting_payment:"Paiement intégral en attente",awaiting_delivery_payment:"Frais de livraison à payer",won:"Gagné",lost:"Perdu"})[status] || status || "—"; }
   function paymentStatusLabel(status) { return ({unpaid:"Non payé",pending:"Paiement en attente",partially_paid:"Partiellement payé",paid:"Payé",failed:"Échec du paiement",refund_review:"Paiement à vérifier / rembourser"})[status] || status || "Non renseigné"; }
+  function paymentChoiceLabel(value) {
+    const key = String(value || "").trim().toLocaleLowerCase("fr");
+    if (!key) return "Non renseigné";
+    const labels = {
+      pay_now: "Paiement en ligne",
+      pay_later: "Paiement à la livraison",
+      cash_on_delivery: "Paiement à la livraison",
+      delivery: "Paiement à la livraison",
+      wave: "Wave",
+      orange_money: "Orange Money",
+      cash: "Espèces",
+      card: "Carte bancaire",
+      bank_transfer: "Virement bancaire",
+      transfer: "Virement bancaire",
+      mobile_money: "Paiement mobile"
+    };
+    return labels[key] || key.replace(/[_-]+/g, " ").replace(/^[a-zà-öø-ÿ]/i, letter => letter.toLocaleUpperCase("fr"));
+  }
+  function formatAddressDisplay(value) {
+    return String(value || "").trim().toLocaleLowerCase("fr")
+      .replace(/(^|[\\s,/-])([a-zà-öø-ÿ])/giu, (match, separator, letter) => separator + letter.toLocaleUpperCase("fr"));
+  }
   function actionLabel(action) { return ({pack_created:"Pack créé",pack_updated:"Pack modifié",pack_deleted:"Pack supprimé",order_status_changed:"Statut de commande modifié",order_placed:"Commande passée",admin_bootstrap:"Premier administrateur configuré",admin_invited:"Administrateur invité",admin_removed:"Droits administrateur retirés",settings_updated:"Paramètres modifiés",stock_created:"Stock créé",stock_updated:"Stock modifié",supplier_created:"Fournisseur ajouté",supplier_updated:"Fournisseur modifié",supplier_deleted:"Fournisseur supprimé",expense_created:"Dépense ajoutée",expense_updated:"Dépense modifiée",expense_deleted:"Dépense supprimée",quote_created:"Demande de devis reçue",quote_updated:"Devis modifié",quote_deleted:"Devis supprimé"})[action] || action || "Action"; }
   function updateAdminContext() {
     const name = String(currentProfile?.full_name || currentUser?.email || "Compte de gestion");
@@ -4391,7 +4413,50 @@
     }
     const name = o.customer_name || customer.name || "Client";
     const phone = o.customer_phone || customer.phone || "";
-    showModal(`<div class="modal-head"><div><div class="eyebrow">COMMANDE</div><h2>${esc(o.id)}</h2></div><button class="close" onclick="closeModal()">✕</button></div><p><strong>${esc(name)}</strong> · ${esc(phone)}<br>${esc(o.delivery_address || customer.address || "")} ${esc(o.delivery_zone || customer.zone || "")}<br><span class="small-note">Créée le ${esc(fmtDate(o.created_at))}</span></p>${orderTrackingHtml(o)}<ul class="pack-items">${lines.map(i=>`<li>${Number(i.quantity)} × ${esc(i.product_name)} — ${money(i.unit_price)} / ${esc(getOrderLineSaleUnitLabel(i))}</li>`).join("") || "<li>Détails des lignes indisponibles pour cette ancienne commande.</li>"}</ul><div class="summary"><div class="summary-row"><span>Sous-total</span><strong>${money(o.subtotal)}</strong></div><div class="summary-row"><span>Livraison</span><strong>${money(o.delivery)}</strong></div><div class="summary-row"><span>Mode de paiement</span><strong>${esc(o.payment_choice || o.payment || "Non renseigné")}</strong></div><div class="summary-row"><span>Créneau de livraison</span><strong>${esc(o.slot || "À convenir")}</strong></div><div class="summary-row"><span>Statut du paiement</span><strong>${esc(paymentStatusLabel(o.payment_status))}</strong></div><div class="summary-row"><span>Déjà encaissé</span><strong>${money(o.amount_paid || 0)}</strong></div><div class="summary-row"><span>Solde restant</span><strong>${money(Math.max(0, Number(o.total || 0)-Number(o.amount_paid || 0)))}</strong></div><div class="summary-row total"><span>Total</span><strong>${money(o.total)}</strong></div></div>${["awaiting_payment","awaiting_delivery_payment"].includes(o.status) ? `<button class="btn primary full" onclick="retryOrderPayment('${esc(o.id)}')">Reprendre le paiement</button>` : ""}`);
+    const addressLine = [
+      formatAddressDisplay(o.delivery_address || customer.address || ""),
+      formatAddressDisplay(o.delivery_zone || customer.zone || "")
+    ].filter(Boolean).join(" · ");
+    const paymentChoice = paymentChoiceLabel(o.payment_choice || o.payment);
+    const balance = Math.max(0, Number(o.total || 0) - Number(o.amount_paid || 0));
+    const balanceClass = balance > 0 ? "has-balance" : "is-settled";
+    const balanceLabel = balance > 0 && String(o.payment_choice || o.payment || "").toLocaleLowerCase("fr") === "pay_later"
+      ? "À régler à la livraison"
+      : balance > 0 ? "Solde restant à payer" : "Solde restant";
+    const itemsMarkup = lines.length
+      ? lines.map(item => `<li class="order-detail-item"><span class="order-detail-quantity">${Math.max(0, Number(item.quantity) || 0)} ×</span><div class="order-detail-item-copy"><strong>${esc(item.product_name || "Article")}</strong><small>${money(item.unit_price)} / ${esc(getOrderLineSaleUnitLabel(item))}</small></div></li>`).join("")
+      : '<li class="order-detail-empty">Détails des lignes indisponibles pour cette ancienne commande.</li>';
+    showModal(`<div class="order-details-modal">
+      <div class="modal-head"><div><div class="eyebrow">COMMANDE</div><h2>${esc(o.id)}</h2></div><button class="close" onclick="closeModal()">✕</button></div>
+      <div class="order-details-customer">
+        <strong>${esc(name)}</strong><span>·</span><span>${esc(phone)}</span>
+        <p>${esc(addressLine || "Adresse non renseignée")}</p>
+        <small class="small-note">Créée le ${esc(fmtDate(o.created_at))}</small>
+      </div>
+      ${orderTrackingHtml(o)}
+      <section class="order-details-section">
+        <div class="order-details-section-head"><h3>Articles commandés</h3><span>${lines.length} article${lines.length > 1 ? "s" : ""}</span></div>
+        <ul class="pack-items order-detail-items">${itemsMarkup}</ul>
+      </section>
+      <section class="order-details-section">
+        <h3>Facturation et paiement</h3>
+        <div class="summary order-details-summary" aria-label="Facturation et paiement">
+          <div class="order-details-breakdown">
+            <div class="summary-row"><span>Sous-total</span><strong>${money(o.subtotal)}</strong></div>
+            <div class="summary-row"><span>Livraison</span><strong>${money(o.delivery)}</strong></div>
+            <div class="summary-row"><span>Mode de paiement</span><strong>${esc(paymentChoice)}</strong></div>
+            <div class="summary-row"><span>Créneau de livraison</span><strong>${esc(o.slot || "À convenir")}</strong></div>
+            <div class="summary-row"><span>Statut du paiement</span><strong>${esc(paymentStatusLabel(o.payment_status))}</strong></div>
+            <div class="summary-row"><span>Déjà encaissé</span><strong>${money(o.amount_paid || 0)}</strong></div>
+          </div>
+          <div class="order-details-final">
+            <div class="summary-row order-total-row"><span>Total de la commande</span><strong>${money(o.total)}</strong></div>
+            <div class="summary-row order-balance-row ${balanceClass}"><span>${balanceLabel}</span><strong>${money(balance)}</strong></div>
+          </div>
+        </div>
+      </section>
+      ${["awaiting_payment","awaiting_delivery_payment"].includes(o.status) ? `<button class="btn primary full" onclick="retryOrderPayment('${esc(o.id)}')">Reprendre le paiement</button>` : ""}
+    </div>`);
   }
   async function setOrderStatus(id, status) {
     if (!hasAdminPermission("orders.update_status")) return toast("Accès refusé.", true);
@@ -4673,9 +4738,9 @@
       const balance = Math.max(0, Number(order.total || 0) - Number(order.amount_paid || 0));
       return '<article class="customer-history-order"><div class="customer-history-order-head"><div><strong>' + esc(order.id) + '</strong><span class="small-note">' + esc(fmtDate(order.created_at)) + '</span></div><span class="status ' + esc(order.status) + '">' + esc(statusLabel(order.status)) + '</span><strong>' + money(order.total) + '</strong></div>' +
         itemsMarkup +
-        '<div class="customer-history-order-meta"><span>Mode : ' + esc(order.payment_choice || order.payment || "—") + '</span><span>Paiement : ' + esc(paymentStatusLabel(order.payment_status)) + '</span><span>Encaissé : ' + money(order.amount_paid || 0) + '</span><span>Solde : ' + money(balance) + '</span></div>' +
+        '<div class="customer-history-order-meta"><span>Mode : ' + esc(paymentChoiceLabel(order.payment_choice || order.payment)) + '</span><span>Paiement : ' + esc(paymentStatusLabel(order.payment_status)) + '</span><span>Encaissé : ' + money(order.amount_paid || 0) + '</span><span>Solde : ' + money(balance) + '</span></div>' +
         (order.slot ? '<p class="small-note">Créneau : ' + esc(order.slot) + '</p>' : '') +
-        ((order.delivery_address || order.delivery_zone) ? '<p class="small-note">Livraison : ' + esc([order.delivery_address, order.delivery_zone].filter(Boolean).join(" · ")) + '</p>' : '') +
+        ((order.delivery_address || order.delivery_zone) ? '<p class="small-note">Livraison : ' + esc([formatAddressDisplay(order.delivery_address), formatAddressDisplay(order.delivery_zone)].filter(Boolean).join(" · ")) + '</p>' : '') +
         '<button class="btn ghost small" type="button" onclick="showOrder(\'' + esc(order.id) + '\')">Voir le détail de la commande</button></article>';
     }).join("") : '<div class="empty">Aucune commande liée à cette fiche.</div>';
     const quoteMarkup = quotes.length ? '<div class="customer-detail-list">' + quotes.map(quote => '<article class="customer-detail-list-item"><strong>' + esc(quote.company || "Demande de devis") + '</strong><span class="status ' + esc(quote.status) + '">' + esc(statusLabel(quote.status)) + '</span><p>' + esc(quote.need || "") + '</p><small>' + esc(fmtDate(quote.created_at)) + (quote.email ? " · " + esc(quote.email) : "") + '</small></article>').join("") + '</div>' : '<p class="small-note">Aucune demande de devis liée à ce compte.</p>';
