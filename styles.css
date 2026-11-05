@@ -5467,3 +5467,197 @@ body.admin-management-open .info-floating-header {
   .hero-promo-panel .flash-discount { font-size: 9px; min-width: 43px; }
   .hero .trust-copy span { font-size: 7.5px; }
 }
+
+/* ===== HERO immersif : header intelligent, parallaxe, tilt et micro-interactions ===== */
+.info-floating-header .nav {
+  transition: height .24s cubic-bezier(.2,.7,.25,1), min-height .24s cubic-bezier(.2,.7,.25,1);
+}
+.info-floating-header.is-scrolled {
+  background: rgba(255,255,255,.82);
+  border-color: rgba(226,232,240,.68);
+  box-shadow: 0 10px 28px rgba(15,35,24,.12);
+  backdrop-filter: blur(18px) saturate(155%);
+  -webkit-backdrop-filter: blur(18px) saturate(155%);
+}
+.info-floating-header.is-scrolled .nav {
+  height: 58px;
+  min-height: 58px;
+}
+.info-floating-header.is-scrolled .brand-mark {
+  width: 35px;
+  height: 35px;
+  border-radius: 11px;
+  transition: width .24s ease,height .24s ease,border-radius .24s ease;
+}
+.info-floating-header.is-scrolled .icon-btn,
+.info-floating-header.is-scrolled .nav-actions > .btn {
+  box-shadow: 0 2px 8px rgba(15,35,24,.045);
+  transition: padding .2s ease,box-shadow .2s ease,background .2s ease;
+}
+.hero.has-custom-bg {
+  background-position: center calc(50% + var(--hero-parallax-y, 0px));
+}
+.hero .trust-item .trust-icon svg {
+  transform-origin: center;
+}
+@media (hover:hover) and (pointer:fine) {
+  .hero .trust-item:hover .trust-icon svg,
+  .hero .trust-item:focus-within .trust-icon svg {
+    animation: sama-trust-bounce .52s cubic-bezier(.2,.8,.25,1);
+  }
+}
+@keyframes sama-trust-bounce {
+  0% { transform: translateY(0) scale(1); }
+  38% { transform: translateY(-4px) scale(1.08); }
+  68% { transform: translateY(1px) scale(.98); }
+  100% { transform: translateY(0) scale(1); }
+}
+
+/* Tilt 3D modéré sur la seule carte promo; jamais sur le parcours tactile. */
+.hero-promo-panel .flash-slide {
+  transform-style: preserve-3d;
+  transition: transform .22s cubic-bezier(.2,.7,.25,1),box-shadow .22s ease;
+  will-change: transform;
+}
+@media (hover:hover) and (pointer:fine) {
+  .hero-promo-panel .flash-slide:hover {
+    box-shadow: 0 18px 36px rgba(15,50,29,.16);
+  }
+}
+
+/* Double photo : la deuxième photo n’est activée que si elle existe dans image_paths. */
+.hero-promo-panel .promo-photo-swap {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+.hero-promo-panel .promo-photo-swap .product-photo {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  max-height: none;
+  object-fit: contain;
+  transition: opacity .3s ease,transform .45s cubic-bezier(.2,.7,.25,1);
+}
+.hero-promo-panel .promo-photo-main { opacity: 1; }
+.hero-promo-panel .promo-photo-alt { opacity: 0; }
+@media (hover:hover) and (pointer:fine) {
+  .hero-promo-panel .promo-photo-swap.has-hover-swap:hover .promo-photo-main { opacity: 0; transform: scale(.985); }
+  .hero-promo-panel .promo-photo-swap.has-hover-swap:hover .promo-photo-alt { opacity: 1; transform: scale(1.025); }
+}
+
+/* Compte à rebours : quatre unités indépendantes avec animation par changement de valeur. */
+.hero-promo-panel .flash-countdown:not(.is-open) {
+  display: grid;
+  gap: 7px;
+  padding: 10px 11px;
+}
+.hero-promo-panel .flash-countdown-label {
+  display: block;
+  color: #64748b;
+  font-size: 8px;
+  font-weight: 950;
+  letter-spacing: .1em;
+}
+.hero-promo-panel .flash-countdown-units {
+  display: grid;
+  grid-template-columns: repeat(4,minmax(0,1fr));
+  gap: 6px;
+}
+.hero-promo-panel .flash-time-unit {
+  display: grid;
+  justify-items: center;
+  gap: 3px;
+  min-width: 0;
+  padding: 6px 3px 5px;
+  border: 1px solid #e1ebe3;
+  border-radius: 8px;
+  background: #fff;
+  overflow: hidden;
+}
+.hero-promo-panel .flash-time-unit strong {
+  display: block;
+  color: #14532d;
+  font-size: 16px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+.hero-promo-panel .flash-time-unit small {
+  color: #748178;
+  font-size: 7px;
+  line-height: 1;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+}
+
+/* Bouton panier : magnétisme discret, spinner puis coche après ajout réel réussi. */
+.hero-promo-panel .flash-add-btn {
+  position: relative;
+  transform: translate3d(0,0,0);
+  transition: transform .16s ease,background .2s ease,box-shadow .2s ease;
+}
+.hero-promo-panel .flash-add-btn.is-loading {
+  cursor: wait;
+  opacity: .9;
+  transform: translate3d(0,0,0) scale(.985) !important;
+}
+.hero-promo-panel .flash-add-btn.is-success {
+  background: #15803d !important;
+  color: #fff !important;
+  box-shadow: 0 0 0 3px rgba(34,197,94,.16);
+}
+.promo-button-spinner {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 14px;
+  border: 2px solid rgba(255,255,255,.38);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: promo-button-spin .58s linear infinite;
+}
+@keyframes promo-button-spin { to { transform: rotate(360deg); } }
+.promo-button-check { display: inline-grid; place-items: center; width: 17px; height: 17px; border-radius: 50%; background: rgba(255,255,255,.18); font-size: 12px; font-weight: 1000; }
+
+/* Breakpoints : header compact, tilt et magnétisme supprimés sur écrans tactiles. */
+@media (max-width: 900px) {
+  .hero.has-custom-bg { background-position: center calc(38% + var(--hero-parallax-y, 0px)); }
+}
+@media (max-width: 700px) {
+  .info-floating-header.is-scrolled .nav { height: 52px; min-height: 52px; }
+  .info-floating-header.is-scrolled .brand-mark { width: 29px; height: 29px; }
+  .hero.has-custom-bg { background-position: center calc(32% + var(--hero-parallax-y, 0px)); }
+  .hero-promo-panel .flash-countdown:not(.is-open) { gap: 5px; padding: 7px 7px; }
+  .hero-promo-panel .flash-countdown-units { gap: 3px; }
+  .hero-promo-panel .flash-time-unit { padding: 5px 2px 4px; border-radius: 6px; }
+  .hero-promo-panel .flash-time-unit strong { font-size: 12px; }
+  .hero-promo-panel .flash-time-unit small { font-size: 6px; }
+  .hero-promo-panel .flash-countdown-label { font-size: 7px; }
+  .hero-promo-panel .flash-add-btn { transform: none !important; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .info-floating-header .nav,
+  .info-floating-header.is-scrolled .brand-mark,
+  .hero-promo-panel .flash-slide,
+  .hero-promo-panel .flash-photo img,
+  .hero-promo-panel .flash-add-btn { transition: none !important; }
+  .hero .trust-item:hover .trust-icon svg,
+  .hero .trust-item:focus-within .trust-icon svg,
+  .promo-button-spinner { animation: none !important; }
+  .hero.has-custom-bg { background-position: center center; }
+}
+/* Spécificité supérieure aux règles génériques du chrono héritées de la carte promo. */
+.hero-promo-panel .flash-countdown > .flash-countdown-label {
+  color: #64748b;
+  font-size: 8px;
+  font-weight: 950;
+  line-height: 1.2;
+  letter-spacing: .1em;
+}
+@media (max-width: 700px) {
+  .hero-promo-panel .flash-countdown > .flash-countdown-label { font-size: 7px; }
+}

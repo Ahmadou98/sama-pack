@@ -36,6 +36,27 @@
 
   header.dataset.sharedHeaderReady = "true";
 
+  // En-tête intelligent : compact au scroll et parallaxe légère du visuel principal.
+  const reducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches === true;
+  const hero = document.querySelector("#home.hero");
+  let scrollFramePending = false;
+  const updateScrollVisuals = () => {
+    const scrolled = window.scrollY > 24;
+    header.classList.toggle("is-scrolled", scrolled);
+    if (hero && !reducedMotion && hero.classList.contains("has-custom-bg")) {
+      const shift = Math.max(-34, Math.min(34, -hero.getBoundingClientRect().top * 0.075));
+      hero.style.setProperty("--hero-parallax-y", shift.toFixed(1) + "px");
+    }
+    scrollFramePending = false;
+  };
+  const onWindowScroll = () => {
+    if (scrollFramePending) return;
+    scrollFramePending = true;
+    window.requestAnimationFrame(updateScrollVisuals);
+  };
+  window.addEventListener("scroll", onWindowScroll, { passive: true });
+  updateScrollVisuals();
+
   const shell = header.querySelector(".mobile-menu-shell");
   const toggle = header.querySelector(".mobile-menu-toggle");
   const menu = header.querySelector(".mobile-nav-menu");
@@ -67,16 +88,27 @@
     });
   }
 
-  const desktopMore = header.querySelector(".desktop-nav-more");
-  if (desktopMore) {
-    desktopMore.querySelectorAll("a").forEach(link => {
-      link.addEventListener("click", () => { desktopMore.open = false; });
+  const desktopMoreMenus = Array.from(header.querySelectorAll(".desktop-nav-more"));
+  if (desktopMoreMenus.length) {
+    desktopMoreMenus.forEach(desktopMore => {
+      desktopMore.querySelectorAll("a").forEach(link => {
+        link.addEventListener("click", () => { desktopMore.open = false; });
+      });
+      desktopMore.addEventListener("toggle", () => {
+        if (desktopMore.open) {
+          desktopMoreMenus.forEach(other => {
+            if (other !== desktopMore) other.open = false;
+          });
+        }
+      });
     });
     document.addEventListener("click", event => {
-      if (!desktopMore.contains(event.target)) desktopMore.open = false;
+      desktopMoreMenus.forEach(desktopMore => {
+        if (!desktopMore.contains(event.target)) desktopMore.open = false;
+      });
     });
     document.addEventListener("keydown", event => {
-      if (event.key === "Escape") desktopMore.open = false;
+      if (event.key === "Escape") desktopMoreMenus.forEach(menu => { menu.open = false; });
     });
   }
 

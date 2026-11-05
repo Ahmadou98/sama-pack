@@ -1417,25 +1417,99 @@
     el.innerHTML = tops.map(p => `<div class="mini-pack"><div class="mini-icon">${iconById[p.id] || "📦"}</div><div><strong>${esc(p.name)}</strong><small>${esc(publicProductRef(p))} · ${availabilityStatusLabel(p.availability_status)} · ${money(getEffectivePrice(p))}${hasPromotion(p) ? " · Promo" : ""}</small></div></div>`).join("") || '<div class="empty">Les packs seront bientôt disponibles.</div>';
   }
   function promoImageOnly(p) {
-  const path = String(p.image_path || "").trim();
-
-  if (!path) {
-    return '<div class="promo-visual promo-visual-empty"></div>';
+    const images = getProductImages(p);
+    const primary = resolveProductImageUrl(images[0] || p.image_path || "");
+    const secondary = images[1] ? resolveProductImageUrl(images[1]) : "";
+    if (!primary) return '<div class="promo-visual promo-visual-empty"></div>';
+    return `<div class="promo-visual product-image-frame">
+      <div class="promo-photo-swap ${secondary ? "has-hover-swap" : ""}" aria-label="Photos du pack">
+        <img class="product-photo promo-photo-main" src="${esc(primary)}" alt="${esc(p.name)}" loading="eager" fetchpriority="high" decoding="async">
+        ${secondary ? `<img class="product-photo promo-photo-alt" src="${esc(secondary)}" alt="${esc(p.name)} — photo alternative" loading="lazy" decoding="async">` : ""}
+      </div>
+    </div>`;
   }
-
-  const src = /^https?:\/\//i.test(path)
-    ? path
-    : path.replace(/^\//, "");
-
-  return `<div class="promo-visual product-image-frame">
-    <img
-      class="product-photo"
-      src="${esc(src)}"
-      alt="${esc(p.name)}"
-      loading="lazy"
-    >
-  </div>`;
-}
+  function setupPromoMagneticPointer() {
+    if (document.documentElement.dataset.promoMagneticReady === "true") return;
+    document.documentElement.dataset.promoMagneticReady = "true";
+    const supportsFinePointer = window.matchMedia?.("(hover: hover) and (pointer: fine)")?.matches === true;
+    const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches === true;
+    if (!supportsFinePointer || reduce) return;
+    document.addEventListener("pointermove", event => {
+      if (event.pointerType === "touch") return;
+      const button = document.querySelector(".hero-promo-panel .flash-add-btn:not(:disabled)");
+      if (!button) return;
+      const rect = button.getBoundingClientRect();
+      const closestX = Math.max(rect.left, Math.min(event.clientX, rect.right));
+      const closestY = Math.max(rect.top, Math.min(event.clientY, rect.bottom));
+      const distance = Math.hypot(event.clientX - closestX, event.clientY - closestY);
+      if (distance > 30) {
+        button.style.transform = "";
+        return;
+      }
+      const centerX = rect.left + rect.width / 2;
+      const centerY = rect.top + rect.height / 2;
+      const dx = Math.max(-4, Math.min(4, (centerX - event.clientX) * 0.12));
+      const dy = Math.max(-4, Math.min(4, (centerY - event.clientY) * 0.12));
+      button.style.transform = `translate3d(${dx.toFixed(1)}px, ${dy.toFixed(1)}px, 0)`;
+    }, { passive: true });
+    document.addEventListener("pointerleave", () => {
+      const button = document.querySelector(".hero-promo-panel .flash-add-btn");
+      if (button) button.style.transform = "";
+    });
+  }
+  function setupPromoCardInteractions(slide, productId) {
+    const supportsFinePointer = window.matchMedia?.("(hover: hover) and (pointer: fine)")?.matches === true;
+    const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches === true;
+    if (supportsFinePointer && !reduce) {
+      let frame = 0;
+      slide.addEventListener("pointermove", event => {
+        if (event.pointerType === "touch") return;
+        if (frame) window.cancelAnimationFrame(frame);
+        frame = window.requestAnimationFrame(() => {
+          const rect = slide.getBoundingClientRect();
+          const x = (event.clientX - rect.left) / Math.max(rect.width, 1) - 0.5;
+          const y = (event.clientY - rect.top) / Math.max(rect.height, 1) - 0.5;
+          const rotateY = Math.max(-3.2, Math.min(3.2, x * 6.4));
+          const rotateX = Math.max(-2.8, Math.min(2.8, y * -5.6));
+          slide.style.transform = `perspective(1100px) rotateX(${rotateX.toFixed(2)}deg) rotateY(${rotateY.toFixed(2)}deg) translateZ(0)`;
+        });
+      }, { passive: true });
+      slide.addEventListener("pointerleave", () => {
+        if (frame) window.cancelAnimationFrame(frame);
+        slide.style.transform = "";
+      });
+    }
+    setupPromoMagneticPointer();
+    const button = slide.querySelector("[data-flash-add]");
+    if (!button) return;
+    const idleMarkup = '<span class="flash-add-label">Ajouter au panier</span><span aria-hidden="true">＋</span>';
+    button.addEventListener("click", async () => {
+      if (button.disabled) return;
+      button.disabled = true;
+      button.setAttribute("aria-busy", "true");
+      button.classList.remove("is-success");
+      button.classList.add("is-loading");
+      button.innerHTML = '<span class="promo-button-spinner" aria-hidden="true"></span><span>Ajout…</span>';
+      await new Promise(resolve => window.setTimeout(resolve, 500));
+      if (!button.isConnected) return;
+      const added = addToCart(productId) === true;
+      button.classList.remove("is-loading");
+      button.removeAttribute("aria-busy");
+      if (added) {
+        button.classList.add("is-success");
+        button.innerHTML = '<span class="promo-button-check" aria-hidden="true">✓</span><span>Ajouté</span>';
+        window.setTimeout(() => {
+          if (!button.isConnected) return;
+          button.classList.remove("is-success");
+          button.disabled = false;
+          button.innerHTML = idleMarkup;
+        }, 900);
+      } else {
+        button.disabled = false;
+        button.innerHTML = idleMarkup;
+      }
+    });
+  }
   function renderPromoCarousel() {
     const section = $("promoSection"), carousel = $("promoCarousel"), dots = $("promoDots");
     if (!section || !carousel) return;
@@ -1455,8 +1529,16 @@
     const p = promos[currentPromoIndex];
     const discount = p.price > 0 ? Math.round((1 - getEffectivePrice(p) / Number(p.price)) * 100) : 0;
     const countdown = p.promo_end_at
-      ? `<div class="flash-countdown" data-countdown-end="${esc(p.promo_end_at)}"><span>FIN DE L’OFFRE DANS</span><strong>--j : --h : --m : --s</strong></div>`
-      : '<div class="flash-countdown is-open"><span>OFFRE EN COURS</span><strong>Prix spécial disponible</strong></div>';
+      ? `<div class="flash-countdown" data-countdown-end="${esc(p.promo_end_at)}" role="timer" aria-label="Temps restant avant la fin de l’offre">
+          <span class="flash-countdown-label">FIN DE L’OFFRE DANS</span>
+          <div class="flash-countdown-units">
+            <span class="flash-time-unit"><strong data-time-value="days">00</strong><small>Jours</small></span>
+            <span class="flash-time-unit"><strong data-time-value="hours">00</strong><small>Heures</small></span>
+            <span class="flash-time-unit"><strong data-time-value="minutes">00</strong><small>Min</small></span>
+            <span class="flash-time-unit"><strong data-time-value="seconds">00</strong><small>Sec</small></span>
+          </div>
+        </div>`
+      : '<div class="flash-countdown is-open"><span class="flash-countdown-label">OFFRE EN COURS</span><strong>Prix spécial disponible</strong></div>';
     const description = String(p.desc || p.description || "Profite de cette offre spéciale SAMA-PACK.").trim();
     carousel.innerHTML = `<article class="flash-slide promo-slide-in">
       <div class="flash-photo">${promoImageOnly(p)}</div>
@@ -1465,27 +1547,42 @@
         <div class="flash-copy-main"><h3>${esc(p.name)}</h3><p>${esc(description.length > 150 ? description.slice(0,147) + "…" : description)}</p></div>
         <div class="flash-price-row"><strong>${money(getEffectivePrice(p))}</strong><del>${money(p.price)}</del><span class="flash-discount">−${discount}%</span></div>
         ${countdown}
-        <div class="promo-actions"><button class="btn flash-detail-btn" onclick="openProduct('${esc(p.id)}')">Voir le pack</button><button class="btn flash-add-btn" onclick="addToCart('${esc(p.id)}')">Ajouter au panier&nbsp; +</button></div>
+        <div class="promo-actions"><button class="btn flash-detail-btn" onclick="openProduct('${esc(p.id)}')">Voir le pack</button><button type="button" class="btn flash-add-btn" data-flash-add="${esc(p.id)}" aria-label="Ajouter ${esc(p.name)} au panier"><span class="flash-add-label">Ajouter au panier</span><span aria-hidden="true">＋</span></button></div>
       </div>
     </article>`;
+    const slide = carousel.querySelector(".flash-slide");
+    if (slide) setupPromoCardInteractions(slide, p.id);
     if (dots) dots.innerHTML = promos.map((item, index) => `<button class="promo-dot ${index === currentPromoIndex ? "active" : ""}" aria-label="Afficher la vente flash ${index + 1}" aria-current="${index === currentPromoIndex ? "true" : "false"}" onclick="goToPromo(${index})"></button>`).join("");
     updatePromoCountdowns();
   }
   function updatePromoCountdowns() {
     let expired = false;
+    const reduced = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches === true;
     document.querySelectorAll("[data-countdown-end]").forEach(el => {
       const end = new Date(el.dataset.countdownEnd || "").getTime();
       if (!Number.isFinite(end)) return;
       const remaining = end - Date.now();
       if (remaining <= 0) { expired = true; return; }
-      const seconds = Math.floor(remaining / 1000);
-      const days = Math.floor(seconds / 86400);
-      const hours = Math.floor((seconds % 86400) / 3600);
-      const minutes = Math.floor((seconds % 3600) / 60);
-      const secs = seconds % 60;
-      const pad = n => String(n).padStart(2, "0");
-      const strong = el.querySelector("strong");
-      if (strong) strong.textContent = `${days}j : ${pad(hours)}h : ${pad(minutes)}m : ${pad(secs)}s`;
+      const totalSeconds = Math.floor(remaining / 1000);
+      const values = {
+        days: Math.floor(totalSeconds / 86400),
+        hours: Math.floor((totalSeconds % 86400) / 3600),
+        minutes: Math.floor((totalSeconds % 3600) / 60),
+        seconds: totalSeconds % 60
+      };
+      Object.entries(values).forEach(([unit, value]) => {
+        const node = el.querySelector(`[data-time-value="${unit}"]`);
+        if (!node) return;
+        const next = String(value).padStart(2, "0");
+        if (node.textContent === next) return;
+        node.textContent = next;
+        if (!reduced && typeof node.animate === "function") {
+          node.animate(
+            [{ transform: "translateY(5px)", opacity: .45 }, { transform: "translateY(0)", opacity: 1 }],
+            { duration: 220, easing: "cubic-bezier(.2,.7,.25,1)" }
+          );
+        }
+      });
     });
     if (expired) { renderProducts(); renderPromoCarousel(); }
   }
@@ -1721,13 +1818,17 @@
   }
 
   function addToCart(id) {
-    if (isGeneralAdmin()) return toast("Le compte administrateur général n’utilise pas les fonctions d’achat client.", true);
-    const p = getP(id); if (!p || !p.active) { toast("Cet article n’est plus publié.", true); return; } if (p.availability_status === "out_of_stock") { toast("Cet article est en rupture de stock.", true); return; } if (Number(p.price) <= 0) { toast("Le prix de cet article doit être confirmé avant la commande.", true); return; }
+    if (isGeneralAdmin()) { toast("Le compte administrateur général n’utilise pas les fonctions d’achat client.", true); return false; }
+    const p = getP(id);
+    if (!p || !p.active) { toast("Cet article n’est plus publié.", true); return false; }
+    if (p.availability_status === "out_of_stock") { toast("Cet article est en rupture de stock.", true); return false; }
+    if (Number(p.price) <= 0) { toast("Le prix de cet article doit être confirmé avant la commande.", true); return false; }
     const line = cart.find(i => i.id === id);
     const saleUnit = getSaleUnitKey(p);
-    if (line && getCartLineModeMismatch(line)) return toast("Le mode de vente de cet article a changé. Retire-le du panier puis ajoute-le à nouveau.", true);
+    if (line && getCartLineModeMismatch(line)) { toast("Le mode de vente de cet article a changé. Retire-le du panier puis ajoute-le à nouveau.", true); return false; }
     if (line) line.qty = Math.min(99, line.qty + 1); else cart.push({ id, qty: 1, sale_unit: saleUnit });
     saveCart(); updateCartCount(); toast("Article ajouté au panier.");
+    return true;
   }
   function updateCartCount() { const el = $("cartCount"); if (el) el.textContent = String(cart.reduce((sum, i) => sum + i.qty, 0)); }
   function saveAndRenderCart() { saveCart(); updateCartCount(); renderCartModal(); }
