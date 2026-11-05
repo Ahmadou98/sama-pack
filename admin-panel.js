@@ -140,12 +140,30 @@
               <svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="8.8" cy="8.8" r="5.7" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="m13 13 4 4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
               <input id="adminGlobalSearch" type="search" placeholder="Filtrer les résultats affichés…" autocomplete="off">
             </label>
-            <div class="admin-view-tools" id="adminViewTools" aria-label="Filtres de la rubrique"></div>
+            <div class="admin-view-tools" id="adminViewTools" aria-label="Filtres de la rubrique">
+              <button class="admin-filter-reset" id="adminResetFiltersBtn" type="button" aria-label="Effacer la recherche">
+                <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 5h12M8 5V3.5h4V5m-6 0 .7 11h6.6L14 5M8.2 8v5m3.6-5v5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                <span>Effacer</span>
+              </button>
+            </div>
           </div>
 
           <section id="adminContent" class="admin-content" aria-label="Contenu de la rubrique" aria-live="polite">
             <div class="panel loading-panel"><div class="admin-loading-spinner" aria-hidden="true"></div><p>Chargement des données…</p></div>
           </section>
+
+          <template id="adminEmptyStateTemplate">
+            <div class="admin-empty-state" role="status">
+              <svg viewBox="0 0 80 80" fill="none" aria-hidden="true">
+                <rect x="13" y="17" width="54" height="46" rx="9" stroke="currentColor" stroke-width="2"/>
+                <path d="M23 29h34M23 37h21" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                <path d="m31 52 6-6 5 4 7-8 10 10" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                <circle cx="57" cy="48" r="3" fill="currentColor"/>
+              </svg>
+              <h3>Aucune donnée disponible</h3>
+              <p>Les éléments de cette rubrique apparaîtront ici dès qu’ils seront enregistrés.</p>
+            </div>
+          </template>
 
           <footer class="admin-footer">
             <span>SAMA-PACK <span aria-hidden="true">·</span> Gestion commerciale</span>
