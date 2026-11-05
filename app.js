@@ -380,6 +380,82 @@
   /* API légère pour les rubriques qui n'ont encore aucun enregistrement.
      Elle clone le modèle HTML partagé, puis active le layout d'état vide
      en ajoutant simplement .is-empty au conteneur de contenu. */
+
+  function adminTableCellValue(cell) {
+    const select = cell.querySelector("select");
+    if (select) return select.options[select.selectedIndex]?.textContent?.trim() || select.value || "—";
+    const checkbox = cell.querySelector('input[type="checkbox"]');
+    if (checkbox) return checkbox.checked ? "Oui" : "Non";
+    const field = cell.querySelector("input:not([type='checkbox']),textarea");
+    if (field) return String(field.value || "").trim() || "—";
+    const clone = cell.cloneNode(true);
+    clone.querySelectorAll("button,a,svg,script,style").forEach(node => node.remove());
+    return String(clone.textContent || "").replace(/\s+/g, " ").trim() || "—";
+  }
+
+  function openAdminTableRowDetails(table, row, headers) {
+    if (!table || !row || typeof showModal !== "function") return;
+    const fields = [...row.cells].map((cell, index) => ({
+      label: headers[index] || "Information",
+      value: adminTableCellValue(cell)
+    })).filter(field => field.value && field.value !== "—");
+    if (!fields.length) return;
+    const title = (row.cells[0] ? adminTableCellValue(row.cells[0]) : "Détail de l’élément").split(" · ")[0].slice(0, 100) || "Détail de l’élément";
+    const fieldMarkup = fields.map(field =>
+      '<div class="admin-record-detail-field"><span>' + esc(field.label) + '</span><strong>' + esc(field.value) + '</strong></div>'
+    ).join("");
+    showModal(
+      '<div class="modal-head admin-record-detail-head"><div><div class="eyebrow">DÉTAIL</div><h2>' + esc(title) + '</h2><p class="small-note">Informations de la ligne sélectionnée.</p></div><button class="close" type="button" onclick="closeModal()" aria-label="Fermer">✕</button></div>' +
+      '<div class="admin-record-detail-grid">' + fieldMarkup + '</div>'
+    );
+    const modalCard = document.querySelector(".modal-card");
+    if (modalCard) modalCard.classList.add("admin-record-detail-modal");
+  }
+
+  function enhanceResponsiveTables(root) {
+    const host = root && typeof root.querySelectorAll === "function" ? root : document;
+    host.querySelectorAll(".table-wrap table.table").forEach(table => {
+      table.classList.add("admin-responsive-table");
+      const headers = [...table.querySelectorAll("thead th")].map((cell, index) =>
+        String(cell.textContent || "").replace(/\s+/g, " ").trim() || "Information " + (index + 1)
+      );
+      table.querySelectorAll("tbody tr").forEach(row => {
+        [...row.cells].forEach((cell, index) => {
+          if (!cell.hasAttribute("data-label")) cell.setAttribute("data-label", headers[index] || "Information");
+        });
+        row.classList.add("admin-row-clickable");
+        if (!row.hasAttribute("tabindex")) row.tabIndex = 0;
+        if (!row.hasAttribute("aria-label")) {
+          const firstCell = row.cells[0];
+          row.setAttribute("aria-label", "Afficher le détail : " + (firstCell ? adminTableCellValue(firstCell) : "élément"));
+        }
+        if (row.dataset.adminRowDetailsBound === "true" || row.hasAttribute("onclick")) {
+          if (!row.hasAttribute("onkeydown") && row.dataset.adminRowKeyboardBound !== "true") {
+            row.dataset.adminRowKeyboardBound = "true";
+            row.addEventListener("keydown", event => {
+              if ((event.key === "Enter" || event.key === " ") && event.target === row) {
+                event.preventDefault();
+                row.click();
+              }
+            });
+          }
+          return;
+        }
+        row.dataset.adminRowDetailsBound = "true";
+        row.addEventListener("click", event => {
+          if (event.target.closest("button,a,input,select,textarea,label,summary,[contenteditable='true']")) return;
+          openAdminTableRowDetails(table, row, headers);
+        });
+        row.addEventListener("keydown", event => {
+          if ((event.key === "Enter" || event.key === " ") && event.target === row) {
+            event.preventDefault();
+            openAdminTableRowDetails(table, row, headers);
+          }
+        });
+      });
+    });
+  }
+
   function renderAdminEmptyState(title = "Aucune donnée disponible", description = "Les éléments de cette rubrique apparaîtront ici dès qu’ils seront enregistrés.") {
     const host = $("adminContent");
     const template = $("adminEmptyStateTemplate");
@@ -2892,7 +2968,7 @@
     const subscriptionResult = await client.from("replenishment_subscriptions").select("*").eq("user_id", currentUser.id).order("next_reminder_at", { ascending: true });
     cachedSubscriptions = subscriptionResult.error ? [] : (subscriptionResult.data || []);
     if (subscriptionResult.error) console.warn("Replenishment subscriptions unavailable", subscriptionResult.error);
-    const orderHtml = orders.length ? '<div class="table-wrap"><table class="table"><thead><tr><th>Commande</th><th>Date</th><th>Total</th><th>Paiement et solde</th><th>Suivi</th><th>Action</th></tr></thead><tbody>' + orders.map(o => {
+    const orderHtml = orders.length ? '<div class="table-wrap account-orders-table-wrap"><table class="table account-orders-table"><thead><tr><th class="account-order-col-reference">Commande</th><th class="account-order-col-date">Date</th><th class="account-order-col-total">Total</th><th class="account-order-col-payment">Paiement et solde</th><th class="account-order-col-tracking">Suivi</th><th class="account-order-col-actions">Action</th></tr></thead><tbody>' + orders.map(o => {
       const paymentPending = ["awaiting_payment","awaiting_delivery_payment"].includes(o.status);
       const paymentActionHtml = paymentPending
         ? '<button class="btn small primary" onclick="retryOrderPayment(\'' + esc(o.id) + '\')">Payer</button>'
@@ -2902,7 +2978,7 @@
       const balance = Math.max(0, Number(o.total || 0) - Number(o.amount_paid || 0));
       const slotHtml = o.slot ? '<div class="small-note order-slot"><strong>Créneau :</strong> ' + esc(o.slot) + '</div>' : '';
       const actionHtml = '<div class="account-order-actions">' + paymentActionHtml + '<button class="btn small ghost" onclick="reorderOrder(\'' + esc(o.id) + '\')">Recommander</button></div>';
-      return '<tr><td><strong>' + esc(o.id) + '</strong></td><td>' + esc(fmtDate(o.created_at)) + '</td><td>' + money(o.total) + '</td><td><span class="small-note">' + esc(paymentStatusLabel(o.payment_status)) + '</span><br><span class="small-note">Payé : ' + money(o.amount_paid || 0) + '</span><br><span class="small-note">Solde : ' + money(balance) + '</span></td><td><span class="status ' + esc(o.status) + '">' + esc(statusLabel(o.status)) + '</span>' + orderTrackingHtml(o) + slotHtml + '</td><td>' + actionHtml + '</td></tr>';
+      return `<tr class="account-order-row" tabindex="0" aria-label="Ouvrir le détail de la commande ${esc(o.id)}" onclick="if(!event.target.closest('button,a,input,select,textarea,label'))showOrder('${esc(o.id)}')" onkeydown="if((event.key==='Enter'||event.key===' ')&&!event.target.closest('button,a,input,select,textarea,label')){event.preventDefault();showOrder('${esc(o.id)}')}"><td class="account-order-col-reference"><strong>${esc(o.id)}</strong><span class="small-note account-order-date-inline">${esc(fmtDate(o.created_at))}</span><span class="small-note account-order-status-inline">${esc(statusLabel(o.status))}</span></td><td class="account-order-col-date">${esc(fmtDate(o.created_at))}</td><td class="account-order-col-total">${money(o.total)}</td><td class="account-order-col-payment"><span class="small-note">${esc(paymentStatusLabel(o.payment_status))}</span><br><span class="small-note">Payé : ${money(o.amount_paid || 0)}</span><br><span class="small-note">Solde : ${money(balance)}</span></td><td class="account-order-col-tracking"><span class="status ${esc(o.status)}">${esc(statusLabel(o.status))}</span>${orderTrackingHtml(o)}${slotHtml}</td><td class="account-order-col-actions">${actionHtml}</td></tr>`;
     }).join("") + '</tbody></table></div>' : '<div class="empty compact-empty">Tu n’as pas encore passé de commande en ligne.</div>';
     const subscriptionsHtml = renderSubscriptionsHtml(cachedSubscriptions);
     const accountNotificationsHtml = userNotifications.length ? userNotifications.map(n => '<article class="notification-item ' + (n.read_at ? 'read' : 'unread') + '"><div class="notification-title">' + esc(n.title) + '</div><div class="notification-message">' + esc(n.message) + '</div><div class="notification-meta">' + esc(fmtDate(n.created_at)) + (n.read_at ? ' · Lue' : ' · <button class="link-btn dark-link" onclick="markNotificationRead(\'' + esc(n.id) + '\')">Marquer comme lue</button>') + '</div></article>').join("") : '<div class="empty compact-empty">Aucune notification pour le moment.</div>';
@@ -2951,7 +3027,10 @@
       '</div>'
     );
     const accountModalCard = document.querySelector(".modal-card");
-    if (accountModalCard) accountModalCard.classList.add("account-modal-card");
+    if (accountModalCard) {
+      accountModalCard.classList.add("account-modal-card");
+      enhanceResponsiveTables(accountModalCard);
+    }
     const accountTabButtons = [...document.querySelectorAll("[data-account-tab]")];
     const accountMenuToggle = $("accountMenuToggle");
     const accountTabsMenu = $("accountTabsMenu");
@@ -4087,8 +4166,8 @@
     $("adminContent").classList.remove("is-empty");
     $("adminContent").innerHTML = '<div class="panel loading-panel"><div class="admin-loading-spinner" aria-hidden="true"></div><p>Chargement des données…</p></div>';
     try {
-      if (view === "prospects") { await renderProspectsAdmin(); configureAdminQuickFilters(); applyAdminResultSearch(); return; }
-      if (view === "catalogs") { await renderIndividualCatalogAdmin(); configureAdminQuickFilters(); applyAdminResultSearch(); return; }
+      if (view === "prospects") { await renderProspectsAdmin(); enhanceResponsiveTables($("adminContent")); configureAdminQuickFilters(); applyAdminResultSearch(); return; }
+      if (view === "catalogs") { await renderIndividualCatalogAdmin(); enhanceResponsiveTables($("adminContent")); configureAdminQuickFilters(); applyAdminResultSearch(); return; }
       let html = "";
       if (view === "dashboard") html = await adminDashboard();
       else if (view === "orders") html = await adminOrders();
@@ -4107,6 +4186,7 @@
       else if (view === "sales_codes") html = await adminSalesCodes();
       else if (view === "settings") html = await adminSettings();
       $("adminContent").innerHTML = html;
+      enhanceResponsiveTables($("adminContent"));
       configureAdminQuickFilters();
       applyAdminResultSearch();
       bindAdmin(view);
@@ -4672,7 +4752,7 @@
     });
 
     const subscribedCount = profileRows.filter(profile => profile.marketing_opt_in === true).length;
-    const tableHtml = enriched.length ? '<div class="table-wrap"><table class="table"><thead><tr><th>Client</th><th>Contact</th><th>Zone</th><th>Commandes</th><th>Dernière commande</th><th>E-mails commerciaux</th>' + (isGeneralAdmin() ? '<th>Responsable</th>' : '') + '<th>Fiche</th></tr></thead><tbody>' +
+    const tableHtml = enriched.length ? '<div class="table-wrap admin-customers-table-wrap"><table class="table admin-customers-table"><thead><tr><th class="admin-customer-col-name">Client</th><th class="admin-customer-col-contact">Contact</th><th class="admin-customer-col-zone">Zone</th><th class="admin-customer-col-orders">Commandes</th><th class="admin-customer-col-last-order">Dernière commande</th><th class="admin-customer-col-marketing">E-mails commerciaux</th>' + (isGeneralAdmin() ? '<th class="admin-customer-col-assignment">Responsable</th>' : '') + '<th class="admin-customer-col-action">Fiche</th></tr></thead><tbody>' +
       enriched.slice().sort((a,b) => new Date(b.last_order_at || b.created_at || 0) - new Date(a.last_order_at || a.created_at || 0)).map(customer => {
         const profile = customer.profile || {};
         const name = profile.full_name || customer.name || "Client";
@@ -4680,20 +4760,23 @@
         const subscribed = profile.marketing_opt_in === true;
         const assignedAdminId = customer.assigned_admin_id || "";
         const customerId = String(customer.id || "");
+        const fullZone = [profile.delivery_region, profile.delivery_city, profile.delivery_commune, profile.delivery_neighborhood].filter(Boolean).join(" · ") || customer.zone || "—";
+        const shortZone = [profile.delivery_commune, profile.delivery_neighborhood].filter(Boolean).join(" · ") || customer.zone || "—";
         const assignmentCell = isGeneralAdmin()
           ? (customerId.startsWith("profile:")
-            ? '<td><span class="small-note">Pas encore de fiche client</span></td>'
-            : '<td><select class="input" aria-label="Attribuer le client" onchange="setCustomerAssigned(\'' + esc(customerId) + '\',this.value)"><option value="">Non attribué</option>' +
+            ? '<td class="admin-customer-col-assignment"><span class="small-note">Pas encore de fiche client</span></td>'
+            : '<td class="admin-customer-col-assignment"><select class="input" aria-label="Attribuer le client" onchange="setCustomerAssigned(\'' + esc(customerId) + '\',this.value)"><option value="">Non attribué</option>' +
               assignableAdmins.map(a => '<option value="' + esc(a.id) + '"' + (assignedAdminId === a.id ? ' selected' : '') + '>' + esc(a.full_name || a.email || "Administrateur") + '</option>').join("") +
               '</select></td>')
           : "";
-        return '<tr><td><strong>' + esc(name) + '</strong><br><span class="small-note">' + esc(email || "E-mail non renseigné") + '</span></td>' +
-          '<td>' + esc(profile.phone || customer.phone || "—") + (profile.phone_secondary ? '<br><span class="small-note">Secondaire : ' + esc(profile.phone_secondary) + '</span>' : '') + '</td>' +
-          '<td>' + esc([profile.delivery_commune, profile.delivery_neighborhood].filter(Boolean).join(" · ") || customer.zone || "—") + '</td>' +
-          '<td>' + Number(customer.orders_count || 0) + '</td><td>' + esc(fmtDate(customer.last_order_at)) + '</td>' +
-          '<td><span class="status ' + (subscribed ? 'delivered' : 'cancelled') + '">' + (subscribed ? 'Abonné' : 'Non abonné') + '</span></td>' +
+        return '<tr class="admin-customer-row" tabindex="0" aria-label="Ouvrir la fiche client ' + esc(name) + '" onclick="if(!event.target.closest(\'button,a,input,select,textarea,label\'))showCustomerProfile(\'' + esc(customer.list_id) + '\')" onkeydown="if((event.key===\'Enter\'||event.key===\' \')&&!event.target.closest(\'button,a,input,select,textarea,label\')){event.preventDefault();showCustomerProfile(\'' + esc(customer.list_id) + '\')}">' +
+          '<td class="admin-customer-col-name"><strong>' + esc(name) + '</strong><br><span class="small-note admin-customer-email">' + esc(email || "E-mail non renseigné") + '</span><span class="small-note admin-customer-zone-inline">Zone : ' + esc(fullZone) + '</span></td>' +
+          '<td class="admin-customer-col-contact">' + esc(profile.phone || customer.phone || "—") + (profile.phone_secondary ? '<br><span class="small-note">Secondaire : ' + esc(profile.phone_secondary) + '</span>' : '') + '</td>' +
+          '<td class="admin-customer-col-zone">' + esc(shortZone) + '</td>' +
+          '<td class="admin-customer-col-orders">' + Number(customer.orders_count || 0) + '</td><td class="admin-customer-col-last-order">' + esc(fmtDate(customer.last_order_at)) + '</td>' +
+          '<td class="admin-customer-col-marketing"><span class="status ' + (subscribed ? 'delivered' : 'cancelled') + '">' + (subscribed ? 'Abonné' : 'Non abonné') + '</span></td>' +
           assignmentCell +
-          '<td><button class="btn small secondary" type="button" onclick="showCustomerProfile(\'' + esc(customer.list_id) + '\')">Fiche client</button></td></tr>';
+          '<td class="admin-customer-col-action"><button class="btn small secondary" type="button" onclick="showCustomerProfile(\'' + esc(customer.list_id) + '\')">Fiche client</button></td></tr>';
       }).join("") + '</tbody></table></div>' : '<div class="empty">Aucun client enregistré pour le moment.</div>';
     return '<div class="panel admin-customers-intro"><div class="admin-panel-head"><h3>Clients et fiches clients (' + enriched.length + ')</h3><span class="small-note">' + subscribedCount + ' compte(s) autorisent les e-mails commerciaux.</span></div><p class="small-note">Les comptes clients inscrits et les clients historiques sont listés. Ouvre une fiche pour consulter les coordonnées, les commandes, les paiements, les devis et les rappels, puis contacter le client sur WhatsApp.</p>' + tableHtml + '</div>';
   }
