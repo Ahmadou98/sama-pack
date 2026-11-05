@@ -1491,6 +1491,7 @@
       button.classList.add("is-loading");
       button.innerHTML = '<span class="promo-button-spinner" aria-hidden="true"></span><span>Ajout…</span>';
       await new Promise(resolve => window.setTimeout(resolve, 500));
+      if (!button.isConnected) return;
       const added = addToCart(productId) === true;
       button.classList.remove("is-loading");
       button.removeAttribute("aria-busy");
