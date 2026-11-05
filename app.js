@@ -1707,6 +1707,7 @@
     const pagination = $("productPagination");
     if (pagination) pagination.innerHTML = arr.length > PRODUCTS_PER_PAGE ? `<button class="btn ghost small" ${currentProductPage === 1 ? "disabled" : ""} onclick="goToProductPage(${currentProductPage - 1})">← Précédent</button><span>Page ${currentProductPage} / ${pages} · ${arr.length} ${itemLabel}</span><button class="btn ghost small" ${currentProductPage === pages ? "disabled" : ""} onclick="goToProductPage(${currentProductPage + 1})">Suivant →</button>` : "";
     renderIndividualCatalogs();
+    initProductCardImageHover();
   }
   function goToProductPage(page) {
     currentProductPage = Math.max(1, Number(page) || 1);
@@ -1790,6 +1791,95 @@
     );
   }
 
+  function initProductCardImageHover(root = document) {
+    if (!root || typeof root.querySelectorAll !== "function") return;
+    const hoverQuery = typeof window.matchMedia === "function"
+      ? window.matchMedia("(hover: hover) and (pointer: fine)")
+      : null;
+    const reduceMotion = typeof window.matchMedia === "function"
+      ? window.matchMedia("(prefers-reduced-motion: reduce)")
+      : null;
+    if ((hoverQuery && !hoverQuery.matches) || (reduceMotion && reduceMotion.matches)) return;
+
+    root.querySelectorAll(".product-card[data-images]").forEach(card => {
+      if (card.dataset.imageHoverReady === "true") return;
+
+      let images = [];
+      try {
+        const parsed = JSON.parse(card.dataset.images || "[]");
+        images = Array.isArray(parsed)
+          ? parsed.map(value => String(value || "").trim()).filter(Boolean)
+          : [];
+      } catch {
+        images = String(card.dataset.images || "").split(",").map(value => value.trim()).filter(Boolean);
+      }
+
+      if (images.length < 2) return;
+      const photo = card.querySelector(".pack-visual .product-photo");
+      if (!photo) return;
+
+      const fallback = photo.nextElementSibling;
+      let currentIndex = 0;
+      let intervalId = 0;
+      let fadeTimeoutId = 0;
+      let isHovered = false;
+
+      const preloadImages = () => {
+        if (card.dataset.imagesPreloaded === "true") return;
+        images.slice(1).forEach(src => {
+          const preload = new Image();
+          preload.decoding = "async";
+          preload.src = src;
+        });
+        card.dataset.imagesPreloaded = "true";
+      };
+
+      const displayImage = (src, fade = true) => {
+        window.clearTimeout(fadeTimeoutId);
+        if (!fade) {
+          photo.classList.remove("is-fading");
+          photo.style.display = "";
+          if (fallback) fallback.style.display = "none";
+          photo.src = src;
+          return;
+        }
+
+        photo.classList.add("is-fading");
+        fadeTimeoutId = window.setTimeout(() => {
+          if (!isHovered || !card.isConnected) return;
+          photo.style.display = "";
+          if (fallback) fallback.style.display = "none";
+          photo.src = src;
+          window.requestAnimationFrame(() => {
+            if (isHovered) photo.classList.remove("is-fading");
+          });
+        }, 130);
+      };
+
+      card.addEventListener("mouseenter", () => {
+        if (isHovered || !card.isConnected) return;
+        isHovered = true;
+        preloadImages();
+        intervalId = window.setInterval(() => {
+          currentIndex = (currentIndex + 1) % images.length;
+          displayImage(images[currentIndex], true);
+        }, 800);
+      });
+
+      card.addEventListener("mouseleave", () => {
+        isHovered = false;
+        window.clearInterval(intervalId);
+        window.clearTimeout(fadeTimeoutId);
+        intervalId = 0;
+        fadeTimeoutId = 0;
+        currentIndex = 0;
+        displayImage(images[0], false);
+      });
+
+      card.dataset.imageHoverReady = "true";
+    });
+  }
+
   function productCard(p) {
     const images = getProductImages(p);
     const path = images[0] || "";
@@ -1800,7 +1890,7 @@
     const out = p.availability_status === "out_of_stock";
     const canAdd = canSellProduct(p);
     const description = p.catalog_type === "product" && p.desc ? `<p class="product-desc">${esc(p.desc)}</p>` : "";
-    return `<article class="product-card"><div class="pack-visual ${hasImage ? "has-photo" : ""}">${photo}${fallback}<button class="product-share-button" type="button" data-product-id="${esc(p.id)}" onclick="shareProduct(this.dataset.productId)" aria-label="Partager ${esc(p.name)}" title="Partager ce produit"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 16V3m0 0L7.5 7.5M12 3l4.5 4.5M5 13.5v5A2.5 2.5 0 0 0 7.5 21h9a2.5 2.5 0 0 0 2.5-2.5v-5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>${hasPromotion(p) ? `<span class="product-promo-ribbon">PROMOTION</span>` : ""}</div><div class="product-body">${availabilityBadgeHtml(p)}<div class="product-cat">${esc(p.cat)}</div><a class="product-name-link" href="fiche-produit.html?ref=${encodeURIComponent(p.id)}">${esc(p.name)}</a>${description}${renderProductRatingSummary(p.id)}<div class="price-row">${priceDisplayHtml(p, { showPromotionBadge: false })}</div><div class="product-actions"><button class="btn ghost" onclick="openProduct('${esc(p.id)}')">Détails</button><button class="btn primary" onclick="addToCart('${esc(p.id)}')" ${canAdd ? "" : "disabled"}>${out ? "Rupture" : canAdd ? "Ajouter" : "Prix à confirmer"}</button></div></div></article>`;
+    return `<article class="product-card" data-images="${esc(JSON.stringify(images.map(resolveProductImageUrl)))}"><div class="pack-visual ${hasImage ? "has-photo" : ""}">${photo}${fallback}<button class="product-share-button" type="button" data-product-id="${esc(p.id)}" onclick="shareProduct(this.dataset.productId)" aria-label="Partager ${esc(p.name)}" title="Partager ce produit"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 16V3m0 0L7.5 7.5M12 3l4.5 4.5M5 13.5v5A2.5 2.5 0 0 0 7.5 21h9a2.5 2.5 0 0 0 2.5-2.5v-5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>${hasPromotion(p) ? `<span class="product-promo-ribbon">PROMOTION</span>` : ""}</div><div class="product-body">${availabilityBadgeHtml(p)}<div class="product-cat">${esc(p.cat)}</div><a class="product-name-link" href="fiche-produit.html?ref=${encodeURIComponent(p.id)}">${esc(p.name)}</a>${description}${renderProductRatingSummary(p.id)}<div class="price-row">${priceDisplayHtml(p, { showPromotionBadge: false })}</div><div class="product-actions"><button class="btn ghost" onclick="openProduct('${esc(p.id)}')">Détails</button><button class="btn primary" onclick="addToCart('${esc(p.id)}')" ${canAdd ? "" : "disabled"}>${out ? "Rupture" : canAdd ? "Ajouter" : "Prix à confirmer"}</button></div></div></article>`;
   }
 
   function openProduct(id) {
