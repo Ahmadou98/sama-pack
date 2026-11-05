@@ -377,6 +377,24 @@
     return "Ton compte ne dispose pas de la permission nécessaire pour ouvrir ce module.";
   }
 
+  /* API légère pour les rubriques qui n'ont encore aucun enregistrement.
+     Elle clone le modèle HTML partagé, puis active le layout d'état vide
+     en ajoutant simplement .is-empty au conteneur de contenu. */
+  function renderAdminEmptyState(title = "Aucune donnée disponible", description = "Les éléments de cette rubrique apparaîtront ici dès qu’ils seront enregistrés.") {
+    const host = $("adminContent");
+    const template = $("adminEmptyStateTemplate");
+    if (!host || !template?.content) return false;
+    const fragment = template.content.cloneNode(true);
+    const heading = fragment.querySelector("h3");
+    const message = fragment.querySelector("p");
+    if (heading) heading.textContent = title;
+    if (message) message.textContent = description;
+    host.replaceChildren(fragment);
+    host.classList.add("is-empty");
+    return true;
+  }
+  window.renderAdminEmptyState = renderAdminEmptyState;
+
 
   const ACCOUNT_PRESENCE_WINDOW_MS = 90 * 1000;
   let presenceHeartbeatTimer = null;
@@ -4029,6 +4047,7 @@
     $("adminTitle").textContent = sectionTitle;
     const breadcrumb = $("adminBreadcrumb");
     if (breadcrumb) breadcrumb.textContent = sectionTitle;
+    $("adminContent").classList.remove("is-empty");
     $("adminContent").innerHTML = '<div class="panel loading-panel"><div class="admin-loading-spinner" aria-hidden="true"></div><p>Chargement des données…</p></div>';
     try {
       if (view === "prospects") { await renderProspectsAdmin(); applyAdminResultSearch(); return; }
