@@ -1815,7 +1815,7 @@
       }
 
       if (images.length < 2) return;
-      const photo = card.querySelector(".pack-visual .product-photo");
+      const photo = card.querySelector(".product-image-wrapper .product-photo");
       if (!photo) return;
 
       const fallback = photo.nextElementSibling;
@@ -1890,7 +1890,7 @@
     const out = p.availability_status === "out_of_stock";
     const canAdd = canSellProduct(p);
     const description = p.catalog_type === "product" && p.desc ? `<p class="product-desc">${esc(p.desc)}</p>` : "";
-    return `<article class="product-card" data-images="${esc(JSON.stringify(images.map(resolveProductImageUrl)))}"><div class="pack-visual ${hasImage ? "has-photo" : ""}">${photo}${fallback}<button class="product-share-button" type="button" data-product-id="${esc(p.id)}" onclick="shareProduct(this.dataset.productId)" aria-label="Partager ${esc(p.name)}" title="Partager ce produit"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 16V3m0 0L7.5 7.5M12 3l4.5 4.5M5 13.5v5A2.5 2.5 0 0 0 7.5 21h9a2.5 2.5 0 0 0 2.5-2.5v-5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>${hasPromotion(p) ? `<span class="product-promo-ribbon">PROMOTION</span>` : ""}</div><div class="product-body">${availabilityBadgeHtml(p)}<div class="product-cat">${esc(p.cat)}</div><a class="product-name-link" href="fiche-produit.html?ref=${encodeURIComponent(p.id)}">${esc(p.name)}</a>${description}${renderProductRatingSummary(p.id)}<div class="price-row">${priceDisplayHtml(p, { showPromotionBadge: false })}</div><div class="product-actions"><button class="btn ghost" onclick="openProduct('${esc(p.id)}')">Détails</button><button class="btn primary" onclick="addToCart('${esc(p.id)}')" ${canAdd ? "" : "disabled"}>${out ? "Rupture" : canAdd ? "Ajouter" : "Prix à confirmer"}</button></div></div></article>`;
+    return `<article class="product-card" data-images="${esc(JSON.stringify(images.map(resolveProductImageUrl)))}"><div class="pack-visual product-image-wrapper ${hasImage ? "has-photo" : ""}">${photo}${fallback}<button class="product-share-button" type="button" data-product-id="${esc(p.id)}" onclick="shareProduct(this.dataset.productId)" aria-label="Partager ${esc(p.name)}" title="Partager ce produit"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 16V3m0 0L7.5 7.5M12 3l4.5 4.5M5 13.5v5A2.5 2.5 0 0 0 7.5 21h9a2.5 2.5 0 0 0 2.5-2.5v-5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>${hasPromotion(p) ? `<span class="product-promo-ribbon">PROMOTION</span>` : ""}</div><div class="product-body">${availabilityBadgeHtml(p)}<div class="product-cat">${esc(p.cat)}</div><a class="product-name-link" href="fiche-produit.html?ref=${encodeURIComponent(p.id)}">${esc(p.name)}</a>${description}${renderProductRatingSummary(p.id)}<div class="price-row">${priceDisplayHtml(p, { showPromotionBadge: false })}</div><div class="product-actions"><button class="btn ghost" onclick="openProduct('${esc(p.id)}')">Détails</button><button class="btn primary" onclick="addToCart('${esc(p.id)}')" ${canAdd ? "" : "disabled"}>${out ? "Rupture" : canAdd ? "Ajouter" : "Prix à confirmer"}</button></div></div></article>`;
   }
 
   function openProduct(id) {
