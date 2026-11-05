@@ -7949,3 +7949,47 @@ body {
   .admin-record-detail-grid { grid-template-columns: 1fr; gap: 7px; }
   .admin-record-detail-field { padding: 9px 10px; }
 }
+
+
+/* Product delivery estimate */
+.product-delivery-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  width: fit-content;
+  max-width: 100%;
+  margin: 10px 0 0;
+  padding: 9px 12px;
+  border: 1px solid rgba(36, 112, 73, .16);
+  border-radius: 999px;
+  background: #f2f8f4;
+  color: #246d48;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.25;
+}
+.product-delivery-badge svg {
+  width: 17px;
+  height: 17px;
+  flex: 0 0 17px;
+}
+.product-delivery-badge strong {
+  font-weight: 750;
+  color: #185c39;
+}
+.seo-product-info .product-delivery-badge {
+  align-self: flex-start;
+}
+@media (max-width: 600px) {
+  .product-delivery-badge {
+    gap: 7px;
+    margin-top: 8px;
+    padding: 8px 10px;
+    font-size: 12px;
+  }
+  .product-delivery-badge svg {
+    width: 16px;
+    height: 16px;
+    flex-basis: 16px;
+  }
+}
