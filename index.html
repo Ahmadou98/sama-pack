@@ -15,7 +15,7 @@
 <script type="application/ld+json">{"@context":"https://schema.org","@type":"WebSite","name":"Sama-Pack","url":"https://sama-pack.store/","inLanguage":"fr-SN","description":"Packs de nettoyage et d’hygiène pour les familles et les professionnels à Dakar, Sénégal."}</script>
 <title>SAMA-PACK | Packs de nettoyage et produits d’entretien à Dakar</title>
 <script>document.documentElement.classList.add("maintenance-checking");window.setTimeout(()=>document.documentElement.classList.remove("maintenance-checking"),7000);</script>
-<link rel="stylesheet" href="styles.css?v=20261105-product-contrast-v1">
+<link rel="stylesheet" href="styles.css?v=20261105-budget-banner-v1">
 <link rel="stylesheet" href="product-visual.css?v=20261105-product-contrast-v1">
 <script src="header.js?v=20261105-immersive-hero-v1" defer></script>
 </head>
@@ -150,13 +150,42 @@
         <select id="categoryFilter" class="input"><option value="all">Toutes les catégories</option></select>
       </div>
     </div>
-    <div class="budget-builder-launch">
-      <div class="budget-builder-launch-copy">
-        <span class="eyebrow">TON BUDGET, TON CHOIX</span>
-        <h3>Compose ton pack personnalisé</h3>
-        <p>Définis ton budget et choisis les produits qui te conviennent.</p>
+    <div class="budget-builder-launch" aria-labelledby="budgetBuilderLaunchTitle">
+      <div class="budget-builder-launch-content">
+        <div class="budget-builder-launch-copy">
+          <span class="eyebrow"><span class="budget-builder-kicker-icon" aria-hidden="true">⚡</span> TON BUDGET, TON CHOIX</span>
+          <h3 id="budgetBuilderLaunchTitle">Compose ton pack personnalisé</h3>
+          <p>Choisis tes essentiels et compose un pack adapté à ton budget.</p>
+        </div>
+        <button type="button" id="budgetPackBuilderBtn" class="btn budget-builder-cta">Composer mon pack <span aria-hidden="true">→</span></button>
       </div>
-      <button type="button" id="budgetPackBuilderBtn" class="btn secondary">Composer mon pack <span aria-hidden="true">→</span></button>
+      <div class="budget-builder-visual" aria-hidden="true">
+        <svg class="budget-builder-illustration" viewBox="0 0 190 150" focusable="false">
+          <circle cx="96" cy="76" r="65" fill="#dcfce7"/>
+          <circle cx="42" cy="42" r="4" fill="#86efac"/>
+          <circle cx="151" cy="43" r="3" fill="#4ade80"/>
+          <circle cx="157" cy="103" r="5" fill="#bbf7d0"/>
+          <path d="M48 78V43c0-5 4-9 9-9h15c5 0 9 4 9 9v35" fill="#16a34a" stroke="#087443" stroke-width="2"/>
+          <path d="M57 34v-8h25v8" fill="#14532d"/>
+          <path d="M54 18h31l-5 9H58z" fill="#22c55e"/>
+          <rect x="54" y="52" width="31" height="17" rx="5" fill="#bbf7d0"/>
+          <path d="M59 60h21" stroke="#15803d" stroke-width="2" stroke-linecap="round"/>
+          <path d="M106 77V47c0-5 4-9 9-9h17c5 0 9 4 9 9v30" fill="#f0fdf4" stroke="#15803d" stroke-width="2"/>
+          <path d="M114 39v-8h25v8" fill="#15803d"/>
+          <path d="M120 30h21l8 5h-29z" fill="#22c55e"/>
+          <rect x="111" y="53" width="25" height="16" rx="4" fill="#86efac"/>
+          <path d="M116 61h15" stroke="#166534" stroke-width="2" stroke-linecap="round"/>
+          <path d="M35 78h120" stroke="#166534" stroke-width="5" stroke-linecap="round"/>
+          <path d="M43 76l9 55h76l10-55" fill="#bbf7d0" stroke="#087443" stroke-width="3" stroke-linejoin="round"/>
+          <path d="M52 91h77" stroke="#4ade80" stroke-width="3" stroke-linecap="round"/>
+          <path d="M57 103h67" stroke="#4ade80" stroke-width="3" stroke-linecap="round"/>
+          <path d="M68 80l5 49M96 80v49M119 80l-5 49" stroke="#86efac" stroke-width="2"/>
+          <path d="M75 131h32" stroke="#087443" stroke-width="3" stroke-linecap="round"/>
+          <path d="M25 58l3-6 3 6 6 3-6 3-3 6-3-6-6-3z" fill="#facc15"/>
+          <path d="M158 65l2-4 2 4 4 2-4 2-2 4-2-4-4-2z" fill="#22c55e"/>
+        </svg>
+        <span class="budget-builder-visual-caption">À ton rythme. À ton prix.</span>
+      </div>
     </div>
     <div id="productGrid" class="product-grid"></div>
     <div id="productPagination" class="product-pagination" aria-label="Pagination du catalogue"></div>
