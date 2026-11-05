@@ -4369,26 +4369,54 @@
       if (adminResult.error) throw adminResult.error;
       assignableAdmins = adminResult.data || [];
     }
-    return `<div class="panel"><div class="admin-panel-head"><h3>Commandes (${orders.length})</h3><button class="btn ghost small" onclick="showAdminView('orders')">Actualiser</button></div><p class="small-note">Les commandes en attente de paiement ne doivent pas être préparées. Les frais de livraison doivent être encaissés et confirmés avant le départ du livreur.</p>${orders.length ? `<div class="table-wrap"><table class="table"><thead><tr><th>Référence</th><th>Date</th><th>Client</th><th>Total</th><th>Paiement reçu</th><th>Statut</th>${isGeneralAdmin() ? "<th>Attribuée à</th><th>Coût livraison réel (FCFA)</th>" : ""}<th>Détails</th></tr></thead><tbody>${orders.map(o=>{
-      const pendingPayment = ["awaiting_payment","awaiting_delivery_payment"].includes(o.status);
-      const options = pendingPayment ? [o.status,"cancelled"] : ["new","confirmed","processing","prepared","out_for_delivery","delivered","cancelled"];
-      const quoteChar = String.fromCharCode(39);
-      const statusCell = hasAdminPermission("orders.update_status")
-        ? '<select class="input" onchange="setOrderStatus(' + quoteChar + esc(o.id) + quoteChar + ',this.value)">' + options.map(s => '<option ' + (o.status === s ? 'selected' : '') + ' value="' + s + '">' + esc(statusLabel(s)) + '</option>').join("") + '</select>'
-        : '<span class="status">' + esc(statusLabel(o.status)) + '</span>';
-      const selectedAdmin = o.assigned_admin_id || o.sales_referrer_user_id || "";
-      const assignmentCell = isGeneralAdmin()
-        ? "<td><select class=\"input\" aria-label=\"Attribuer la commande\" onchange=\"setOrderAssigned('" + esc(o.id) + "',this.value)\"><option value=\"\">Non attribuée</option>" +
-          assignableAdmins.map(a => '<option value="' + esc(a.id) + '"' + (selectedAdmin === a.id ? " selected" : "") + '>' + esc(a.full_name || a.email || "Administrateur") + '</option>').join("") +
-          '</select></td>'
-        : "";
-      const deliveryCostCell = isGeneralAdmin()
-        ? "<td><input class=\"input profit-delivery-input\" type=\"number\" min=\"0\" step=\"1\" aria-label=\"Coût réel livraison\" value=\"" + Number(o.delivery_cost_actual || 0) + "\" onchange=\"setOrderDeliveryCost('" + esc(o.id) + "',this.value)\"></td>"
-        : "";
-      return `<tr><td>${esc(o.id)}</td><td>${esc(fmtDate(o.created_at))}</td><td>${esc(o.customer_name)}<br><span class="small-note">${esc(o.customer_phone)}</span></td><td>${money(o.total)}</td><td>${money(o.amount_paid || 0)}<br><span class="small-note">${esc(paymentStatusLabel(o.payment_status))}</span></td><td>${statusCell}</td>${assignmentCell}${deliveryCostCell}<td><div class="account-order-actions"><button class="btn small ghost" onclick="showOrder('${esc(o.id)}')">Voir</button><button class="btn small secondary" onclick="openOrderWhatsApp('${esc(o.id)}')">WhatsApp</button></div></td></tr>`;
-    }).join("")}</tbody></table></div>` : '<div class="empty">Aucune commande pour le moment.</div>'}</div>`;
+    return `<div class="panel admin-orders-panel">
+      <div class="admin-panel-head"><h3>Commandes (${orders.length})</h3><button class="btn ghost small" onclick="showAdminView('orders')">Actualiser</button></div>
+      <p class="small-note">Les commandes en attente de paiement ne doivent pas être préparées. Les frais de livraison doivent être encaissés et confirmés avant le départ du livreur.</p>
+      ${orders.length ? `<div class="table-wrap admin-orders-table-wrap">
+        <table class="table admin-orders-table">
+          <thead><tr>
+            <th class="admin-order-col-reference">Référence</th>
+            <th class="admin-order-col-date">Date</th>
+            <th class="admin-order-col-client">Client</th>
+            <th class="admin-order-col-total">Total</th>
+            <th class="admin-order-col-paid">Paiement reçu</th>
+            <th class="admin-order-col-status">Statut</th>
+            ${isGeneralAdmin() ? '<th class="admin-order-col-assigned">Attribuée à</th><th class="admin-order-col-delivery-cost">Coût livraison réel (FCFA)</th>' : ""}
+            <th class="admin-order-col-actions">Détails</th>
+          </tr></thead>
+          <tbody>${orders.map(o=>{
+            const pendingPayment = ["awaiting_payment","awaiting_delivery_payment"].includes(o.status);
+            const options = pendingPayment ? [o.status,"cancelled"] : ["new","confirmed","processing","prepared","out_for_delivery","delivered","cancelled"];
+            const quoteChar = String.fromCharCode(39);
+            const statusCell = hasAdminPermission("orders.update_status")
+              ? '<select class="input" onchange="setOrderStatus(' + quoteChar + esc(o.id) + quoteChar + ',this.value)">' + options.map(s => '<option ' + (o.status === s ? 'selected' : '') + ' value="' + s + '">' + esc(statusLabel(s)) + '</option>').join("") + '</select>'
+              : '<span class="status">' + esc(statusLabel(o.status)) + '</span>';
+            const selectedAdmin = o.assigned_admin_id || o.sales_referrer_user_id || "";
+            const assignmentCell = isGeneralAdmin()
+              ? '<td class="admin-order-col-assigned"><select class="input" aria-label="Attribuer la commande" onchange="setOrderAssigned(\'' + esc(o.id) + '\',this.value)"><option value="">Non attribuée</option>' +
+                assignableAdmins.map(a => '<option value="' + esc(a.id) + '"' + (selectedAdmin === a.id ? " selected" : "") + '>' + esc(a.full_name || a.email || "Administrateur") + '</option>').join("") +
+                '</select></td>'
+              : "";
+            const deliveryCostCell = isGeneralAdmin()
+              ? '<td class="admin-order-col-delivery-cost"><input class="input profit-delivery-input" type="number" min="0" step="1" aria-label="Coût réel livraison" value="' + Number(o.delivery_cost_actual || 0) + '" onchange="setOrderDeliveryCost(\'' + esc(o.id) + '\',this.value)"></td>'
+              : "";
+            const orderId = esc(o.id);
+            return `<tr class="admin-order-row" tabindex="0" aria-label="Ouvrir les détails de la commande ${orderId}" onclick="if(!event.target.closest('button,a,input,select,textarea,label'))showOrder('${orderId}')" onkeydown="if((event.key==='Enter'||event.key===' ')&&!event.target.closest('button,a,input,select,textarea,label')){event.preventDefault();showOrder('${orderId}')}">
+              <td class="admin-order-col-reference"><strong>${orderId}</strong><span class="small-note admin-order-date-inline">${esc(fmtDate(o.created_at))}</span></td>
+              <td class="admin-order-col-date">${esc(fmtDate(o.created_at))}</td>
+              <td class="admin-order-col-client"><span class="admin-order-client-name">${esc(o.customer_name || "Client")}</span><br><span class="small-note admin-order-client-phone">${esc(o.customer_phone || "")}</span></td>
+              <td class="admin-order-col-total"><strong>${money(o.total)}</strong></td>
+              <td class="admin-order-col-paid">${money(o.amount_paid || 0)}<br><span class="small-note">${esc(paymentStatusLabel(o.payment_status))}</span></td>
+              <td class="admin-order-col-status">${statusCell}</td>
+              ${assignmentCell}
+              ${deliveryCostCell}
+              <td class="admin-order-col-actions"><div class="account-order-actions"><button class="btn small ghost" onclick="showOrder('${orderId}')">Voir</button><button class="btn small secondary" onclick="openOrderWhatsApp('${orderId}')">WhatsApp</button></div></td>
+            </tr>`;
+          }).join("")}</tbody>
+        </table>
+      </div>` : '<div class="empty">Aucune commande pour le moment.</div>'}
+    </div>`;
   }
-
   async function showOrder(id) {
     if (!id) return toast("Référence de commande manquante.", true);
     let o = cachedOrders.find(x => String(x.id) === String(id)) || null;
