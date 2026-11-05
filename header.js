@@ -88,16 +88,27 @@
     });
   }
 
-  const desktopMore = header.querySelector(".desktop-nav-more");
-  if (desktopMore) {
-    desktopMore.querySelectorAll("a").forEach(link => {
-      link.addEventListener("click", () => { desktopMore.open = false; });
+  const desktopMoreMenus = Array.from(header.querySelectorAll(".desktop-nav-more"));
+  if (desktopMoreMenus.length) {
+    desktopMoreMenus.forEach(desktopMore => {
+      desktopMore.querySelectorAll("a").forEach(link => {
+        link.addEventListener("click", () => { desktopMore.open = false; });
+      });
+      desktopMore.addEventListener("toggle", () => {
+        if (desktopMore.open) {
+          desktopMoreMenus.forEach(other => {
+            if (other !== desktopMore) other.open = false;
+          });
+        }
+      });
     });
     document.addEventListener("click", event => {
-      if (!desktopMore.contains(event.target)) desktopMore.open = false;
+      desktopMoreMenus.forEach(desktopMore => {
+        if (!desktopMore.contains(event.target)) desktopMore.open = false;
+      });
     });
     document.addEventListener("keydown", event => {
-      if (event.key === "Escape") desktopMore.open = false;
+      if (event.key === "Escape") desktopMoreMenus.forEach(menu => { menu.open = false; });
     });
   }
 
