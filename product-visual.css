@@ -292,3 +292,191 @@
     transition: none !important;
   }
 }
+
+
+/* ==========================================================================
+   SAMA-PACK — Cartes produits mobile compactes (<= 767 px)
+   - Image en premier, cadrée à 140 px maximum.
+   - Informations dans l'ordre catégorie, titre, avis, prix.
+   - Deux actions sur une seule ligne avec une hiérarchie 35 / 65.
+   ========================================================================== */
+@media (max-width: 767px) {
+  /* Verrouille la hauteur du visuel et empêche tout débordement. */
+  .product-card {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+    height: 100%;
+    overflow: hidden;
+  }
+  .product-card > .product-image-wrapper {
+    order: 0;
+    position: relative;
+    display: grid;
+    flex: 0 0 140px;
+    place-items: center;
+    box-sizing: border-box;
+    width: 100%;
+    height: 140px;
+    min-width: 0;
+    min-height: 0 !important;
+    max-height: 140px;
+    aspect-ratio: 1 / 1;
+    padding: 0;
+    overflow: hidden;
+  }
+  .product-card > .product-image-wrapper > .product-photo,
+  .product-card > .product-image-wrapper.has-photo > .product-photo {
+    display: block;
+    box-sizing: border-box;
+    width: 100%;
+    height: 100%;
+    min-width: 0;
+    min-height: 0;
+    max-width: 100%;
+    max-height: 100%;
+    margin: 0;
+    padding: 6px;
+    object-fit: contain;
+    object-position: center;
+  }
+  .product-card > .product-image-wrapper > .product-placeholder {
+    display: grid;
+    place-items: center;
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+    margin: 0;
+  }
+  .product-card > .product-image-wrapper.has-photo > .product-placeholder.photo-fallback {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+  }
+
+  /* Panneau texte compact ; le DOM est déjà dans l'ordre fonctionnel requis. */
+  .product-card > .product-body {
+    order: 1;
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+    width: 100%;
+    box-sizing: border-box;
+    padding: 10px !important;
+    gap: 5px !important;
+  }
+  .product-card .product-body > .product-cat {
+    order: 1;
+    margin: 0;
+    font-size: 8px !important;
+    line-height: 1.15;
+    letter-spacing: .055em;
+    font-weight: 800;
+    text-transform: uppercase;
+  }
+  .product-card .product-body > .availability-badge {
+    order: 2;
+    align-self: flex-start;
+    width: auto;
+    padding: 3px 6px;
+    font-size: 8px;
+    line-height: 1.2;
+  }
+  .product-card .product-body > .product-name-link {
+    order: 3;
+    display: -webkit-box;
+    min-width: 0;
+    max-height: calc(14px * 1.25 * 2);
+    margin: 0;
+    overflow: hidden;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    font-size: 14px !important;
+    line-height: 1.25;
+    font-weight: 850;
+    overflow-wrap: anywhere;
+  }
+  /* Le texte descriptif est réservé à la fiche produit pour éviter la hauteur excessive. */
+  .product-card .product-body > .product-desc {
+    display: none !important;
+  }
+  .product-card .product-body > .product-rating-summary {
+    order: 4;
+    min-height: 0;
+    margin: 0;
+    gap: 3px;
+    font-size: 9px;
+    line-height: 1.15;
+  }
+  /* La classe is-empty est émise par renderProductRatingSummary() quand count vaut zéro. */
+  .product-card .product-body > .product-rating-summary.is-empty {
+    display: none !important;
+  }
+  .product-card .product-body > .price-row {
+    order: 5;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    min-width: 0;
+    gap: 3px 5px;
+    margin: 0;
+  }
+  .product-card .product-body > .price-row .price,
+  .product-card .product-body > .price-row strong {
+    font-size: 15px !important;
+    line-height: 1.15;
+    font-weight: 900;
+  }
+
+  /* Actions côte à côte : détails 35 %, ajout au panier 65 %. */
+  .product-card .product-body > .product-actions {
+    order: 6;
+    display: flex !important;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    align-items: stretch;
+    gap: 8px;
+    width: 100%;
+    min-width: 0;
+    margin-top: auto;
+    padding-top: 5px;
+  }
+  .product-card .product-body > .product-actions > .btn {
+    display: inline-flex;
+    flex: 1 1 0;
+    align-items: center;
+    justify-content: center;
+    min-width: 0;
+    min-height: 34px;
+    width: auto;
+    padding: 7px 4px;
+    border-radius: 8px;
+    font-size: 10px;
+    line-height: 1.1;
+    text-align: center;
+    white-space: nowrap;
+    box-shadow: none;
+  }
+  .product-card .product-body > .product-actions > .btn:first-child {
+    flex: 0 0 35%;
+    color: #166534;
+    background: #fff;
+    border: 1px solid rgba(22, 101, 52, .55);
+  }
+  .product-card .product-body > .product-actions > .btn:last-child {
+    flex: 1 1 0;
+    color: #fff;
+    background: #166534;
+    border: 1px solid #166534;
+    font-weight: 800;
+  }
+  .product-card .product-body > .product-actions > .btn:last-child:disabled {
+    opacity: .62;
+    cursor: not-allowed;
+  }
+}
