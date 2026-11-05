@@ -1,6 +1,72 @@
 /* SAMA-PACK — contrôleur unique de l’en-tête boutique */
 (() => {
   "use strict";
+  const sharedHeaderMarkup = `<header class="topbar info-floating-header">
+  <div class="wrap nav">
+    <a class="brand" href="/#home" aria-label="SAMA-PACK, accueil"><span class="brand-mark">S</span><span>SAMA<span>-PACK</span></span></a>
+    <nav class="desktop-nav" aria-label="Navigation principale">
+      <a href="/#home">Accueil</a>
+      <details class="desktop-nav-more">
+        <summary>Catalogue et packs <span aria-hidden="true">⌄</span></summary>
+        <div class="desktop-nav-dropdown">
+          <a href="/#catalogue">Packs de nettoyage</a>
+          <a href="produits.html">Produits à l’unité ou par colis</a>
+          <a href="outils.html">Outils de nettoyage</a>
+        </div>
+      </details>
+      <a href="comment-ca-marche.html">Comment ça marche</a>
+      <a href="/#b2b">Professionnels</a>
+      <details class="desktop-nav-more">
+        <summary>Aide &amp; contact <span aria-hidden="true">⌄</span></summary>
+        <div class="desktop-nav-dropdown">
+          <a href="contact.html">Nous contacter</a>
+          <a href="livraison-retours.html">Livraison et retours</a>
+          <a href="conditions-vente.html">Conditions de vente</a>
+          <a href="confidentialite.html">Confidentialité</a>
+        </div>
+      </details>
+    </nav>
+    <div class="nav-actions">
+      <button class="icon-btn" id="openCartBtn" data-header-action="cart" type="button" aria-label="Panier" title="Panier">🛒 <span id="cartCount">0</span></button>
+      <button class="icon-btn notification-btn" id="notificationBtn" data-header-action="notifications" type="button" aria-label="Notifications" title="Notifications">🔔 <span id="notificationCount" class="notification-count hidden">0</span></button>
+      <button class="btn small ghost" id="accountBtn" data-header-action="account" type="button">Connexion</button>
+      <div class="mobile-menu-shell" id="mobileMenuShell">
+        <button class="mobile-menu-toggle" id="mobileMenuToggle" type="button" aria-label="Ouvrir le menu" aria-controls="infoFloatingMenu" aria-expanded="false">
+          <span class="mobile-menu-icon" aria-hidden="true"><i></i><i></i><i></i></span>
+        </button>
+        <nav id="infoFloatingMenu" class="mobile-nav-menu" aria-label="Menu principal">
+          <a class="mobile-nav-item" href="/#home"><span aria-hidden="true">⌂</span><small>Accueil</small></a>
+          <details class="mobile-nav-group">
+            <summary class="mobile-nav-item"><small>Catalogue et packs</small><span class="mobile-nav-group-chevron" aria-hidden="true">⌄</span></summary>
+            <div class="mobile-nav-submenu">
+              <a href="/#catalogue">Packs de nettoyage</a>
+              <a href="produits.html">Produits à l’unité ou par colis</a>
+              <a href="outils.html">Outils de nettoyage</a>
+            </div>
+          </details>
+          <a class="mobile-nav-item" href="comment-ca-marche.html"><span aria-hidden="true">ⓘ</span><small>Comment ça marche</small></a>
+          <a class="mobile-nav-item" href="/#b2b"><span aria-hidden="true">▤</span><small>Professionnels</small></a>
+          <details class="mobile-nav-group">
+            <summary class="mobile-nav-item"><small>Aide &amp; contact</small><span class="mobile-nav-group-chevron" aria-hidden="true">⌄</span></summary>
+            <div class="mobile-nav-submenu">
+              <a href="contact.html">Nous contacter</a>
+              <a href="livraison-retours.html">Livraison et retours</a>
+              <a href="conditions-vente.html">Conditions de vente</a>
+              <a href="confidentialite.html">Confidentialité</a>
+            </div>
+          </details>
+          <button type="button" id="mobileManageBtn" data-header-action="manage" class="mobile-nav-item hidden" aria-label="Ouvrir la gestion"><span aria-hidden="true">⚙</span><small>Gestion</small></button>
+          <button id="deliverySignOut" class="mobile-nav-item" type="button" hidden>Déconnexion</button>
+        </nav>
+      </div>
+      <button class="btn small ghost hidden" id="adminBtn" data-header-action="manage" type="button">Gestion</button>
+    </div>
+  </div>
+</header>`;
+  const headerMount = document.getElementById("siteHeaderMount");
+  if (headerMount && !document.querySelector(".info-floating-header")) {
+    headerMount.outerHTML = sharedHeaderMarkup;
+  }
   const header = document.querySelector(".info-floating-header");
   if (!header || header.dataset.sharedHeaderReady === "true") return;
 
@@ -64,6 +130,7 @@
   const closeMenu = () => {
     if (!shell || !toggle) return;
     shell.classList.remove("is-open");
+    menu?.querySelectorAll(".mobile-nav-group").forEach(group => { group.open = false; });
     toggle.setAttribute("aria-expanded", "false");
     toggle.setAttribute("aria-label", "Ouvrir le menu");
   };
