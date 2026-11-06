@@ -131,7 +131,11 @@ jobs:
           set -euo pipefail
           test -d "$JAVA_HOME"
           test -d "$ANDROID_HOME"
-          java -version 2>&1 | grep -q 'version "17\\.'
+          JAVA_VERSION="$(java -version 2>&1 | awk -F '"' '/version/{print $2; exit}')"
+          if [[ "$JAVA_VERSION" != 17.* ]]; then
+            echo "::error::Bubblewrap nécessite JDK 17; version détectée: ${JAVA_VERSION:-inconnue}."
+            exit 1
+          fi
 
           # Bubblewrap 1.27.0 asks interactive questions when its config is absent.
           # Write the two paths directly so GitHub Actions never waits for a prompt.
@@ -155,7 +159,7 @@ jobs:
           }
 
           fs.mkdirSync(configDir, { recursive: true });
-          fs.writeFileSync(configPath, JSON.stringify(config, null, 2) + "\\n", {
+          fs.writeFileSync(configPath, JSON.stringify(config, null, 2) + "\n", {
             mode: 0o600
           });
 
