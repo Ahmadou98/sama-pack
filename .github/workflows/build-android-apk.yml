@@ -132,7 +132,7 @@ jobs:
           test -d "$ANDROID_HOME"
           JAVA_VERSION="$(java -version 2>&1 | awk -F '"' '/version/{print $2; exit}')"
           if [[ "$JAVA_VERSION" != 17.* ]]; then
-            echo "::error::Bubblewrap nécessite JDK 17; version détectée: \${JAVA_VERSION:-inconnue}."
+            echo "::error::Bubblewrap nécessite JDK 17; version détectée: $JAVA_VERSION."
             exit 1
           fi
 
