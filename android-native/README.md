@@ -22,7 +22,7 @@ publique Supabase destinée aux clients.
 - Application ID : `sn.samapack.app`
 - Version native initiale : `1.1.0` (versionCode 2)
 - Android minimum : API 26 (Android 8.0)
-- Compile/target SDK : API 36
+- Compile SDK : API 37 · target SDK : API 36
 - Signature : réutilise le keystore SAMA-PACK existant afin que l'application native
   puisse remplacer l'APK TWA déjà distribué sans perdre son identité Android.
 
@@ -48,7 +48,7 @@ pas partie de cette première version native.
 
 ## Compilation locale
 
-Prérequis : JDK 17, Android SDK API 36 et Gradle 9.5.0.
+Prérequis : JDK 17, Android SDK API 37 et Gradle 9.7.0.
 
 Depuis ce dossier :
 
