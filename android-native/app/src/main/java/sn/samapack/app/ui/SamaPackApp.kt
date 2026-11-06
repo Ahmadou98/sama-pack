@@ -88,6 +88,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -112,6 +113,7 @@ import sn.samapack.app.data.StoreProduct
 import java.text.NumberFormat
 import java.util.Locale
 import kotlin.math.roundToLong
+import kotlinx.coroutines.launch
 
 private val BrandGreen = Color(0xFF176B43)
 private val BrandGreenDark = Color(0xFF125936)
@@ -274,6 +276,7 @@ fun SamaPackApp(viewModel: SamaPackViewModel) {
     var checkoutOpen by rememberSaveable { mutableStateOf(false) }
     var budgetBuilderOpen by rememberSaveable { mutableStateOf(false) }
     val snackbar = remember { SnackbarHostState() }
+    val coroutineScope = rememberCoroutineScope()
 
     val navigate: (AppTab) -> Unit = { destination -> currentTab = destination }
 
@@ -283,7 +286,7 @@ fun SamaPackApp(viewModel: SamaPackViewModel) {
         runCatching {
             context.startActivity(Intent(Intent.ACTION_VIEW, uri))
         }.onFailure {
-            snackbar.showSnackbar("Impossible d’ouvrir WhatsApp sur cet appareil.")
+            coroutineScope.launch { snackbar.showSnackbar("Impossible d’ouvrir WhatsApp sur cet appareil.") }
         }
     }
 
@@ -297,7 +300,7 @@ fun SamaPackApp(viewModel: SamaPackViewModel) {
         runCatching {
             context.startActivity(Intent.createChooser(shareIntent, "Partager ce produit"))
         }.onFailure {
-            snackbar.showSnackbar("Le partage n’a pas pu être ouvert.")
+            coroutineScope.launch { snackbar.showSnackbar("Le partage n’a pas pu être ouvert.") }
         }
     }
 
@@ -380,7 +383,9 @@ fun SamaPackApp(viewModel: SamaPackViewModel) {
                         loading = state.loading,
                         onOpenProduct = { selectedProduct = it },
                         onAdd = viewModel::addToCart,
-                        onShare = ::shareProduct
+                        onShare = ::shareProduct,
+                        onComposePack = { budgetBuilderOpen = true },
+                        onOpenTab = navigate
                     )
                     AppTab.PRODUCTS -> CatalogScreen(
                         products = state.products,
@@ -388,7 +393,9 @@ fun SamaPackApp(viewModel: SamaPackViewModel) {
                         loading = state.loading,
                         onOpenProduct = { selectedProduct = it },
                         onAdd = viewModel::addToCart,
-                        onShare = ::shareProduct
+                        onShare = ::shareProduct,
+                        onComposePack = { budgetBuilderOpen = true },
+                        onOpenTab = navigate
                     )
                     AppTab.TOOLS -> CatalogScreen(
                         products = state.products,
@@ -396,7 +403,9 @@ fun SamaPackApp(viewModel: SamaPackViewModel) {
                         loading = state.loading,
                         onOpenProduct = { selectedProduct = it },
                         onAdd = viewModel::addToCart,
-                        onShare = ::shareProduct
+                        onShare = ::shareProduct,
+                        onComposePack = { budgetBuilderOpen = true },
+                        onOpenTab = navigate
                     )
                     AppTab.CART -> CartScreen(
                         state = state,
@@ -967,7 +976,7 @@ private fun FlashPromoPanel(
                     Box(
                         Modifier
                             .padding(horizontal = 3.dp)
-                            .size(if (index == selectedIndex) width = 22.dp else width = 8.dp, height = 8.dp)
+                            .width(if (index == selectedIndex) 22.dp else 8.dp).height(8.dp)
                             .clip(CircleShape)
                             .background(if (index == selectedIndex) BrandGreen else Color(0xFFBBF7D0))
                     )
@@ -1204,7 +1213,9 @@ private fun CatalogScreen(
     loading: Boolean,
     onOpenProduct: (StoreProduct) -> Unit,
     onAdd: (StoreProduct) -> Unit,
-    onShare: (StoreProduct) -> Unit
+    onShare: (StoreProduct) -> Unit,
+    onComposePack: () -> Unit,
+    onOpenTab: (AppTab) -> Unit
 ) {
     val pageTitle = when (catalogType) {
         "pack" -> "Packs de nettoyage"
@@ -1267,7 +1278,7 @@ private fun CatalogScreen(
                 shape = RoundedCornerShape(12.dp)
             )
             CategorySelector(categories = categories, selected = category, onSelect = { category = it })
-            if (catalogType == "pack") BudgetBuilderBanner(onClick = { /* opened from homepage */ })
+            if (catalogType == "pack") BudgetBuilderBanner(onClick = onComposePack)
             if (loading && matching.isEmpty()) {
                 LoadingInline()
             } else if (filtered.isEmpty()) {
@@ -1282,7 +1293,7 @@ private fun CatalogScreen(
                 )
             }
         }
-        SiteFooter(onOpenTab = {})
+        SiteFooter(onOpenTab = onOpenTab)
     }
 }
 
@@ -1592,9 +1603,12 @@ private fun ProductDetailsSheet(
             AsyncImage(
                 model = product.imageUrl,
                 contentDescription = product.name,
-                modifier = Modifier.fillMaxWidth().height(250.dp).clip(RoundedCornerShape(22.dp)).background(Color(0xFFF0F3EF)),
+                modifier = Modifier.fillMaxWidth().height(230.dp).clip(RoundedCornerShape(18.dp)).background(Color(0xFFF6FAF7)),
                 contentScale = ContentScale.Fit
             )
+            product.category?.takeIf { it.isNotBlank() }?.let {
+                Text(it.uppercase(Locale.ROOT), color = BrandGreen, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Black, letterSpacing = 1.sp)
+            }
             Text(product.name, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold, color = Ink)
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(formatMoney(product.effectivePrice), color = BrandGreen, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold)
@@ -1610,6 +1624,20 @@ private fun ProductDetailsSheet(
             product.description?.takeIf { it.isNotBlank() }?.let {
                 Text("Description", color = Ink, fontWeight = FontWeight.Bold)
                 Text(it, color = Muted, style = MaterialTheme.typography.bodyMedium)
+            }
+            if (product.items.isNotEmpty()) {
+                Text(if (product.catalogType == "pack") "Composition du pack" else "Caractéristiques", color = Ink, fontWeight = FontWeight.Bold)
+                Column(
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(13.dp)).background(AppBackground).padding(13.dp),
+                    verticalArrangement = Arrangement.spacedBy(7.dp)
+                ) {
+                    product.items.forEach { item ->
+                        Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text("•", color = BrandGreen, fontWeight = FontWeight.Black)
+                            Text(item, color = Muted, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+                        }
+                    }
+                }
             }
             product.brand?.takeIf { it.isNotBlank() }?.let {
                 Text("Marque : $it", color = Muted, style = MaterialTheme.typography.bodySmall)
