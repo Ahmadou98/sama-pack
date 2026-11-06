@@ -74,6 +74,13 @@ android {
     }
 }
 
+// AndroidX Lifecycle 2.11.0 was built with compileSdk 37. Keep the
+// Compose runtime bridge on 2.10.0 so this app remains buildable on the
+// stable Android SDK 36; the app does not use Lifecycle 2.11-only APIs.
+configurations.configureEach {
+    resolutionStrategy.force("androidx.lifecycle:lifecycle-runtime-compose:2.10.0")
+}
+
 dependencies {
     implementation(platform("androidx.compose:compose-bom:2025.12.00"))
     implementation("androidx.activity:activity-compose:1.12.1")
