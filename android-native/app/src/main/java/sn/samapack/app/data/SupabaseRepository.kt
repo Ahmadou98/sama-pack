@@ -47,7 +47,7 @@ object SupabaseRepository {
         client.from("products")
             .select(
                 columns = Columns.list(
-                    "id, name, price, description, image_path, image_paths, catalog_type, availability_status, sale_unit, brand, public_ref, promo_active, promo_price, promo_label, promo_started_at, promo_end_at, max_delivery_hours"
+                    "id, name, price, description, category, items, image_path, image_paths, catalog_type, availability_status, sale_unit, brand, public_ref, promo_active, promo_price, promo_label, promo_started_at, promo_end_at, max_delivery_hours"
                 )
             ) {
                 filter { eq("active", true) }
