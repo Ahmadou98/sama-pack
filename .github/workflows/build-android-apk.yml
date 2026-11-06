@@ -57,7 +57,7 @@ jobs:
       - name: Install Android SDK components
         run: |
           set -euo pipefail
-          sdkmanager --install "platforms;android-36" "build-tools;36.0.0"
+          sdkmanager --install "platforms;android-36" "build-tools;36.1.0"
 
       - name: Restore private signing key
         env:
@@ -113,6 +113,7 @@ jobs:
             const generator = new TwaGenerator();
             const log = new BufferedLog(new ConsoleLog("SAMA-PACK Android"));
             await generator.createTwaProject(projectDir, manifest, log);
+            log.flush();
 
             const manifestBytes = fs.readFileSync(manifestPath);
             const checksum = crypto.createHash("sha1").update(manifestBytes).digest("hex");
@@ -146,7 +147,7 @@ jobs:
           set -euo pipefail
           APK="android/app-release-signed.apk"
           test -s "$APK"
-          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs "$APK" | tee /tmp/samapack-apk-signature.txt
+          "$ANDROID_HOME/build-tools/36.1.0/apksigner" verify --verbose --print-certs "$APK" | tee /tmp/samapack-apk-signature.txt
           KEY_FP="$(keytool -list -v -keystore android/android.keystore -alias samapack -storepass "$KEYSTORE_PASSWORD" 2>/dev/null | awk -F': ' '/SHA256:/{print $2; exit}')"
           APK_FP="$(awk -F': ' '/Signer #1 certificate SHA-256 digest:/{print $2; exit}' /tmp/samapack-apk-signature.txt)"
           KEY_FP_NORMALIZED="$(printf '%s' "$KEY_FP" | tr -d ':' | tr '[:upper:]' '[:lower:]')"
