@@ -1,0 +1,8 @@
+{
+  "name": "SAMA-PACK",
+  "version": "1.0.0",
+  "versionCode": 1,
+  "packageName": "sn.samapack.app",
+  "apk": "/downloads/SAMA-PACK.apk",
+  "checksum": "/downloads/SAMA-PACK.apk.sha256"
+}
