@@ -77,8 +77,9 @@ jobs:
         run: |
           set -euo pipefail
           BUBBLEWRAP_ROOT="$(dirname "$(dirname "$(readlink -f "$(command -v bubblewrap)")")")"
-          test -d "$BUBBLEWRAP_ROOT/node_modules/@bubblewrap/core"
-          NODE_PATH="$BUBBLEWRAP_ROOT/node_modules" node <<'NODE'
+          GLOBAL_NODE_MODULES="$(npm root -g)"
+          NODE_PATH="$BUBBLEWRAP_ROOT/node_modules:$GLOBAL_NODE_MODULES" node -e "require.resolve('@bubblewrap/core')"
+          NODE_PATH="$BUBBLEWRAP_ROOT/node_modules:$GLOBAL_NODE_MODULES" node <<'NODE'
           const crypto = require("node:crypto");
           const fs = require("node:fs");
           const path = require("node:path");
