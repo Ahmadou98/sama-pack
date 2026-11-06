@@ -20,7 +20,7 @@ publique Supabase destinée aux clients.
 ## Compatibilité et signature
 
 - Application ID : `sn.samapack.app`
-- Version native initiale : `1.1.0` (versionCode 2)
+- Version native : `1.2.0` (versionCode 3)
 - Android minimum : API 26 (Android 8.0)
 - ViewModel géré par l'Activity, sans dépendance lifecycle-viewmodel-compose
 - Compile/target SDK : API 36
@@ -31,7 +31,9 @@ Le SDK Kotlin officiel de Supabase requiert Android API 26 ou supérieur.
 
 ## Fonctions disponibles
 
-- Accueil natif et accès aux catégories ;
+- Accueil aligné sur la boutique Web : mêmes titres, parcours, sections, cartes et hiérarchie visuelle ;
+- Navigation par menu et catalogues distincts pour les packs, produits et outils ;
+- Partage des fiches et composeur de pack personnalisé ;
 - catalogue distant avec recherche, packs, produits et outils ;
 - fiches produits, photos, promotions et disponibilité ;
 - panier conservé localement ;
