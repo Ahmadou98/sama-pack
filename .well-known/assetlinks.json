@@ -1,0 +1,14 @@
+[
+  {
+    "relation": [
+      "delegate_permission/common.handle_all_urls"
+    ],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "sn.samapack.app",
+      "sha256_cert_fingerprints": [
+        "84:03:78:6A:8A:19:67:D8:05:2E:85:13:51:12:A9:AC:8F:90:6E:DB:B0:8B:24:B9:99:4E:88:D3:0D:91:FE:33"
+      ]
+    }
+  }
+]

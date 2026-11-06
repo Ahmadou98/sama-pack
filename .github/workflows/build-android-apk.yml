@@ -66,7 +66,7 @@ jobs:
           chmod 600 android/android.keystore
 
       - name: Install Bubblewrap
-        run: npm install --global @bubblewrap/cli
+        run: npm install --global @bubblewrap/cli@1.27.0
 
       - name: Generate Android project
         working-directory: android
@@ -97,8 +97,10 @@ jobs:
             exit 1
           fi
           echo "sha256=$KEY_FP" >> "$GITHUB_OUTPUT"
-          echo "version=$(node -p "require('./android/twa-manifest.json').appVersion")" >> "$GITHUB_OUTPUT"
-          echo "version_code=$(node -p "require('./android/twa-manifest.json').appVersionCode")" >> "$GITHUB_OUTPUT"
+          VERSION="$(node -p "require('./android/twa-manifest.json').appVersion")"
+          VERSION_CODE="$(node -p "require('./android/twa-manifest.json').appVersionCode")"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "version_code=$VERSION_CODE" >> "$GITHUB_OUTPUT"
           sha256sum "$APK"
 
       - name: Prepare public APK, checksum and Digital Asset Links
