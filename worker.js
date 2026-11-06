@@ -12,7 +12,7 @@ const PRODUCT_COLUMNS = [
 const STATIC_PAGES = [
   "/", "/produits.html", "/outils.html", "/comment-ca-marche.html",
   "/contact.html", "/conditions-vente.html", "/livraison-retours.html",
-  "/confidentialite.html"
+  "/confidentialite.html", "/telecharger-application.html"
 ];
 
 function escapeHtml(value) {
