@@ -44,12 +44,12 @@ jobs:
           packages: platform-tools
 
       - name: Install Android SDK platform and build tools
-        run: sdkmanager --install "platforms;android-36" "build-tools;36.0.0"
+        run: sdkmanager --install "platforms;android-37" "build-tools;36.0.0"
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v6
         with:
-          gradle-version: "9.5.0"
+          gradle-version: "9.7.0"
 
       - name: Compile debug APK
         working-directory: android-native
@@ -103,14 +103,14 @@ jobs:
       - name: Install Android SDK platform and build tools
         run: |
           set -euo pipefail
-          sdkmanager --install "platforms;android-36" "build-tools;36.0.0"
-          test -f "$ANDROID_HOME/platforms/android-36/android.jar"
+          sdkmanager --install "platforms;android-37" "build-tools;36.0.0"
+          test -f "$ANDROID_HOME/platforms/android-37/android.jar"
           test -x "$ANDROID_HOME/build-tools/36.0.0/apksigner"
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v6
         with:
-          gradle-version: "9.5.0"
+          gradle-version: "9.7.0"
 
       - name: Restore existing SAMA-PACK signing key
         shell: bash
