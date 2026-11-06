@@ -2,6 +2,11 @@ name: Build SAMA-PACK Android APK
 
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/build-android-apk.yml
+      - android/twa-manifest.json
 
 permissions:
   contents: write
@@ -125,7 +130,6 @@ jobs:
           NODE
 
       - name: Configure Bubblewrap Android tool paths
-        working-directory: android
         shell: bash
         run: |
           set -euo pipefail
@@ -133,12 +137,39 @@ jobs:
           test -d "$ANDROID_HOME"
           JAVA_VERSION="$(java -version 2>&1 | awk -F '"' '/version/{print $2; exit}')"
           if [[ "$JAVA_VERSION" != 17.* ]]; then
-            echo "::error::Bubblewrap nécessite JDK 17; version détectée: ${JAVA_VERSION:-inconnue}."
+            echo "::error::Bubblewrap nécessite JDK 17; version détectée: $JAVA_VERSION."
             exit 1
           fi
 
-          # Bubblewrap 1.27.0 asks interactive questions when its config is absent.
-          # Write the two paths directly so GitHub Actions never waits for a prompt.
+          # Bubblewrap validates <sdk>/tools or <sdk>/bin, while current
+          # Android SDK command-line tools live under <sdk>/cmdline-tools/<version>.
+          SDKMANAGER_PATH="$(command -v sdkmanager)"
+          case "$SDKMANAGER_PATH" in
+            "$ANDROID_HOME"/cmdline-tools/*/bin/sdkmanager) ;;
+            *)
+              echo "::error::Chemin sdkmanager inattendu : $SDKMANAGER_PATH"
+              exit 1
+              ;;
+          esac
+          CMDLINE_TOOLS_DIR="$(dirname "$(dirname "$SDKMANAGER_PATH")")"
+          test -x "$CMDLINE_TOOLS_DIR/bin/sdkmanager"
+
+          # Provide Bubblewrap's legacy tools/bin/sdkmanager layout without
+          # moving the modern SDK components or changing ANDROID_HOME.
+          if [[ -e "$ANDROID_HOME/tools" || -L "$ANDROID_HOME/tools" ]]; then
+            if [[ ! -x "$ANDROID_HOME/tools/bin/sdkmanager" ]]; then
+              echo "::error::Le dossier Android SDK/tools existe mais ne contient pas sdkmanager."
+              exit 1
+            fi
+          else
+            ln -s "$CMDLINE_TOOLS_DIR" "$ANDROID_HOME/tools"
+          fi
+
+          test -x "$ANDROID_HOME/tools/bin/sdkmanager"
+          test -f "$ANDROID_HOME/platforms/android-36/android.jar"
+          test -x "$ANDROID_HOME/build-tools/36.1.0/apksigner"
+          test -x "$ANDROID_HOME/build-tools/36.1.0/zipalign"
+
           mkdir -p "$HOME/.bubblewrap"
           node <<'NODE'
           const fs = require("node:fs");
@@ -154,10 +185,9 @@ jobs:
           if (!fs.existsSync(path.join(config.jdkPath, "bin", "java"))) {
             throw new Error("Le JDK 17 configuré est introuvable.");
           }
-          if (!fs.existsSync(config.androidSdkPath)) {
-            throw new Error("Le répertoire Android SDK configuré est introuvable.");
+          if (!fs.existsSync(path.join(config.androidSdkPath, "tools", "bin", "sdkmanager"))) {
+            throw new Error("Le shim Bubblewrap tools/bin/sdkmanager est introuvable.");
           }
-
           fs.mkdirSync(configDir, { recursive: true });
           fs.writeFileSync(configPath, JSON.stringify(config, null, 2) + "\n", {
             mode: 0o600
@@ -168,7 +198,7 @@ jobs:
               saved.androidSdkPath !== process.env.ANDROID_HOME) {
             throw new Error("La configuration Bubblewrap sauvegardée est incorrecte.");
           }
-          console.log("Configuration Bubblewrap non interactive créée.");
+          console.log("Configuration Bubblewrap créée; Android SDK compatible validé.");
           NODE
 
       - name: Build signed Android APK
