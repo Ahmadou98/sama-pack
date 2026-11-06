@@ -31,7 +31,8 @@ doivent être signées avec exactement le même certificat.
 2. Choisir « Build SAMA-PACK Android APK ».
 3. Cliquer sur « Run workflow » depuis la branche main.
 4. Le workflow génère le projet TWA à partir de `twa-manifest.json`, configure
-   les chemins Android/Java, compile et signe l'APK.
+   le JDK 17 et Android SDK, crée un lien `tools` de compatibilité pour Bubblewrap,
+   puis compile et signe l'APK.
 5. Après réussite, le workflow publie :
    - `downloads/SAMA-PACK.apk`
    - `downloads/SAMA-PACK.apk.sha256`
