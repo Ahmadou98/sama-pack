@@ -2,6 +2,10 @@
   white-space: nowrap;
   flex: 0 0 auto;
 }
+.pwa-install-mobile[hidden],
+.pwa-install-desktop[hidden] {
+  display: none !important;
+}
 .pwa-install-mobile {
   display: flex !important;
   align-items: center;
