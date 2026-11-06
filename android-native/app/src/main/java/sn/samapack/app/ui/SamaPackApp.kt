@@ -96,7 +96,6 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.viewmodel.compose.viewModel
 import coil3.compose.AsyncImage
 import sn.samapack.app.data.CheckoutInput
 import sn.samapack.app.data.CustomerProfile
@@ -125,7 +124,7 @@ private enum class AppTab(val label: String) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SamaPackApp(viewModel: SamaPackViewModel = viewModel()) {
+fun SamaPackApp(viewModel: SamaPackViewModel) {
     val state by viewModel.state.collectAsState()
     val context = LocalContext.current
     var currentTab by rememberSaveable { mutableStateOf(AppTab.HOME) }

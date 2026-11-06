@@ -22,6 +22,7 @@ publique Supabase destinée aux clients.
 - Application ID : `sn.samapack.app`
 - Version native initiale : `1.1.0` (versionCode 2)
 - Android minimum : API 26 (Android 8.0)
+- ViewModel géré par l'Activity, sans dépendance lifecycle-viewmodel-compose
 - Compile/target SDK : API 36
 - Signature : réutilise le keystore SAMA-PACK existant afin que l'application native
   puisse remplacer l'APK TWA déjà distribué sans perdre son identité Android.
