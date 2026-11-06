@@ -12,7 +12,7 @@ val signingKeyPassword = System.getenv("SAMA_ANDROID_KEY_PASSWORD")
 
 android {
     namespace = "sn.samapack.app"
-    compileSdk = 36
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "sn.samapack.app"
