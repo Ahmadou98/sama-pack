@@ -5,3 +5,5 @@
 -keepclasseswithmembers class ** {
     kotlinx.serialization.KSerializer serializer(...);
 }
+
+-keep class sn.samapack.app.data.** { *; }
