@@ -35,6 +35,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowForward
+import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.DeleteOutline
@@ -313,7 +314,7 @@ fun SamaPackApp(viewModel: SamaPackViewModel) {
             runCatching {
                 context.startActivity(Intent(Intent.ACTION_VIEW, uri))
             }.onFailure {
-                snackbar.showSnackbar("Impossible d'ouvrir la page sécurisée de paiement.")
+                coroutineScope.launch { snackbar.showSnackbar("Impossible d'ouvrir la page sécurisée de paiement.") }
             }
         } else {
             snackbar.showSnackbar("Lien de paiement refusé : domaine non reconnu.")
@@ -847,7 +848,7 @@ private fun FlashPromoPanel(
             if (promos.size > 1) {
                 Row {
                     IconButton(onClick = onPrevious, modifier = Modifier.size(36.dp)) {
-                        Icon(Icons.Default.ChevronRight, contentDescription = "Vente flash précédente", tint = BrandGreen)
+                        Icon(Icons.Default.ArrowBack, contentDescription = "Vente flash précédente", tint = BrandGreen)
                     }
                     IconButton(onClick = onNext, modifier = Modifier.size(36.dp)) {
                         Icon(Icons.Default.ArrowForward, contentDescription = "Vente flash suivante", tint = BrandGreen)
@@ -1739,7 +1740,7 @@ private fun CartLineCard(
                 model = product.imageUrl,
                 contentDescription = product.name,
                 modifier = Modifier.size(82.dp).clip(RoundedCornerShape(13.dp)).background(Color(0xFFF0F3EF)),
-                contentScale = ContentScale.Crop
+                contentScale = ContentScale.Fit
             )
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
