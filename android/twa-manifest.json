@@ -20,8 +20,8 @@
     "path": "android.keystore",
     "alias": "samapack"
   },
-  "appVersionCode": 1,
-  "appVersion": "1.0.0",
+  "appVersionCode": 4,
+  "appVersion": "1.3.0",
   "shortcuts": [],
   "generatorApp": "Bubblewrap CLI",
   "webManifestUrl": "https://sama-pack.store/manifest.webmanifest",
