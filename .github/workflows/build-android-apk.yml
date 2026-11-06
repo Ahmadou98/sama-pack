@@ -13,30 +13,16 @@ concurrency:
 jobs:
   build-android:
     name: Build and publish signed APK
-    runs-on: ubuntu-latest
-    timeout-minutes: 45
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
 
     steps:
       - name: Checkout main
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: main
           fetch-depth: 0
           persist-credentials: true
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-
-      - name: Set up Java
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: "21"
-
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
 
       - name: Check signing secrets
         shell: bash
@@ -51,9 +37,27 @@ jobs:
             exit 1
           fi
 
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          package-manager-cache: false
+
+      - name: Set up Java
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: platform-tools
+
       - name: Install Android SDK components
         run: |
-          sdkmanager "platforms;android-36" "build-tools;36.0.0" "platform-tools"
+          set -euo pipefail
+          sdkmanager --install "platforms;android-36" "build-tools;36.0.0"
 
       - name: Restore private signing key
         env:
@@ -68,9 +72,63 @@ jobs:
       - name: Install Bubblewrap
         run: npm install --global @bubblewrap/cli@1.27.0
 
-      - name: Generate Android project
+      - name: Generate Android project from TWA manifest
         working-directory: android
-        run: bubblewrap update --manifest=twa-manifest.json --skipVersionUpgrade
+        run: |
+          set -euo pipefail
+          BUBBLEWRAP_ROOT="$(dirname "$(dirname "$(readlink -f "$(command -v bubblewrap)")")")"
+          test -d "$BUBBLEWRAP_ROOT/node_modules/@bubblewrap/core"
+          NODE_PATH="$BUBBLEWRAP_ROOT/node_modules" node <<'NODE'
+          const crypto = require("node:crypto");
+          const fs = require("node:fs");
+          const path = require("node:path");
+          const {
+            TwaManifest,
+            TwaGenerator,
+            BufferedLog,
+            ConsoleLog
+          } = require("@bubblewrap/core");
+
+          (async () => {
+            const projectDir = process.cwd();
+            const manifestPath = path.join(projectDir, "twa-manifest.json");
+            const signingKeyPath = path.join(projectDir, "android.keystore");
+
+            if (!fs.existsSync(signingKeyPath) || fs.statSync(signingKeyPath).size === 0) {
+              throw new Error("La clé privée Android SAMA-PACK est absente.");
+            }
+
+            const manifest = await TwaManifest.fromFile(manifestPath);
+            if (manifest.packageId !== "sn.samapack.app") {
+              throw new Error("Identifiant Android inattendu dans twa-manifest.json.");
+            }
+            if (manifest.signingKey.alias !== "samapack") {
+              throw new Error("Alias de signature inattendu dans twa-manifest.json.");
+            }
+            if (path.resolve(projectDir, manifest.signingKey.path) !== path.resolve(signingKeyPath)) {
+              throw new Error("Le chemin de la clé de signature ne correspond pas au keystore restauré.");
+            }
+
+            const generator = new TwaGenerator();
+            const log = new BufferedLog(new ConsoleLog("SAMA-PACK Android"));
+            await generator.createTwaProject(projectDir, manifest, log);
+
+            const manifestBytes = fs.readFileSync(manifestPath);
+            const checksum = crypto.createHash("sha1").update(manifestBytes).digest("hex");
+            fs.writeFileSync(path.join(projectDir, "manifest-checksum.txt"), checksum);
+          })().catch((error) => {
+            console.error(error);
+            process.exit(1);
+          });
+          NODE
+
+      - name: Configure Bubblewrap Android tool paths
+        working-directory: android
+        run: |
+          set -euo pipefail
+          test -d "$JAVA_HOME"
+          test -d "$ANDROID_HOME"
+          bubblewrap updateConfig --jdkPath="$JAVA_HOME" --androidSdkPath="$ANDROID_HOME"
 
       - name: Build signed Android APK
         working-directory: android
