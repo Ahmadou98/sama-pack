@@ -30,13 +30,15 @@ doivent être signées avec exactement le même certificat.
 1. Ouvrir l'onglet Actions du dépôt GitHub.
 2. Choisir « Build SAMA-PACK Android APK ».
 3. Cliquer sur « Run workflow » depuis la branche main.
-4. Après réussite, le workflow publie :
+4. Le workflow génère le projet TWA à partir de `twa-manifest.json`, configure
+   les chemins Android/Java, compile et signe l'APK.
+5. Après réussite, le workflow publie :
    - `downloads/SAMA-PACK.apk`
    - `downloads/SAMA-PACK.apk.sha256`
    - `downloads/version.json`
    - `.well-known/assetlinks.json`
-5. Le push sur main déclenche automatiquement le déploiement Cloudflare.
-6. Vérifier la page https://sama-pack.store/telecharger-application.html
+6. Le push sur main déclenche automatiquement le déploiement Cloudflare.
+7. Vérifier la page https://sama-pack.store/telecharger-application.html
    et le fichier https://sama-pack.store/.well-known/assetlinks.json
 
 Pour une nouvelle version, incrémenter `appVersion` et `appVersionCode`
