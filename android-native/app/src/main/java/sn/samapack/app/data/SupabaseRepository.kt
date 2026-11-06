@@ -2,6 +2,9 @@ package sn.samapack.app.data
 
 import io.github.jan.supabase.createSupabaseClient
 import io.github.jan.supabase.from
+import io.github.jan.supabase.auth.auth
+import io.github.jan.supabase.functions.functions
+import io.github.jan.supabase.postgrest.postgrest
 import io.github.jan.supabase.auth.Auth
 import io.github.jan.supabase.auth.providers.builtin.Email
 import io.github.jan.supabase.functions.Functions
