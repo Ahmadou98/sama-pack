@@ -42,3 +42,7 @@ readme.md
 /android/**
 /.github/
 /.github/**
+
+# Native Android source and Gradle files are not public static website assets
+/android-native/
+/android-native/**
