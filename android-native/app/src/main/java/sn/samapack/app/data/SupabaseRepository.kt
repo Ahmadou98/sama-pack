@@ -1,7 +1,7 @@
 package sn.samapack.app.data
 
 import io.github.jan.supabase.createSupabaseClient
-import io.github.jan.supabase.from
+import io.github.jan.supabase.postgrest.from
 import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.functions.functions
 import io.github.jan.supabase.postgrest.postgrest
