@@ -5,7 +5,7 @@ const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_lDAKRHFWyUYZ-tb23hbbnQ_96zF9Iwo
 const PRODUCT_COLUMNS = [
   "id", "public_ref", "name", "category", "price", "description", "items",
   "image_path", "image_paths", "active", "catalog_type", "availability_status",
-  "brand", "sale_unit", "promo_active", "promo_price", "promo_started_at",
+  "brand", "sale_unit", "max_delivery_hours", "promo_active", "promo_price", "promo_started_at",
   "promo_end_at", "updated_at", "created_at"
 ].join(",");
 
@@ -120,6 +120,17 @@ async function findPublishedProduct(ref) {
   return null;
 }
 
+function deliveryBadgeHtml(product) {
+  const candidate = Number(product.max_delivery_hours);
+  const hours = Number.isSafeInteger(candidate) && candidate >= 1 ? candidate : 24;
+  return '<div class="product-delivery-badge" role="note" aria-label="Délai maximum de livraison : ' + hours + ' heures">' +
+    '<svg viewBox="0 0 20 20" aria-hidden="true" focusable="false">' +
+      '<path d="M2.5 5.5h9v9h-9zM11.5 8.5h3l3 3v3h-6z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"></path>' +
+      '<circle cx="6" cy="15.5" r="1.5" fill="none" stroke="currentColor" stroke-width="1.4"></circle>' +
+      '<circle cx="14.5" cy="15.5" r="1.5" fill="none" stroke="currentColor" stroke-width="1.4"></circle>' +
+    '</svg><span>Livraison sous <strong>' + hours + 'h</strong></span></div>';
+}
+
 function buildProductMarkup(product, images) {
   const name = cleanText(product.name) || "Produit SAMA-PACK";
   const category = getCategory(product);
@@ -142,6 +153,7 @@ function buildProductMarkup(product, images) {
     ? '<div class="seo-product-price"><span class="price current-price">' + escapeHtml(money(price)) + '</span> <small class="price-unit-label">' + escapeHtml(saleUnitLabel(product)) + '</small></div>'
     : '<div class="seo-product-price">Prix à confirmer</div>';
   const reference = cleanText(product.public_ref || product.id);
+  const deliveryBadge = deliveryBadgeHtml(product);
   return '<article class="seo-product-layout">' +
     image +
     '<div class="seo-product-info">' +
@@ -152,6 +164,7 @@ function buildProductMarkup(product, images) {
       itemList +
       priceHtml +
       '<a class="btn primary" href="/#catalogue">Commander chez SAMA-PACK</a>' +
+      deliveryBadge +
       '<a class="btn ghost" href="' + escapeHtml(product.catalog_type === "tool" ? "outils.html" : product.catalog_type === "product" ? "produits.html" : "/#catalogue") + '">Retour au catalogue</a>' +
     '</div>' +
   '</article>';
