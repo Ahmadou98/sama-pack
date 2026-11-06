@@ -357,8 +357,7 @@ private fun HomeScreen(
             Spacer(Modifier.height(4.dp))
             Text("Bienvenue chez SAMA-PACK", color = BrandGreen, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelLarge)
             Spacer(Modifier.height(5.dp))
-            Text("L’entretien simplifié,
-livré chez vous.", color = Ink, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.ExtraBold)
+            Text("L’entretien simplifié,\nlivré chez vous.", color = Ink, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.ExtraBold)
             Spacer(Modifier.height(14.dp))
             Card(
                 shape = RoundedCornerShape(26.dp),
@@ -381,8 +380,7 @@ livré chez vous.", color = Ink, style = MaterialTheme.typography.headlineMedium
                                 )
                             )
                         }
-                        Text("Des produits utiles.
-Des packs prêts à l’emploi.", color = Color.White, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                        Text("Des produits utiles.\nDes packs prêts à l’emploi.", color = Color.White, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                         Text("Produits de nettoyage, outils et packs d’hygiène sélectionnés pour votre quotidien.", color = Color.White.copy(alpha = 0.85f), style = MaterialTheme.typography.bodyMedium)
                         Button(
                             onClick = onOpenCatalog,
