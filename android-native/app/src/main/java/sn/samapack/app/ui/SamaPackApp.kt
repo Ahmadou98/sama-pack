@@ -282,7 +282,7 @@ fun SamaPackApp(viewModel: SamaPackViewModel) {
     val navigate: (AppTab) -> Unit = { destination -> currentTab = destination }
 
     fun openWhatsApp(message: String) {
-        val digits = state.settings.whatsapp.filter { it.isDigit() }.ifBlank { "221771018290" }
+        val digits = state.settings.whatsapp.orEmpty().filter { it.isDigit() }.ifBlank { "221771018290" }
         val uri = Uri.parse("https://wa.me/" + digits + "?text=" + Uri.encode(message))
         runCatching {
             context.startActivity(Intent(Intent.ACTION_VIEW, uri))
@@ -426,7 +426,7 @@ fun SamaPackApp(viewModel: SamaPackViewModel) {
                     AppTab.HOW -> HowScreen(onOpenTab = navigate)
                     AppTab.B2B -> ProfessionalsScreen(onContact = { openWhatsApp("Bonjour SAMA-PACK, je souhaite demander un devis professionnel.") })
                     AppTab.CONTACT -> ContactScreen(
-                        phone = state.settings.whatsapp,
+                        phone = state.settings.whatsapp.orEmpty(),
                         onWhatsApp = { openWhatsApp("Bonjour SAMA-PACK, j’ai une question concernant vos produits.") }
                     )
                 }
@@ -485,7 +485,6 @@ fun SamaPackApp(viewModel: SamaPackViewModel) {
 }
 
 
-@Composable
 @Composable
 private fun HomeScreen(
     products: List<StoreProduct>,
