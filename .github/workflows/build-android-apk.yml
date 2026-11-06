@@ -47,7 +47,7 @@ jobs:
         uses: actions/setup-java@v6
         with:
           distribution: temurin
-          java-version: "21"
+          java-version: "17"
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v4
@@ -125,12 +125,39 @@ jobs:
           NODE
 
       - name: Configure Bubblewrap Android tool paths
-        working-directory: android
+        shell: bash
         run: |
           set -euo pipefail
           test -d "$JAVA_HOME"
           test -d "$ANDROID_HOME"
-          bubblewrap updateConfig --jdkPath="$JAVA_HOME" --androidSdkPath="$ANDROID_HOME"
+          mkdir -p "$HOME/.bubblewrap"
+          node - "$JAVA_HOME" "$ANDROID_HOME" <<'NODE'
+          const fs = require("node:fs");
+          const os = require("node:os");
+          const path = require("node:path");
+
+          const [jdkPath, androidSdkPath] = process.argv.slice(2);
+          if (!jdkPath || !androidSdkPath) {
+            throw new Error("Les chemins JDK et Android SDK sont obligatoires.");
+          }
+          for (const [name, value] of [["JDK", jdkPath], ["Android SDK", androidSdkPath]]) {
+            if (!fs.existsSync(value)) {
+              throw new Error(`Chemin ${name} introuvable : ${value}`);
+            }
+          }
+
+          const configDirectory = path.join(os.homedir(), ".bubblewrap");
+          const configPath = path.join(configDirectory, "config.json");
+          const config = { jdkPath, androidSdkPath };
+          fs.mkdirSync(configDirectory, { recursive: true });
+          fs.writeFileSync(configPath, JSON.stringify(config, null, 2) + "\n", { mode: 0o600 });
+
+          const saved = JSON.parse(fs.readFileSync(configPath, "utf8"));
+          if (saved.jdkPath !== jdkPath || saved.androidSdkPath !== androidSdkPath) {
+            throw new Error("La configuration Bubblewrap enregistrée ne correspond pas aux chemins fournis.");
+          }
+          console.log("Configuration Bubblewrap enregistrée sans invite interactive.");
+          NODE
 
       - name: Build signed Android APK
         working-directory: android
