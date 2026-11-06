@@ -108,6 +108,9 @@ jobs:
             if (manifest.packageId !== "sn.samapack.app") {
               throw new Error("Identifiant Android inattendu dans twa-manifest.json.");
             }
+            if (!Number.isInteger(manifest.minSdkVersion) || manifest.minSdkVersion < 24) {
+              throw new Error("La bibliothèque Android Browser Helper 2.7.4 exige minSdkVersion >= 24.");
+            }
             if (manifest.signingKey.alias !== "samapack") {
               throw new Error("Alias de signature inattendu dans twa-manifest.json.");
             }
