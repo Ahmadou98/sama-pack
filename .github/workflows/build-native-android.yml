@@ -50,7 +50,6 @@ jobs:
         uses: gradle/actions/setup-gradle@v6
         with:
           gradle-version: "9.5.0"
-          cache-encryption-key: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
 
       - name: Compile debug APK
         working-directory: android-native
@@ -112,7 +111,6 @@ jobs:
         uses: gradle/actions/setup-gradle@v6
         with:
           gradle-version: "9.5.0"
-          cache-encryption-key: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
 
       - name: Restore existing SAMA-PACK signing key
         shell: bash
