@@ -9,6 +9,8 @@ data class StoreProduct(
     val name: String,
     val price: Double,
     val description: String? = null,
+    @SerialName("category") val category: String? = null,
+    val items: List<String> = emptyList(),
     @SerialName("image_path") val imagePath: String? = null,
     @SerialName("image_paths") val imagePaths: List<String> = emptyList(),
     @SerialName("catalog_type") val catalogType: String = "product",

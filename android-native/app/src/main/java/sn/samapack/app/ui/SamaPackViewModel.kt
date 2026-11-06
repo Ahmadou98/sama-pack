@@ -110,6 +110,47 @@ class SamaPackViewModel(application: Application) : AndroidViewModel(application
         update { it.copy(cart = next, notice = "${product.name} ajouté au panier.", error = null) }
     }
 
+    fun addBatchToCart(selection: Map<String, Int>) {
+        val current = _state.value
+        val productsById = current.products.associateBy { it.id }
+        val next = current.cart.toMutableMap()
+        var accepted = 0
+        var skipped = 0
+
+        selection.forEach { (productId, requestedQuantity) ->
+            val product = productsById[productId]
+            val quantity = requestedQuantity.coerceIn(0, 99)
+            if (product == null || !product.isAvailable || product.effectivePrice <= 0.0 || quantity == 0) {
+                skipped += 1
+            } else {
+                val existing = next[productId] ?: 0
+                val updated = (existing + quantity).coerceAtMost(99)
+                if (updated > existing) {
+                    next[productId] = updated
+                    accepted += updated - existing
+                }
+            }
+        }
+
+        if (accepted == 0) {
+            update { it.copy(notice = "Aucun article disponible n’a pu être ajouté au panier.", error = null) }
+            return
+        }
+
+        persistCart(next)
+        update {
+            it.copy(
+                cart = next,
+                notice = if (skipped > 0) {
+                    "$accepted article(s) ajouté(s). Certains articles indisponibles ont été ignorés."
+                } else {
+                    "$accepted article(s) ajouté(s) au panier."
+                },
+                error = null
+            )
+        }
+    }
+
     fun setQuantity(productId: String, quantity: Int) {
         val next = _state.value.cart.toMutableMap()
         if (quantity <= 0) next.remove(productId) else next[productId] = quantity.coerceAtMost(99)
