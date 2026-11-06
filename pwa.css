@@ -1,0 +1,100 @@
+.pwa-install-desktop {
+  white-space: nowrap;
+  flex: 0 0 auto;
+}
+.pwa-install-mobile[hidden],
+.pwa-install-desktop[hidden] {
+  display: none !important;
+}
+.pwa-install-mobile {
+  display: flex !important;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 10px;
+  width: 100%;
+  border: 0;
+  border-radius: 12px;
+  padding: 12px 13px;
+  background: #f0fdf4;
+  color: #166534;
+  font: inherit;
+  font-weight: 800;
+  text-align: left;
+  cursor: pointer;
+}
+.pwa-install-mobile:hover,
+.pwa-install-mobile:focus-visible {
+  background: #dcfce7;
+  outline: 2px solid #86c99c;
+  outline-offset: 2px;
+}
+.pwa-install-mobile span {
+  display: inline-grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 7px;
+  background: #166534;
+  color: #fff;
+  font-size: 17px;
+  line-height: 1;
+}
+.pwa-install-dialog {
+  width: min(440px, calc(100% - 32px));
+  max-width: 440px;
+  padding: 25px;
+  border: 1px solid #dce9df;
+  border-radius: 20px;
+  color: #17251d;
+  background: #fff;
+  box-shadow: 0 24px 80px rgba(15, 23, 42, .24);
+}
+.pwa-install-dialog::backdrop {
+  background: rgba(11, 31, 19, .52);
+  backdrop-filter: blur(3px);
+}
+.pwa-install-dialog h2 {
+  margin: 0 0 9px;
+  color: #14532d;
+  font-size: 23px;
+  line-height: 1.2;
+}
+.pwa-install-dialog p {
+  margin: 0 0 13px;
+  color: #526357;
+  font-size: 14px;
+  line-height: 1.65;
+}
+.pwa-install-dialog ol {
+  margin: 12px 0 17px;
+  padding-left: 22px;
+  color: #26382d;
+  font-size: 14px;
+  line-height: 1.8;
+}
+.pwa-install-dialog .pwa-install-note {
+  margin: 0 0 18px;
+  padding: 11px 12px;
+  border-radius: 11px;
+  background: #f0fdf4;
+  color: #365b43;
+  font-size: 12px;
+}
+.pwa-install-dialog .pwa-install-close {
+  width: 100%;
+  min-height: 44px;
+  border: 0;
+  border-radius: 11px;
+  background: #166534;
+  color: #fff;
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+}
+.pwa-install-dialog .pwa-install-close:hover,
+.pwa-install-dialog .pwa-install-close:focus-visible {
+  background: #14532d;
+}
+@media (max-width: 900px) {
+  .pwa-install-desktop { display: none !important; }
+}
