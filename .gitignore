@@ -1,0 +1,14 @@
+# Android release signing key — never commit
+android/android.keystore
+android/*.keystore
+android/*.jks
+*.keystore
+*.jks
+
+# Generated Android build output
+android/.gradle/
+android/build/
+android/app/build/
+android/app-release-*.apk
+android/app-release-*.aab
+android/app-release-*.apk

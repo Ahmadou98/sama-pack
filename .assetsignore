@@ -36,3 +36,9 @@ readme.md
 *.bak
 *.tmp
 *.log
+
+# Android TWA source and generated build output are not public website assets
+/android/
+/android/**
+/.github/
+/.github/**

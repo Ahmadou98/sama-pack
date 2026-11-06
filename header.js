@@ -23,6 +23,7 @@
           <a href="livraison-retours.html">Livraison et retours</a>
           <a href="conditions-vente.html">Conditions de vente</a>
           <a href="confidentialite.html">Confidentialité</a>
+          <a href="telecharger-application.html">Application mobile</a>
         </div>
       </details>
     </nav>
@@ -46,6 +47,7 @@
           </details>
           <a class="mobile-nav-item" href="comment-ca-marche.html"><span aria-hidden="true">ⓘ</span><small>Comment ça marche</small></a>
           <a class="mobile-nav-item" href="/#b2b"><span aria-hidden="true">▤</span><small>Professionnels</small></a>
+          <a class="mobile-nav-item" href="telecharger-application.html"><span aria-hidden="true">↓</span><small>Application mobile</small></a>
           <details class="mobile-nav-group">
             <summary class="mobile-nav-item"><small>Aide &amp; contact</small><span class="mobile-nav-group-chevron" aria-hidden="true">⌄</span></summary>
             <div class="mobile-nav-submenu">
@@ -80,7 +82,7 @@
     const storefrontPaths = new Set([
       "/", "/index.html", "/produits.html", "/outils.html", "/fiche-produit.html",
       "/comment-ca-marche.html", "/conditions-vente.html", "/confidentialite.html",
-      "/contact.html", "/livraison-retours.html"
+      "/contact.html", "/livraison-retours.html", "/telecharger-application.html"
     ]);
     if (isReload && storefrontPaths.has(pathname)) {
       const params = new URLSearchParams(window.location.search || "");
