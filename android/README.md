@@ -8,6 +8,9 @@ les comptes clients, le panier et les commandes comme source unique.
 
 Identifiant Android immuable : `sn.samapack.app`
 
+API Android minimum : 24 (Android 7.0). Android 6/API 23 n'est pas compatible
+avec la version Android Browser Helper utilisée par Bubblewrap 1.27.0.
+
 ## Clé de signature
 
 Le fichier `android.keystore` ne doit jamais être ajouté au dépôt.
