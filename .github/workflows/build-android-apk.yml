@@ -2,6 +2,11 @@ name: Build SAMA-PACK Android APK
 
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/build-android-apk.yml
+      - android/twa-manifest.json
 
 permissions:
   contents: write
