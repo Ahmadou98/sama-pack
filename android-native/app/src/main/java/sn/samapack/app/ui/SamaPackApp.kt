@@ -4,6 +4,7 @@ import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -42,6 +43,8 @@ import androidx.compose.material.icons.filled.Inventory2
 import androidx.compose.material.icons.filled.LocalShipping
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Logout
+import androidx.compose.material.icons.filled.LocalOffer
+import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.ReceiptLong
 import androidx.compose.material.icons.filled.Remove
@@ -49,6 +52,7 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.ShoppingBag
 import androidx.compose.material.icons.filled.ShoppingCart
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
@@ -57,6 +61,8 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Divider
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
@@ -95,7 +101,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import sn.samapack.app.data.CheckoutInput
 import sn.samapack.app.data.CustomerProfile
@@ -105,21 +113,155 @@ import java.text.NumberFormat
 import java.util.Locale
 import kotlin.math.roundToLong
 
-private val BrandGreen = Color(0xFF166534)
-private val BrandGreenDark = Color(0xFF104B28)
-private val AppBackground = Color(0xFFF5F7F2)
-private val Ink = Color(0xFF17251D)
-private val Muted = Color(0xFF66756A)
-private val Border = Color(0xFFE2E9E1)
-private val SoftGreen = Color(0xFFE7F2E8)
-private val Warm = Color(0xFFF8F1E6)
+private val BrandGreen = Color(0xFF176B43)
+private val BrandGreenDark = Color(0xFF125936)
+private val BrandAccent = Color(0xFF28A765)
+private val FooterGreen = Color(0xFF10271B)
+private val AppBackground = Color(0xFFF5F8F5)
+private val Ink = Color(0xFF15251C)
+private val Muted = Color(0xFF68786E)
+private val Border = Color(0xFFE4EBE5)
+private val SoftGreen = Color(0xFFE1F7E7)
+private val Warm = Color(0xFFF0FAF2)
 
 private enum class AppTab(val label: String) {
     HOME("Accueil"),
-    CATALOG("Catalogue"),
+    PACKS("Packs de nettoyage"),
+    PRODUCTS("Produits à l’unité ou par colis"),
+    TOOLS("Outils de nettoyage"),
     CART("Panier"),
-    ORDERS("Commandes"),
-    ACCOUNT("Compte")
+    ORDERS("Mes commandes"),
+    ACCOUNT("Compte"),
+    HOW("Comment ça marche"),
+    B2B("Professionnels"),
+    CONTACT("Contact")
+}
+
+@Composable
+private fun SiteBrandMark() {
+    Box(
+        Modifier
+            .size(36.dp)
+            .clip(RoundedCornerShape(11.dp))
+            .background(Brush.linearGradient(listOf(BrandGreen, BrandAccent))),
+        contentAlignment = Alignment.Center
+    ) {
+        Text("S", color = Color.White, fontWeight = FontWeight.Black, fontSize = 21.sp)
+    }
+}
+
+@Composable
+private fun SiteHeader(
+    signedIn: Boolean,
+    cartCount: Int,
+    onNavigate: (AppTab) -> Unit
+) {
+    var menuExpanded by remember { mutableStateOf(false) }
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .background(Color.White)
+            .padding(horizontal = 12.dp, vertical = 8.dp)
+    ) {
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(17.dp),
+            color = Color.White,
+            shadowElevation = 5.dp
+        ) {
+            Row(
+                Modifier.fillMaxWidth().height(62.dp).padding(horizontal = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                SiteBrandMark()
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    "SAMA-PACK",
+                    color = Ink,
+                    fontWeight = FontWeight.Black,
+                    fontSize = 17.sp,
+                    letterSpacing = (-0.7).sp
+                )
+                Spacer(Modifier.weight(1f))
+                Box(contentAlignment = Alignment.TopEnd) {
+                    IconButton(
+                        onClick = { onNavigate(AppTab.CART) },
+                        modifier = Modifier.size(40.dp)
+                    ) {
+                        Icon(Icons.Default.ShoppingCart, contentDescription = "Panier", tint = BrandGreen)
+                    }
+                    if (cartCount > 0) {
+                        Box(
+                            Modifier
+                                .padding(top = 2.dp, end = 1.dp)
+                                .size(17.dp)
+                                .clip(CircleShape)
+                                .background(Color(0xFFE98B2A)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(cartCount.coerceAtMost(99).toString(), color = Color.White, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+                TextButton(
+                    onClick = { onNavigate(AppTab.ACCOUNT) },
+                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 4.dp)
+                ) {
+                    Text(
+                        if (signedIn) "Compte" else "Connexion",
+                        color = BrandGreen,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1
+                    )
+                }
+                Box {
+                    IconButton(
+                        onClick = { menuExpanded = true },
+                        modifier = Modifier
+                            .size(39.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(Color(0xFFF7FBF8))
+                    ) {
+                        Icon(Icons.Default.Menu, contentDescription = "Ouvrir le menu", tint = Color(0xFF17452D))
+                    }
+                    DropdownMenu(
+                        expanded = menuExpanded,
+                        onDismissRequest = { menuExpanded = false },
+                        modifier = Modifier.width(270.dp).background(Color.White)
+                    ) {
+                        val entries = listOf(
+                            "Accueil" to AppTab.HOME,
+                            "Packs de nettoyage" to AppTab.PACKS,
+                            "Produits à l’unité ou par colis" to AppTab.PRODUCTS,
+                            "Outils de nettoyage" to AppTab.TOOLS,
+                            "Comment ça marche" to AppTab.HOW,
+                            "Professionnels" to AppTab.B2B,
+                            "Contact" to AppTab.CONTACT,
+                            "Mes commandes" to AppTab.ORDERS,
+                            "Mon compte" to AppTab.ACCOUNT
+                        )
+                        entries.forEach { entry ->
+                            DropdownMenuItem(
+                                text = {
+                                    Text(
+                                        entry.first,
+                                        color = Ink,
+                                        fontWeight = if (entry.second == AppTab.HOME) FontWeight.Bold else FontWeight.Medium,
+                                        fontSize = 14.sp
+                                    )
+                                },
+                                onClick = {
+                                    menuExpanded = false
+                                    onNavigate(entry.second)
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -130,7 +272,34 @@ fun SamaPackApp(viewModel: SamaPackViewModel) {
     var currentTab by rememberSaveable { mutableStateOf(AppTab.HOME) }
     var selectedProduct by remember { mutableStateOf<StoreProduct?>(null) }
     var checkoutOpen by rememberSaveable { mutableStateOf(false) }
+    var budgetBuilderOpen by rememberSaveable { mutableStateOf(false) }
     val snackbar = remember { SnackbarHostState() }
+
+    val navigate: (AppTab) -> Unit = { destination -> currentTab = destination }
+
+    fun openWhatsApp(message: String) {
+        val digits = state.settings.whatsapp.filter { it.isDigit() }.ifBlank { "221771018290" }
+        val uri = Uri.parse("https://wa.me/" + digits + "?text=" + Uri.encode(message))
+        runCatching {
+            context.startActivity(Intent(Intent.ACTION_VIEW, uri))
+        }.onFailure {
+            snackbar.showSnackbar("Impossible d’ouvrir WhatsApp sur cet appareil.")
+        }
+    }
+
+    fun shareProduct(product: StoreProduct) {
+        val url = "https://sama-pack.store/fiche-produit.html?ref=" + Uri.encode(product.id)
+        val shareIntent = Intent(Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            putExtra(Intent.EXTRA_SUBJECT, product.name + " — SAMA-PACK")
+            putExtra(Intent.EXTRA_TEXT, product.name + " est disponible chez SAMA-PACK : " + url)
+        }
+        runCatching {
+            context.startActivity(Intent.createChooser(shareIntent, "Partager ce produit"))
+        }.onFailure {
+            snackbar.showSnackbar("Le partage n’a pas pu être ouvert.")
+        }
+    }
 
     LaunchedEffect(state.paymentUrl) {
         val url = state.paymentUrl ?: return@LaunchedEffect
@@ -162,8 +331,13 @@ fun SamaPackApp(viewModel: SamaPackViewModel) {
         }
     }
 
-    BackHandler(enabled = selectedProduct != null || checkoutOpen) {
-        if (checkoutOpen) checkoutOpen = false else selectedProduct = null
+    BackHandler(enabled = selectedProduct != null || checkoutOpen || budgetBuilderOpen || currentTab != AppTab.HOME) {
+        when {
+            checkoutOpen -> checkoutOpen = false
+            budgetBuilderOpen -> budgetBuilderOpen = false
+            selectedProduct != null -> selectedProduct = null
+            else -> currentTab = AppTab.HOME
+        }
     }
 
     MaterialTheme(
@@ -180,85 +354,11 @@ fun SamaPackApp(viewModel: SamaPackViewModel) {
             containerColor = AppBackground,
             snackbarHost = { SnackbarHost(hostState = snackbar) },
             topBar = {
-                TopAppBar(
-                    title = {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Box(
-                                modifier = Modifier
-                                    .size(36.dp)
-                                    .clip(RoundedCornerShape(11.dp))
-                                    .background(BrandGreen),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text("S", color = Color.White, fontWeight = FontWeight.Black)
-                            }
-                            Spacer(Modifier.width(10.dp))
-                            Column(verticalArrangement = Arrangement.spacedBy((-3).dp)) {
-                                Text("SAMA-PACK", fontWeight = FontWeight.ExtraBold, color = Ink)
-                                Text("Hygiène & entretien", color = Muted, style = MaterialTheme.typography.labelSmall)
-                            }
-                        }
-                    },
-                    actions = {
-                        IconButton(onClick = { viewModel.refresh() }) {
-                            Icon(Icons.Default.Refresh, contentDescription = "Actualiser", tint = BrandGreen)
-                        }
-                        Box(contentAlignment = Alignment.TopEnd) {
-                            IconButton(onClick = { currentTab = AppTab.CART }) {
-                                Icon(Icons.Default.ShoppingCart, contentDescription = "Panier", tint = BrandGreen)
-                            }
-                            if (viewModel.productCount() > 0) {
-                                Box(
-                                    modifier = Modifier
-                                        .padding(top = 3.dp, end = 4.dp)
-                                        .size(17.dp)
-                                        .clip(CircleShape)
-                                        .background(Color(0xFFEA8C28)),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Text(
-                                        viewModel.productCount().coerceAtMost(99).toString(),
-                                        color = Color.White,
-                                        style = MaterialTheme.typography.labelSmall,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                }
-                            }
-                        }
-                    }
+                SiteHeader(
+                    signedIn = state.userId != null,
+                    cartCount = viewModel.productCount(),
+                    onNavigate = navigate
                 )
-            },
-            bottomBar = {
-                NavigationBar(containerColor = Color.White, tonalElevation = 8.dp) {
-                    AppTab.entries.forEach { tab ->
-                        val icon = when (tab) {
-                            AppTab.HOME -> Icons.Default.Home
-                            AppTab.CATALOG -> Icons.Default.ShoppingBag
-                            AppTab.CART -> Icons.Default.ShoppingCart
-                            AppTab.ORDERS -> Icons.Default.ReceiptLong
-                            AppTab.ACCOUNT -> Icons.Default.Person
-                        }
-                        NavigationBarItem(
-                            selected = currentTab == tab,
-                            onClick = { currentTab = tab },
-                            icon = {
-                                Box {
-                                    Icon(icon, contentDescription = tab.label)
-                                    if (tab == AppTab.CART && viewModel.productCount() > 0) {
-                                        Box(
-                                            Modifier
-                                                .align(Alignment.TopEnd)
-                                                .size(7.dp)
-                                                .clip(CircleShape)
-                                                .background(Color(0xFFEA8C28))
-                                        )
-                                    }
-                                }
-                            },
-                            label = { Text(tab.label, style = MaterialTheme.typography.labelSmall) }
-                        )
-                    }
-                }
             }
         ) { padding ->
             Box(Modifier.fillMaxSize().padding(padding)) {
@@ -266,16 +366,37 @@ fun SamaPackApp(viewModel: SamaPackViewModel) {
                     AppTab.HOME -> HomeScreen(
                         products = state.products,
                         loading = state.loading,
-                        onOpenCatalog = { currentTab = AppTab.CATALOG },
+                        deliveryFee = state.settings.deliveryFee,
+                        onOpenTab = navigate,
                         onOpenProduct = { selectedProduct = it },
                         onAdd = viewModel::addToCart,
-                        deliveryFee = state.settings.deliveryFee
+                        onShare = ::shareProduct,
+                        onComposePack = { budgetBuilderOpen = true },
+                        onContact = { openWhatsApp("Bonjour SAMA-PACK, je souhaite obtenir des informations.") }
                     )
-                    AppTab.CATALOG -> CatalogScreen(
+                    AppTab.PACKS -> CatalogScreen(
                         products = state.products,
+                        catalogType = "pack",
                         loading = state.loading,
                         onOpenProduct = { selectedProduct = it },
-                        onAdd = viewModel::addToCart
+                        onAdd = viewModel::addToCart,
+                        onShare = ::shareProduct
+                    )
+                    AppTab.PRODUCTS -> CatalogScreen(
+                        products = state.products,
+                        catalogType = "product",
+                        loading = state.loading,
+                        onOpenProduct = { selectedProduct = it },
+                        onAdd = viewModel::addToCart,
+                        onShare = ::shareProduct
+                    )
+                    AppTab.TOOLS -> CatalogScreen(
+                        products = state.products,
+                        catalogType = "tool",
+                        loading = state.loading,
+                        onOpenProduct = { selectedProduct = it },
+                        onAdd = viewModel::addToCart,
+                        onShare = ::shareProduct
                     )
                     AppTab.CART -> CartScreen(
                         state = state,
@@ -284,7 +405,7 @@ fun SamaPackApp(viewModel: SamaPackViewModel) {
                             if (state.userId == null) currentTab = AppTab.ACCOUNT
                             else checkoutOpen = true
                         },
-                        onContinueShopping = { currentTab = AppTab.CATALOG }
+                        onContinueShopping = { currentTab = AppTab.PACKS }
                     )
                     AppTab.ORDERS -> OrdersScreen(
                         state = state,
@@ -292,6 +413,12 @@ fun SamaPackApp(viewModel: SamaPackViewModel) {
                         onSignIn = { currentTab = AppTab.ACCOUNT }
                     )
                     AppTab.ACCOUNT -> AccountScreen(state, viewModel)
+                    AppTab.HOW -> HowScreen(onOpenTab = navigate)
+                    AppTab.B2B -> ProfessionalsScreen(onContact = { openWhatsApp("Bonjour SAMA-PACK, je souhaite demander un devis professionnel.") })
+                    AppTab.CONTACT -> ContactScreen(
+                        phone = state.settings.whatsapp,
+                        onWhatsApp = { openWhatsApp("Bonjour SAMA-PACK, j’ai une question concernant vos produits.") }
+                    )
                 }
 
                 if (state.loading && state.products.isEmpty()) {
@@ -321,6 +448,17 @@ fun SamaPackApp(viewModel: SamaPackViewModel) {
         )
     }
 
+    if (budgetBuilderOpen) {
+        BudgetBuilderSheet(
+            products = state.products,
+            onDismiss = { budgetBuilderOpen = false },
+            onAdd = { selection ->
+                viewModel.addBatchToCart(selection)
+                budgetBuilderOpen = false
+            }
+        )
+    }
+
     if (checkoutOpen) {
         CheckoutSheet(
             profile = state.profile,
@@ -335,6 +473,7 @@ fun SamaPackApp(viewModel: SamaPackViewModel) {
         )
     }
 }
+
 
 @Composable
 private fun HomeScreen(
