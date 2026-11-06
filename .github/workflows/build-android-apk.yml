@@ -47,7 +47,7 @@ jobs:
         uses: actions/setup-java@v6
         with:
           distribution: temurin
-          java-version: "21"
+          java-version: "17"
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v4
@@ -126,11 +126,46 @@ jobs:
 
       - name: Configure Bubblewrap Android tool paths
         working-directory: android
+        shell: bash
         run: |
           set -euo pipefail
           test -d "$JAVA_HOME"
           test -d "$ANDROID_HOME"
-          bubblewrap updateConfig --jdkPath="$JAVA_HOME" --androidSdkPath="$ANDROID_HOME"
+          java -version 2>&1 | grep -q 'version "17\\.'
+
+          # Bubblewrap 1.27.0 asks interactive questions when its config is absent.
+          # Write the two paths directly so GitHub Actions never waits for a prompt.
+          mkdir -p "$HOME/.bubblewrap"
+          node <<'NODE'
+          const fs = require("node:fs");
+          const path = require("node:path");
+
+          const configDir = path.join(process.env.HOME, ".bubblewrap");
+          const configPath = path.join(configDir, "config.json");
+          const config = {
+            jdkPath: process.env.JAVA_HOME,
+            androidSdkPath: process.env.ANDROID_HOME
+          };
+
+          if (!fs.existsSync(path.join(config.jdkPath, "bin", "java"))) {
+            throw new Error("Le JDK 17 configuré est introuvable.");
+          }
+          if (!fs.existsSync(config.androidSdkPath)) {
+            throw new Error("Le répertoire Android SDK configuré est introuvable.");
+          }
+
+          fs.mkdirSync(configDir, { recursive: true });
+          fs.writeFileSync(configPath, JSON.stringify(config, null, 2) + "\\n", {
+            mode: 0o600
+          });
+
+          const saved = JSON.parse(fs.readFileSync(configPath, "utf8"));
+          if (saved.jdkPath !== process.env.JAVA_HOME ||
+              saved.androidSdkPath !== process.env.ANDROID_HOME) {
+            throw new Error("La configuration Bubblewrap sauvegardée est incorrecte.");
+          }
+          console.log("Configuration Bubblewrap non interactive créée.");
+          NODE
 
       - name: Build signed Android APK
         working-directory: android
