@@ -20,7 +20,7 @@ permissions:
 
 concurrency:
   group: samapack-native-android-${{ github.event_name == 'pull_request' && github.event.pull_request.number || 'release' }}
-  cancel-in-progress: false
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   verify-debug:
