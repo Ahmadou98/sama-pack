@@ -5785,7 +5785,7 @@
     client.auth.onAuthStateChange((_event, session) => { setTimeout(async () => { await syncAuth(session?.user || null); await handlePaymentReturn(); }, 0); });
 
     const requestedAction = urlParams.get("spAction");
-    if (["cart","account","notifications","manage"].includes(requestedAction || "")) {
+    if (["cart","account","notifications","manage","push"].includes(requestedAction || "")) {
       urlParams.delete("spAction");
       const remainingQuery = urlParams.toString();
       window.history.replaceState({}, "", window.location.pathname + (remainingQuery ? "?" + remainingQuery : "") + window.location.hash);
@@ -5793,6 +5793,14 @@
       else if (requestedAction === "account") openAccountModal();
       else if (requestedAction === "notifications") await loadAndShowNotifications();
       else if (requestedAction === "manage") await openAdmin();
+      else if (requestedAction === "push") {
+        if (!currentUser) {
+          openAccountModal();
+          toast("Connecte-toi avant d’activer les notifications sur cet appareil.", true);
+        } else {
+          toast("Ouvre le menu mobile et touche « Activer les notifications » pour autoriser les alertes.");
+        }
+      }
     }
   }
 
