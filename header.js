@@ -47,6 +47,7 @@
           </details>
           <a class="mobile-nav-item" href="comment-ca-marche.html"><span aria-hidden="true">ⓘ</span><small>Comment ça marche</small></a>
           <a class="mobile-nav-item" href="/#b2b"><span aria-hidden="true">▤</span><small>Professionnels</small></a>
+          <button class="mobile-nav-item" id="mobilePushEnableBtn" data-header-action="push" type="button"><span aria-hidden="true">🔔</span><small>Activer les notifications</small></button>
           <a class="mobile-nav-item" href="telecharger-application.html"><span aria-hidden="true">↓</span><small>Application mobile</small></a>
           <details class="mobile-nav-group">
             <summary class="mobile-nav-item"><small>Aide &amp; contact</small><span class="mobile-nav-group-chevron" aria-hidden="true">⌄</span></summary>
@@ -71,6 +72,14 @@
   }
   const header = document.querySelector(".info-floating-header");
   if (!header || header.dataset.sharedHeaderReady === "true") return;
+
+  if (!document.querySelector('script[data-sama-web-push]')) {
+    const pushScript = document.createElement("script");
+    pushScript.src = "/web-push.js?v=20261110-webpush-v1";
+    pushScript.async = true;
+    pushScript.dataset.samaWebPush = "true";
+    document.head.appendChild(pushScript);
+  }
 
   // Après un vrai rechargement manuel, revenir à l’accueil pour remettre les ventes flash en évidence.
   // Les retours de paiement, les actions demandées par lien et les autres espaces restent intacts.
@@ -195,7 +204,8 @@
       cart: "cart",
       account: "account",
       notifications: "notifications",
-      manage: "manage"
+      manage: "manage",
+      push: "push"
     };
     const method = actionMap[action];
     if (!method) return;

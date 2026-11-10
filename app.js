@@ -5807,7 +5807,30 @@
     advanceSubscriptionReminder,deleteSubscription,openOrderWhatsApp,openB2BWorkspace,addB2BLine,removeB2BLine,
     submitB2BQuantityOrder,submitB2BQuote,setOrderDeliveryCost,toggleSalesCode,deleteSalesCode,copySalesLink,selectProductImage,
     showCustomerProfile,sendMonthlyMarketingNow,
-    SamaPackHeaderActions: { cart: renderCartModal, account: openAccountModal, notifications: loadAndShowNotifications, manage: openAdmin }
+    SamaPackHeaderActions: {
+      cart: renderCartModal,
+      account: openAccountModal,
+      notifications: loadAndShowNotifications,
+      manage: openAdmin,
+      push: () => {
+        if (!window.SamaPackPush || typeof window.SamaPackPush.enable !== "function") {
+          toast("Le module de notifications n’est pas encore chargé. Recharge la page.", true);
+          return;
+        }
+        if (!currentUser) {
+          openAccountModal();
+          toast("Connecte-toi pour activer les notifications sur cet appareil.", true);
+          return;
+        }
+        window.SamaPackPush.enable(client, currentUser)
+          .then(result => {
+            toast(result?.message || "Notifications SAMA-PACK activées.");
+            const button = document.getElementById("mobilePushEnableBtn");
+            if (button) button.querySelector("small").textContent = "Notifications activées";
+          })
+          .catch(error => toast(error?.message || "Impossible d’activer les notifications.", true));
+      }
+    }
   });
   start().catch(err => { console.error(err); toast("Initialisation impossible. Recharge la page ou contacte l’administrateur.",true); });
 })();

@@ -1,6 +1,72 @@
+self.addEventListener("push", (event) => {
+  let payload = {};
+  try {
+    payload = event.data ? event.data.json() : {};
+  } catch {
+    payload = { body: event.data ? event.data.text() : "" };
+  }
+  event.waitUntil(self.registration.showNotification(String(payload.title || "SAMA-PACK"), {
+    body: String(payload.body || "Une mise à jour est disponible dans votre compte."),
+    icon: "/icons/icon-192.png",
+    badge: "/icons/icon-192.png",
+    tag: String(payload.tag || ("sama-" + Date.now())),
+    renotify: false,
+    data: { url: String(payload.url || "/?spAction=notifications") }
+  }));
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const target = new URL(event.notification.data?.url || "/?spAction=notifications", self.location.origin).href;
+  event.waitUntil((async () => {
+    const windows = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+    for (const client of windows) {
+      if ("focus" in client) {
+        await client.navigate(target);
+        return client.focus();
+      }
+    }
+    if (self.clients.openWindow) return self.clients.openWindow(target);
+    return undefined;
+  })());
+});
+
+self.addEventListener("push", (event) => {
+  let payload = {};
+  try {
+    payload = event.data ? event.data.json() : {};
+  } catch {
+    payload = { body: event.data ? event.data.text() : "" };
+  }
+  event.waitUntil(self.registration.showNotification(String(payload.title || "SAMA-PACK"), {
+    body: String(payload.body || "Une mise à jour est disponible dans votre compte."),
+    icon: "/icons/icon-192.png",
+    badge: "/icons/icon-192.png",
+    tag: String(payload.tag || ("sama-" + Date.now())),
+    renotify: false,
+    data: { url: String(payload.url || "/?spAction=notifications") }
+  }));
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const target = new URL(event.notification.data?.url || "/?spAction=notifications", self.location.origin).href;
+  event.waitUntil((async () => {
+    const windows = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+    for (const client of windows) {
+      if ("focus" in client) {
+        await client.navigate(target);
+        return client.focus();
+      }
+    }
+    if (self.clients.openWindow) return self.clients.openWindow(target);
+    return undefined;
+  })());
+});
+
 "use strict";
 
-const CACHE_NAME = "sama-pack-pwa-v1";
+const CACHE_NAME = "sama-pack-pwa-v2";
 const OFFLINE_URL = "/offline.html";
 const PRECACHE_URLS = [
   OFFLINE_URL,
@@ -10,7 +76,8 @@ const PRECACHE_URLS = [
   "/icons/icon-maskable-512.png",
   "/icons/apple-touch-icon.png",
   "/pwa.css?v=20261106-pwa-v1",
-  "/pwa.js?v=20261106-pwa-v1"
+  "/pwa.js?v=20261106-pwa-v1",
+  "/web-push.js?v=20261110-webpush-v1"
 ];
 
 self.addEventListener("install", (event) => {
