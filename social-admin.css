@@ -4,7 +4,7 @@
 .social-welcome h2{margin:7px 0;font-size:clamp(23px,3vw,31px);letter-spacing:-.04em;color:#173b27}
 .social-welcome p{margin:0;color:#64756b;font-size:14px}
 .social-welcome-mark{display:grid;place-items:center;width:62px;height:62px;flex:0 0 62px;border-radius:18px;background:#176b43;color:#fff;font-size:21px;font-weight:900;letter-spacing:-.06em}
-.social-stat-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+.social-stat-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px}
 .social-stat-card{display:grid;gap:7px;padding:17px 18px;border:1px solid #e4ebe5;border-radius:15px;background:#fff}
 .social-stat-card>span{color:#64756b;font-size:12px}
 .social-stat-card strong{color:#173b27;font-size:27px;line-height:1.1;font-weight:850}
@@ -90,7 +90,7 @@
 .social-error h3{margin-top:0;color:#9f2f28}
 .social-error p{font-size:12px;color:#68796e;overflow-wrap:anywhere}
 .social-security-footnote{margin:0;color:#88938c;font-size:10px;line-height:1.5}
-@media(max-width:1100px){.social-account-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.social-calendar-grid{grid-template-columns:repeat(4,minmax(0,1fr))}}
+@media(max-width:1100px){.social-stat-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.social-account-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.social-calendar-grid{grid-template-columns:repeat(4,minmax(0,1fr))}}
 @media(max-width:760px){.social-stat-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.social-account-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.social-post-card{display:grid}.social-post-actions{justify-content:flex-start}.social-composer-panel{padding:16px}.social-calendar-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:540px){.social-welcome{padding:19px}.social-welcome-mark{width:48px;height:48px;flex-basis:48px}.social-post-form{grid-template-columns:1fr}.social-field.full,.social-form-section.full,.social-composer-notice.full,.social-form-actions.full{grid-column:1}.social-provider-grid{grid-template-columns:1fr}.social-mode-select{max-width:52%}.social-section-heading h3{font-size:17px}.social-stat-card{padding:13px}.social-stat-card strong{font-size:23px}}
 
