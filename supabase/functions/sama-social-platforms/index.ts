@@ -63,7 +63,7 @@ type SocialMedia = {
   size_bytes: number;
 };
 
-function corsHeaders(origin: string | null): HeadersInit {
+function corsHeaders(origin: string | null): Record<string, string> {
   const allowed = new Set([
     "https://sama-pack.store",
     "https://www.sama-pack.store",
@@ -555,6 +555,13 @@ async function oauthCallback(req: Request): Promise<Response> {
       }));
     }
     state = await consumeOAuthState(stateValue);
+    const { data: connectingProfile, error: connectingProfileError } = await service.from("profiles")
+      .select("id,role,is_super_admin,admin_permissions,full_name,email")
+      .eq("id", state.created_by).maybeSingle();
+    if (connectingProfileError || !connectingProfile || connectingProfile.role !== "admin" ||
+      !hasPermission(connectingProfile as Profile, "social.accounts.manage")) {
+      throw new Error("Les droits de connexion aux comptes sociaux ont été retirés avant la fin de l'autorisation.");
+    }
     const code = url.searchParams.get("code") || "";
     if (!code) throw new Error("Code d'autorisation manquant.");
     let result: { saved: number; provider: string };
@@ -835,7 +842,6 @@ async function publishTikTok(
       method: "PUT",
       headers: {
         "Content-Type": "video/mp4",
-        "Content-Length": String(chunk.byteLength),
         "Content-Range": "bytes " + start + "-" + (endExclusive - 1) + "/" + video.byteLength,
       },
       body: chunk,
