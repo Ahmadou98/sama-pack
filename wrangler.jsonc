@@ -6,6 +6,13 @@
     "directory": ".",
     "binding": "ASSETS",
     "run_worker_first": [
+      "/",
+      "/*.html",
+      "/pwa.js",
+      "/pwa.css",
+      "/header.js",
+      "/downloads/*",
+      "/.well-known/assetlinks.json",
       "/fiche-produit.html",
       "/sitemap.xml"
     ]
