@@ -47,6 +47,7 @@ type SocialTarget = {
   publication_mode: "automatic" | "approval" | "manual";
   status: string;
   provider_options: Record<string, unknown> | null;
+  platform_post_id?: string | null;
 };
 type SocialPost = {
   id: string;
@@ -128,11 +129,13 @@ function base64Decode(value: string): Uint8Array {
   return Uint8Array.from(binary, char => char.charCodeAt(0));
 }
 
-async function encryptionKey(): Promise<CryptoKey> {
-  const encoded = Deno.env.get("SOCIAL_TOKEN_ENCRYPTION_KEY") ?? "";
-  if (!encoded) throw new Error("La clé SOCIAL_TOKEN_ENCRYPTION_KEY n'est pas configurée côté serveur.");
-  const raw = base64Decode(encoded.trim());
-  if (raw.byteLength !== 32) throw new Error("SOCIAL_TOKEN_ENCRYPTION_KEY doit être une clé base64 de 32 octets.");
+async async function encryptionKey(): Promise<CryptoKey> {
+  const { data, error } = await service.rpc("sama_get_social_token_encryption_key");
+  if (error || typeof data !== "string" || !data) {
+    throw new Error("La clé de chiffrement Social Desk n'est pas disponible dans Supabase Vault.");
+  }
+  const raw = base64Decode(data.trim());
+  if (raw.byteLength !== 32) throw new Error("La clé de chiffrement Social Desk est invalide.");
   return crypto.subtle.importKey("raw", raw, { name: "AES-GCM" }, false, ["encrypt", "decrypt"]);
 }
 
@@ -849,7 +852,9 @@ async function publishTikTok(
   const postIds = status.data?.data?.publicaly_available_post_id || [];
   return {
     providerPostId: publishId,
-    permalink: Array.isArray(postIds) && postIds[0] ? "https://www.tiktok.com/@/video/" + postIds[0] : "",
+    permalink: Array.isArray(postIds) && postIds[0] && account.username
+      ? "https://www.tiktok.com/@" + account.username + "/video/" + postIds[0]
+      : "",
     pending: state !== "PUBLISH_COMPLETE",
     pendingMessage: state !== "PUBLISH_COMPLETE" ? "Vidéo transférée à TikTok. Le traitement est encore en cours." : "",
   };
@@ -972,6 +977,29 @@ async function publishYouTube(
   return { providerPostId: String(result.id), permalink: "https://www.youtube.com/watch?v=" + result.id };
 }
 
+async function pollTikTokStatus(target: SocialTarget, account: SocialAccount, token: string) {
+  const publishId = String(target.platform_post_id || "");
+  const status = await fetchJson("https://open.tiktokapis.com/v2/post/publish/status/fetch/", {
+    method: "POST",
+    headers: { Authorization: "Bearer " + token, "Content-Type": "application/json; charset=UTF-8" },
+    body: JSON.stringify({ publish_id: publishId }),
+  });
+  const result = status.data?.data || {};
+  const state = String(result.status || "");
+  if (state === "FAILED") {
+    throw new Error("TikTok a refusé la publication : " + String(result.fail_reason || "raison inconnue"));
+  }
+  const ids = result.publicaly_available_post_id || [];
+  return {
+    providerPostId: publishId,
+    permalink: Array.isArray(ids) && ids[0] && account.username
+      ? "https://www.tiktok.com/@" + account.username + "/video/" + ids[0]
+      : "",
+    pending: state !== "PUBLISH_COMPLETE",
+    pendingMessage: state !== "PUBLISH_COMPLETE" ? "TikTok traite encore la vidéo." : "",
+  };
+}
+
 async function publishClaimedTarget(target: SocialTarget) {
   try {
     const { post, account } = await readTargetContext(target);
@@ -983,7 +1011,8 @@ async function publishClaimedTarget(target: SocialTarget) {
       pending?: boolean;
       pendingMessage?: string;
     };
-    if (target.provider === "facebook") result = await publishFacebook(account, token, post, media);
+    if (target.provider === "tiktok" && target.platform_post_id) result = await pollTikTokStatus(target, account, token);
+    else if (target.provider === "facebook") result = await publishFacebook(account, token, post, media);
     else if (target.provider === "instagram") result = await publishInstagram(account, token, post, media);
     else if (target.provider === "tiktok") result = await publishTikTok(account, token, post, media, target.provider_options || {});
     else if (target.provider === "linkedin") result = await publishLinkedIn(account, token, post, media);
@@ -1103,8 +1132,10 @@ Deno.serve(async (req: Request) => {
 
     if (action === "worker") {
       const supplied = req.headers.get("x-social-worker-token") || "";
-      const configured = Deno.env.get("SOCIAL_WORKER_TOKEN") || "";
-      if (!configured || supplied.length !== configured.length) return json({ ok: false, error: "Accès moteur refusé." }, 401, origin);
+      const { data: configured, error: secretError } = await service.rpc("sama_get_social_worker_token");
+      if (secretError || typeof configured !== "string" || !configured || supplied.length !== configured.length) {
+        return json({ ok: false, error: "Accès moteur refusé." }, 401, origin);
+      }
       let diff = 0;
       for (let index = 0; index < supplied.length; index++) diff |= supplied.charCodeAt(index) ^ configured.charCodeAt(index);
       if (diff !== 0) return json({ ok: false, error: "Accès moteur refusé." }, 401, origin);
