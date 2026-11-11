@@ -254,7 +254,7 @@ create table if not exists public.social_oauth_states (
   state_hash text primary key,
   provider text not null check (provider in ('tiktok','instagram','facebook','linkedin','youtube')),
   created_by uuid not null references public.profiles(id) on delete cascade,
-  redirect_path text not null default '/?spAction=manage',
+  redirect_path text not null default '/?spAction=manage&view=social',
   expires_at timestamptz not null,
   consumed_at timestamptz,
   created_at timestamptz not null default now()
