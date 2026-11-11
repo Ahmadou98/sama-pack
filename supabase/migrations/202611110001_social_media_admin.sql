@@ -1,0 +1,397 @@
+-- SAMA-PACK — gestion des réseaux sociaux
+-- À appliquer après revue/validation de cette branche.
+-- Les identifiants OAuth ne sont jamais exposés dans les tables publiques.
+
+create table if not exists public.social_accounts (
+  id uuid primary key default gen_random_uuid(),
+  provider text not null check (provider in ('tiktok','instagram','facebook','linkedin','youtube')),
+  provider_account_id text not null,
+  account_name text not null default '',
+  username text not null default '',
+  profile_url text not null default '',
+  avatar_url text not null default '',
+  status text not null default 'disconnected'
+    check (status in ('connected','disconnected','token_expired','error')),
+  scopes text[] not null default '{}'::text[],
+  token_expires_at timestamptz,
+  connected_by uuid references public.profiles(id) on delete set null,
+  connected_at timestamptz,
+  last_error text not null default '',
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (provider, provider_account_id)
+);
+
+create table if not exists public.social_media_assets (
+  id uuid primary key default gen_random_uuid(),
+  storage_path text not null unique,
+  original_name text not null default '',
+  mime_type text not null check (mime_type in (
+    'image/jpeg','image/png','image/webp','image/gif',
+    'video/mp4','video/quicktime'
+  )),
+  size_bytes bigint not null check (size_bytes > 0 and size_bytes <= 104857600),
+  uploaded_by uuid not null references public.profiles(id) on delete restrict,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists public.social_posts (
+  id uuid primary key default gen_random_uuid(),
+  title text not null check (char_length(btrim(title)) between 1 and 160),
+  body text not null check (char_length(btrim(body)) between 1 and 5000),
+  status text not null default 'draft'
+    check (status in (
+      'draft','pending_approval','scheduled','publishing',
+      'published','partially_published','failed','cancelled'
+    )),
+  scheduled_at timestamptz,
+  media_asset_id uuid references public.social_media_assets(id) on delete set null,
+  created_by uuid not null references public.profiles(id) on delete restrict,
+  approved_by uuid references public.profiles(id) on delete set null,
+  approved_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.social_post_targets (
+  id uuid primary key default gen_random_uuid(),
+  post_id uuid not null references public.social_posts(id) on delete cascade,
+  provider text not null check (provider in ('tiktok','instagram','facebook','linkedin','youtube')),
+  social_account_id uuid references public.social_accounts(id) on delete set null,
+  caption text not null default '',
+  publication_mode text not null default 'approval'
+    check (publication_mode in ('automatic','approval','manual')),
+  status text not null default 'awaiting_connection'
+    check (status in (
+      'awaiting_connection','draft','scheduled','manual_required',
+      'published','failed','cancelled'
+    )),
+  scheduled_at timestamptz,
+  platform_post_id text,
+  permalink text,
+  error_code text,
+  error_message text not null default '',
+  published_at timestamptz,
+  updated_at timestamptz not null default now(),
+  created_at timestamptz not null default now(),
+  unique (post_id, provider)
+);
+
+create index if not exists social_posts_status_schedule_idx
+  on public.social_posts(status, scheduled_at);
+create index if not exists social_posts_created_at_idx
+  on public.social_posts(created_at desc);
+create index if not exists social_post_targets_post_idx
+  on public.social_post_targets(post_id);
+create index if not exists social_accounts_provider_status_idx
+  on public.social_accounts(provider, status);
+
+alter table public.social_accounts enable row level security;
+alter table public.social_media_assets enable row level security;
+alter table public.social_posts enable row level security;
+alter table public.social_post_targets enable row level security;
+
+grant select, insert, update, delete on public.social_accounts to authenticated;
+grant select, insert, update, delete on public.social_media_assets to authenticated;
+grant select, insert, update, delete on public.social_posts to authenticated;
+grant select, insert, update, delete on public.social_post_targets to authenticated;
+
+drop policy if exists social_accounts_read on public.social_accounts;
+create policy social_accounts_read on public.social_accounts
+  for select to authenticated
+  using (private.sama_has_admin_permission('social.view'));
+
+drop policy if exists social_accounts_insert on public.social_accounts;
+create policy social_accounts_insert on public.social_accounts
+  for insert to authenticated
+  with check (private.sama_has_admin_permission('social.accounts.manage'));
+
+drop policy if exists social_accounts_update on public.social_accounts;
+create policy social_accounts_update on public.social_accounts
+  for update to authenticated
+  using (private.sama_has_admin_permission('social.accounts.manage'))
+  with check (private.sama_has_admin_permission('social.accounts.manage'));
+
+drop policy if exists social_accounts_delete on public.social_accounts;
+create policy social_accounts_delete on public.social_accounts
+  for delete to authenticated
+  using (private.sama_has_admin_permission('social.accounts.manage'));
+
+drop policy if exists social_media_assets_read on public.social_media_assets;
+create policy social_media_assets_read on public.social_media_assets
+  for select to authenticated
+  using (private.sama_has_admin_permission('social.view'));
+
+drop policy if exists social_media_assets_insert on public.social_media_assets;
+create policy social_media_assets_insert on public.social_media_assets
+  for insert to authenticated
+  with check (
+    private.sama_has_admin_permission('social.manage')
+    and uploaded_by = (select auth.uid())
+  );
+
+drop policy if exists social_media_assets_delete on public.social_media_assets;
+create policy social_media_assets_delete on public.social_media_assets
+  for delete to authenticated
+  using (private.sama_has_admin_permission('social.manage'));
+
+drop policy if exists social_posts_read on public.social_posts;
+create policy social_posts_read on public.social_posts
+  for select to authenticated
+  using (private.sama_has_admin_permission('social.view'));
+
+drop policy if exists social_posts_insert on public.social_posts;
+create policy social_posts_insert on public.social_posts
+  for insert to authenticated
+  with check (
+    private.sama_has_admin_permission('social.manage')
+    and created_by = (select auth.uid())
+  );
+
+drop policy if exists social_posts_update on public.social_posts;
+create policy social_posts_update on public.social_posts
+  for update to authenticated
+  using (private.sama_has_admin_permission('social.manage'))
+  with check (private.sama_has_admin_permission('social.manage'));
+
+drop policy if exists social_posts_delete on public.social_posts;
+create policy social_posts_delete on public.social_posts
+  for delete to authenticated
+  using (private.sama_has_admin_permission('social.manage'));
+
+drop policy if exists social_post_targets_read on public.social_post_targets;
+create policy social_post_targets_read on public.social_post_targets
+  for select to authenticated
+  using (private.sama_has_admin_permission('social.view'));
+
+drop policy if exists social_post_targets_insert on public.social_post_targets;
+create policy social_post_targets_insert on public.social_post_targets
+  for insert to authenticated
+  with check (
+    private.sama_has_admin_permission('social.manage')
+    and exists (
+      select 1 from public.social_posts p
+      where p.id = post_id
+    )
+  );
+
+drop policy if exists social_post_targets_update on public.social_post_targets;
+create policy social_post_targets_update on public.social_post_targets
+  for update to authenticated
+  using (private.sama_has_admin_permission('social.manage'))
+  with check (
+    private.sama_has_admin_permission('social.manage')
+    and exists (
+      select 1 from public.social_posts p
+      where p.id = post_id
+    )
+  );
+
+drop policy if exists social_post_targets_delete on public.social_post_targets;
+create policy social_post_targets_delete on public.social_post_targets
+  for delete to authenticated
+  using (private.sama_has_admin_permission('social.manage'));
+
+-- Stockage privé : seules les personnes autorisées au module peuvent lire/ajouter/supprimer.
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values (
+  'sama-social-media',
+  'sama-social-media',
+  false,
+  104857600,
+  array['image/jpeg','image/png','image/webp','image/gif','video/mp4','video/quicktime']::text[]
+)
+on conflict (id) do update
+set public = false,
+    file_size_limit = excluded.file_size_limit,
+    allowed_mime_types = excluded.allowed_mime_types;
+
+drop policy if exists sama_social_media_read on storage.objects;
+create policy sama_social_media_read on storage.objects
+  for select to authenticated
+  using (
+    bucket_id = 'sama-social-media'
+    and private.sama_has_admin_permission('social.view')
+  );
+
+drop policy if exists sama_social_media_insert on storage.objects;
+create policy sama_social_media_insert on storage.objects
+  for insert to authenticated
+  with check (
+    bucket_id = 'sama-social-media'
+    and private.sama_has_admin_permission('social.manage')
+  );
+
+drop policy if exists sama_social_media_delete on storage.objects;
+create policy sama_social_media_delete on storage.objects
+  for delete to authenticated
+  using (
+    bucket_id = 'sama-social-media'
+    and private.sama_has_admin_permission('social.manage')
+  );
+
+-- Les secrets OAuth et les états anti-CSRF résident dans le schéma privé,
+-- hors de l'API Data publique et sans droits pour anon/authenticated.
+create table if not exists private.social_credentials (
+  social_account_id uuid primary key references public.social_accounts(id) on delete cascade,
+  access_token_ciphertext text not null,
+  refresh_token_ciphertext text,
+  encryption_key_version text not null,
+  token_expires_at timestamptz,
+  scopes text[] not null default '{}'::text[],
+  updated_at timestamptz not null default now(),
+  created_at timestamptz not null default now()
+);
+
+create table if not exists private.social_oauth_states (
+  state_hash text primary key,
+  provider text not null check (provider in ('tiktok','instagram','facebook','linkedin','youtube')),
+  created_by uuid not null references public.profiles(id) on delete cascade,
+  redirect_path text not null default '/?spAction=manage',
+  expires_at timestamptz not null,
+  consumed_at timestamptz,
+  created_at timestamptz not null default now()
+);
+
+alter table private.social_credentials enable row level security;
+alter table private.social_oauth_states enable row level security;
+revoke all on table private.social_credentials from public, anon, authenticated;
+revoke all on table private.social_oauth_states from public, anon, authenticated;
+grant usage on schema private to service_role;
+grant all on table private.social_credentials to service_role;
+grant all on table private.social_oauth_states to service_role;
+
+-- Validation des publications préparées par un collaborateur.
+-- Cette fonction ne lance PAS une publication externe ; elle enregistre l'approbation.
+create or replace function public.sama_approve_social_post(p_post_id uuid)
+returns jsonb
+language plpgsql
+security definer
+set search_path to ''
+as $function$
+declare
+  v_actor uuid := auth.uid();
+  v_status text;
+  v_scheduled_at timestamptz;
+begin
+  if v_actor is null or not private.sama_has_admin_permission('social.publish') then
+    raise exception 'La permission de validation des publications est requise.';
+  end if;
+
+  select p.status, p.scheduled_at
+    into v_status, v_scheduled_at
+  from public.social_posts p
+  where p.id = p_post_id
+  for update;
+
+  if not found then
+    raise exception 'Publication introuvable.';
+  end if;
+  if v_status <> 'pending_approval' then
+    raise exception 'Cette publication ne nécessite plus de validation.';
+  end if;
+  if v_scheduled_at is not null and v_scheduled_at <= now() then
+    raise exception 'La date prévue est passée. Modifie la programmation avant validation.';
+  end if;
+
+  update public.social_posts
+  set status = case when v_scheduled_at is null then 'draft' else 'scheduled' end,
+      approved_by = v_actor,
+      approved_at = now(),
+      updated_at = now()
+  where id = p_post_id;
+
+  update public.social_post_targets t
+  set status = case
+        when t.social_account_id is null then 'awaiting_connection'
+        when t.publication_mode = 'manual' then 'manual_required'
+        when t.scheduled_at is null then 'draft'
+        else 'scheduled'
+      end,
+      updated_at = now()
+  where t.post_id = p_post_id;
+
+  return jsonb_build_object(
+    'ok', true,
+    'message', 'Validation enregistrée. Aucune publication externe n’a été lancée.',
+    'status', case when v_scheduled_at is null then 'draft' else 'scheduled' end
+  );
+end;
+$function$;
+
+revoke all on function public.sama_approve_social_post(uuid) from public, anon;
+grant execute on function public.sama_approve_social_post(uuid) to authenticated;
+
+-- Extension de la liste blanche existante : le propriétaire reste le seul à
+-- pouvoir attribuer les droits, via l'éditeur de permissions du back-office.
+create or replace function public.sama_update_admin_permissions(p_target_user_id uuid, p_permissions jsonb)
+returns jsonb
+language plpgsql
+security definer
+set search_path to ''
+as $function$
+declare
+  v_actor uuid := auth.uid();
+  v_key text;
+  v_value jsonb;
+  v_label text;
+  v_allowed constant text[] := array[
+    'dashboard.view','orders.view','orders.update_status','customers.view',
+    'prospects.view','prospects.create','prospects.update','prospects.delete',
+    'quotes.view','quotes.update_status','sales_codes.view','sales_codes.manage_own',
+    'catalog.view','stock.view','stock.update','expenses.submit',
+    'social.view','social.manage','social.publish','social.accounts.manage'
+  ];
+begin
+  if v_actor is null or not private.sama_is_owner() then
+    raise exception 'Seul le propriétaire peut modifier les permissions.';
+  end if;
+  if p_target_user_id is null or p_target_user_id = v_actor then
+    raise exception 'Sélectionne un administrateur associé.';
+  end if;
+  if jsonb_typeof(p_permissions) <> 'object' then
+    raise exception 'Format de permissions invalide.';
+  end if;
+
+  for v_key, v_value in select key, value from jsonb_each(p_permissions) loop
+    if not (v_key = any(v_allowed)) then
+      raise exception 'Permission non autorisée : %', v_key;
+    end if;
+    if jsonb_typeof(v_value) <> 'boolean' then
+      raise exception 'Chaque permission doit être booléenne.';
+    end if;
+  end loop;
+
+  select coalesce(p.full_name, p.email, 'Administrateur')
+    into v_label
+  from public.profiles p
+  where p.id = p_target_user_id
+    and p.role = 'admin'
+    and p.is_super_admin is false;
+
+  if not found then
+    raise exception 'Compte introuvable ou protégé.';
+  end if;
+
+  perform set_config('sama.allow_admin_permissions_update', 'on', true);
+  update public.profiles
+  set admin_permissions = p_permissions,
+      updated_at = now()
+  where id = p_target_user_id
+    and role = 'admin'
+    and is_super_admin is false;
+  perform set_config('sama.allow_admin_permissions_update', 'off', true);
+
+  insert into public.audit_logs(actor_user_id, actor_label, action, entity_type, entity_id, details)
+  select v_actor,
+         coalesce(p.full_name, p.email, 'Propriétaire'),
+         'admin_permissions_updated',
+         'profiles',
+         p_target_user_id::text,
+         jsonb_build_object('target', v_label, 'permissions', p_permissions)
+  from public.profiles p
+  where p.id = v_actor;
+
+  return jsonb_build_object('ok', true, 'message', 'Permissions enregistrées.');
+end;
+$function$;
