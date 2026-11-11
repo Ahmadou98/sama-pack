@@ -1196,6 +1196,9 @@ Deno.serve(async (req: Request) => {
       if (!["facebook", "instagram", "tiktok", "linkedin", "youtube"].includes(provider)) {
         return json({ ok: false, error: "Plateforme non prise en charge." }, 400, origin);
       }
+      if (provider === "tiktok") {
+        return json({ ok: false, error: "TikTok reste en publication manuelle dans cet outil interne. Utilise les fonctions de copie et d'ouverture du module." }, 400, origin);
+      }
       const caller = await requirePermission(req, "social.accounts.manage");
       const authUrl = await startOAuth(provider, caller.userId);
       return json({ ok: true, authorization_url: authUrl }, 200, origin);
@@ -1210,23 +1213,33 @@ Deno.serve(async (req: Request) => {
       return await runDue(req, false, origin);
     }
 
-    if (action === "confirm_manual_tiktok") {
+    if (action === "confirm_manual_target") {
       const caller = await requirePermission(req, "social.publish");
-      const postId = String(payload.post_id || "");
+      const targetId = String(payload.target_id || "");
       const permalink = String(payload.permalink || "");
+      if (!targetId) return json({ ok: false, error: "Cible de publication manquante." }, 400, origin);
       let parsed: URL;
       try { parsed = new URL(permalink); }
-      catch { return json({ ok: false, error: "Lien TikTok invalide." }, 400, origin); }
-      if (parsed.protocol !== "https:" || !/(^|\\.)tiktok\\.com$/i.test(parsed.hostname)) {
-        return json({ ok: false, error: "Le lien doit provenir du domaine tiktok.com." }, 400, origin);
-      }
+      catch { return json({ ok: false, error: "Lien de publication invalide." }, 400, origin); }
+      if (parsed.protocol !== "https:") return json({ ok: false, error: "Le lien doit utiliser HTTPS." }, 400, origin);
       const { data: target, error: targetError } = await service.from("social_post_targets")
         .select("id,post_id,provider,status")
-        .eq("post_id", postId)
-        .eq("provider", "tiktok")
+        .eq("id", targetId)
         .eq("status", "manual_required")
         .maybeSingle();
-      if (targetError || !target) return json({ ok: false, error: "Aucune publication TikTok manuelle en attente pour ce contenu." }, 404, origin);
+      if (targetError || !target) return json({ ok: false, error: "Aucune publication manuelle en attente pour cette cible." }, 404, origin);
+      const allowedDomains: Record<Provider, string[]> = {
+        facebook: ["facebook.com", "fb.watch"],
+        instagram: ["instagram.com"],
+        tiktok: ["tiktok.com"],
+        linkedin: ["linkedin.com"],
+        youtube: ["youtube.com", "youtu.be"],
+      };
+      const host = parsed.hostname.toLowerCase();
+      const validHost = (allowedDomains[target.provider as Provider] || []).some(domain =>
+        host === domain || host.endsWith("." + domain)
+      );
+      if (!validHost) return json({ ok: false, error: "Le lien ne correspond pas à la plateforme sélectionnée." }, 400, origin);
       await updateTarget(target.id, "published", {
         permalink: parsed.toString(),
         published_at: new Date().toISOString(),
@@ -1235,19 +1248,19 @@ Deno.serve(async (req: Request) => {
       });
       await notifySocialAdmins(
         "social_publication_success",
-        "Publication TikTok confirmée",
-        "Une publication TikTok a été confirmée manuellement. Le lien a été enregistré.",
-        postId,
+        "Publication SAMA-PACK confirmée",
+        "Une publication a été confirmée manuellement sur " + target.provider + ". Le lien est enregistré.",
+        target.post_id,
       );
       await service.from("audit_logs").insert({
         actor_user_id: caller.userId,
         actor_label: caller.profile.full_name || caller.profile.email || "Administrateur",
         action: "social_manual_publication_confirmed",
         entity_type: "social_post",
-        entity_id: postId,
-        details: { provider: "tiktok", permalink: parsed.toString() },
+        entity_id: target.post_id,
+        details: { provider: target.provider, permalink: parsed.toString() },
       });
-      return json({ ok: true, message: "Publication TikTok confirmée et lien enregistré." }, 200, origin);
+      return json({ ok: true, message: "Publication confirmée et lien enregistré." }, 200, origin);
     }
 
     if (action === "retry_post") {
