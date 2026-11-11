@@ -5812,7 +5812,10 @@
       if (requestedAction === "cart") renderCartModal();
       else if (requestedAction === "account") openAccountModal();
       else if (requestedAction === "notifications") await loadAndShowNotifications();
-      else if (requestedAction === "manage") await openAdmin();
+      else if (requestedAction === "manage") {
+        await openAdmin();
+        if (urlParams.get("view") === "social" && isAdmin()) await showAdminView("social");
+      }
       else if (requestedAction === "push") {
         if (!currentUser) {
           openAccountModal();
