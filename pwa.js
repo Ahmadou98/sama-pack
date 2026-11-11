@@ -103,9 +103,10 @@
   function buildSuggestion() {
     const card = document.createElement("aside");
     card.className = "pwa-install-suggestion";
-    card.setAttribute("role", "dialog");
+    card.setAttribute("role", "region");
     card.setAttribute("aria-label", "Suggestion pour installer SAMA-PACK");
-    card.setAttribute("aria-hidden", "false");
+    card.setAttribute("aria-live", "polite");
+    card.setAttribute("aria-atomic", "true");
     card.innerHTML = `
       <div class="pwa-suggestion-top">
         <span class="pwa-suggestion-mark" aria-hidden="true">S</span>
