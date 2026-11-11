@@ -24,6 +24,7 @@
     draft: "Brouillon",
     scheduled: "Programmée",
     manual_required: "Action manuelle requise",
+    publishing: "En cours de publication",
     published: "Publiée",
     failed: "Échec",
     cancelled: "Annulée"
@@ -246,7 +247,7 @@
     let targets = [];
     if (ids.length) {
       const targetResult = await client.from("social_post_targets")
-        .select("id,post_id,provider,social_account_id,publication_mode,status,scheduled_at,published_at,permalink,error_message,platform_post_id")
+        .select("id,post_id,provider,social_account_id,publication_mode,status,scheduled_at,published_at,permalink,error_message,platform_post_id,provider_options")
         .in("post_id", ids);
       if (targetResult.error) throw targetResult.error;
       targets = targetResult.data || [];
