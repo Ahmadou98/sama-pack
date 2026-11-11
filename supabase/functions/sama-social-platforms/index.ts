@@ -934,6 +934,7 @@ async function publishLinkedIn(
 
 async function publishYouTube(
   account: SocialAccount, token: string, post: SocialPost, media: { asset: SocialMedia; url: string } | null,
+  options: Record<string, unknown>,
 ) {
   if (!media || !media.asset.mime_type.startsWith("video/")) {
     throw new Error("YouTube Data API publie des vidéos. Les images et publications de communauté doivent être publiées manuellement.");
@@ -956,7 +957,9 @@ async function publishYouTube(
           tags: ["SAMA-PACK", "Sénégal", "Hygiène"],
         },
         status: {
-          privacyStatus: String((post as any).youtube_privacy || "public"),
+          privacyStatus: ["public", "unlisted", "private"].includes(String(options.privacy_status))
+            ? String(options.privacy_status)
+            : "public",
           selfDeclaredMadeForKids: false,
         },
       }),
@@ -1022,7 +1025,7 @@ async function publishClaimedTarget(target: SocialTarget) {
     else if (target.provider === "instagram") result = await publishInstagram(account, token, post, media);
     else if (target.provider === "tiktok") result = await publishTikTok(account, token, post, media, target.provider_options || {});
     else if (target.provider === "linkedin") result = await publishLinkedIn(account, token, post, media);
-    else result = await publishYouTube(account, token, post, media);
+    else result = await publishYouTube(account, token, post, media, target.provider_options || {});
     await updateTarget(target.id, result.pending ? "publishing" : "published", {
       platform_post_id: result.providerPostId,
       permalink: result.permalink,
@@ -1133,6 +1136,32 @@ Deno.serve(async (req: Request) => {
     }
 
     if (action === "run_due") {
+      return await runDue(req, false, origin);
+    }
+
+    if (action === "retry_post") {
+      await requirePermission(req, "social.publish");
+      const postId = String(payload.post_id || "");
+      if (!postId) return json({ ok: false, error: "Publication manquante." }, 400, origin);
+      const { data: retryRows, error: retryReadError } = await service.from("social_post_targets")
+        .select("id").eq("post_id", postId).eq("status", "failed");
+      if (retryReadError) throw new Error("Impossible de relire les cibles en échec.");
+      if (!retryRows?.length) return json({ ok: true, processed: 0, published: 0, failed: 0, message: "Aucune cible en échec à relancer." }, 200, origin);
+      const { error: resetError } = await service.from("social_post_targets").update({
+        status: "scheduled",
+        scheduled_at: new Date().toISOString(),
+        platform_post_id: null,
+        attempt_count: 0,
+        last_attempt_at: null,
+        error_code: "",
+        error_message: "",
+        updated_at: new Date().toISOString(),
+      }).in("id", retryRows.map(row => row.id));
+      if (resetError) throw new Error("Impossible de réinitialiser les publications en échec.");
+      await service.from("social_posts").update({
+        status: "scheduled",
+        updated_at: new Date().toISOString(),
+      }).eq("id", postId);
       return await runDue(req, false, origin);
     }
 
