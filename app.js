@@ -377,7 +377,7 @@
     dashboard: "dashboard.view", orders: "orders.view", customers: "customers.view",
     prospects: "prospects.view", quotes: "quotes.view", sales_codes: "sales_codes.view",
     packs: "catalog.view", products: "catalog.view", catalogs: "catalog.view",
-    stock: "stock.view", expenses: "expenses.submit", deliveries: "orders.view", social: "social.view"
+    stock: "stock.view", expenses: "expenses.submit", deliveries: "orders.view"
   };
   function canViewAdminView(view) {
     if (isGeneralAdmin()) return true;
@@ -4178,7 +4178,7 @@
     const globalSearch = $("adminGlobalSearch"); if (globalSearch) globalSearch.value = "";
     $("adminStatusQuickFilter")?.remove();
     updateAdminContext();
-    const titles = {dashboard:"Tableau de bord",orders:"Commandes",customers:"Clients",stock:"Stock",products:"Packs",packs:"Packs",catalogs:"Produits & outils",prospects:"Prospection",admins:"Comptes administrateurs",activity:"Journal des actions",suppliers:"Fournisseurs",expenses:"Dépenses",quotes:"Devis professionnels",settings:"Paramètres",profitability:"Rentabilité",sales_codes:"Codes commerciaux",marketing:"Campagnes e-mail",social:"Réseaux sociaux",contacts:"Messages de contact",deliveries:"SAMA-PACK Livraison"};
+    const titles = {dashboard:"Tableau de bord",orders:"Commandes",customers:"Clients",stock:"Stock",products:"Packs",packs:"Packs",catalogs:"Produits & outils",prospects:"Prospection",admins:"Comptes administrateurs",activity:"Journal des actions",suppliers:"Fournisseurs",expenses:"Dépenses",quotes:"Devis professionnels",settings:"Paramètres",profitability:"Rentabilité",sales_codes:"Codes commerciaux",marketing:"Campagnes e-mail",contacts:"Messages de contact",deliveries:"SAMA-PACK Livraison"};
     const sectionTitle = titles[view] || "Gestion";
     $("adminTitle").textContent = sectionTitle;
     const breadcrumb = $("adminBreadcrumb");
@@ -4186,22 +4186,6 @@
     $("adminContent").classList.remove("is-empty");
     $("adminContent").innerHTML = '<div class="panel loading-panel"><div class="admin-loading-spinner" aria-hidden="true"></div><p>Chargement des données…</p></div>';
     try {
-      if (view === "social") {
-        if (!window.SamaPackSocialAdmin || typeof window.SamaPackSocialAdmin.mount !== "function") {
-          throw new Error("Le module Réseaux sociaux n’a pas pu être chargé. Recharge la page.");
-        }
-        await window.SamaPackSocialAdmin.mount({
-          root: $("adminContent"),
-          client,
-          currentUser,
-          currentProfile,
-          canView: canViewAdminView("social"),
-          canManage: hasAdminPermission("social.manage"),
-          canPublish: hasAdminPermission("social.publish"),
-          canManageAccounts: hasAdminPermission("social.accounts.manage")
-        });
-        return;
-      }
       if (view === "prospects") { await renderProspectsAdmin(); enhanceResponsiveTables($("adminContent")); configureAdminQuickFilters(); applyAdminResultSearch(); return; }
       if (view === "catalogs") { await renderIndividualCatalogAdmin(); enhanceResponsiveTables($("adminContent")); configureAdminQuickFilters(); applyAdminResultSearch(); return; }
       let html = "";
@@ -5115,11 +5099,7 @@
     ["catalog.view", "Consultation du catalogue", "Voir les articles publiés sans coûts d'achat ni publication."],
     ["stock.view", "Consulter le stock", "Voir les quantités et seuils de réapprovisionnement."],
     ["stock.update", "Modifier les quantités", "Mettre à jour les quantités et disponibilités, sans toucher aux prix."],
-    ["expenses.submit", "Soumettre des dépenses", "Déclarer des dépenses en attente de validation par le propriétaire."],
-    ["social.view", "Consulter les réseaux sociaux", "Voir les comptes, le calendrier et les publications SAMA-PACK."],
-    ["social.manage", "Créer et gérer les contenus", "Créer, modifier et programmer les publications et gérer les médias."],
-    ["social.publish", "Valider les publications", "Approuver les programmations préparées par un collaborateur."],
-    ["social.accounts.manage", "Gérer les comptes sociaux", "Autoriser la connexion et la révocation des comptes officiels."]
+    ["expenses.submit", "Soumettre des dépenses", "Déclarer des dépenses en attente de validation par le propriétaire."]
   ];
 
   async function showAdminPermissionsEditor(id) {
@@ -5812,10 +5792,7 @@
       if (requestedAction === "cart") renderCartModal();
       else if (requestedAction === "account") openAccountModal();
       else if (requestedAction === "notifications") await loadAndShowNotifications();
-      else if (requestedAction === "manage") {
-        await openAdmin();
-        if (urlParams.get("view") === "social" && isAdmin()) await showAdminView("social");
-      }
+      else if (requestedAction === "manage") await openAdmin();
       else if (requestedAction === "push") {
         if (!currentUser) {
           openAccountModal();
