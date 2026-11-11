@@ -33,6 +33,7 @@ drop function if exists public.sama_get_social_worker_token();
 drop policy if exists sama_social_media_read on storage.objects;
 drop policy if exists sama_social_media_insert on storage.objects;
 drop policy if exists sama_social_media_delete on storage.objects;
+select set_config('storage.allow_delete_query', 'true', true);
 delete from storage.buckets where id = 'sama-social-media';
 
 -- Suppression des clés de chiffrement/worker créées exclusivement pour Social Desk.
