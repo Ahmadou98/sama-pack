@@ -328,10 +328,7 @@ function socialAdminResponse(body, request, contentType, cacheControl) {
     "cache-control": cacheControl || "public, max-age=31536000, immutable",
     "x-content-type-options": "nosniff"
   });
-  return new Response(request.method === "HEAD" ? null : body, {
-    status: 200,
-    headers
-  });
+  return new Response(request.method === "HEAD" ? null : body, { status: 200, headers });
 }
 
 async function serveSocialAdminAssets(request, env) {
@@ -347,29 +344,36 @@ async function serveSocialAdminAssets(request, env) {
   if (!response.ok) return response;
 
   const path = url.pathname;
-  if (path !== "/" && path !== "/index.html" && path !== "/admin-panel.js" && path !== "/app.js") {
-    return response;
-  }
+  if (path !== "/" && path !== "/index.html" && path !== "/admin-panel.js" && path !== "/app.js") return response;
 
+  const nl = String.fromCharCode(10);
   let body = await response.text();
+
   if (path === "/" || path === "/index.html") {
     if (!body.includes("social-admin.css")) {
-      body = body.replace("</head>", '<link rel="stylesheet" href="/social-admin.css?v=20261111-social-v1">\\n</head>');
+      body = body.replace("</head>", '<link rel="stylesheet" href="/social-admin.css?v=20261111-social-v1">' + nl + "</head>");
     }
-    body = body.replace(/src="admin-panel\\.js\\?v=[^"]+"/, 'src="admin-panel.js?v=20261111-social-admin-v1"');
-    body = body.replace(/src="app\\.js\\?v=[^"]+"/, 'src="app.js?v=20261111-social-admin-v1"');
-    if (!body.includes("social-admin.js")) {
-      body = body.replace(/(<script src="https:\\/\\/cdn\\.jsdelivr\\.net\\/npm\\/@supabase\\/supabase-js@[^"]+" defer><\\/script>)/,
-        '$1\\n<script src="social-admin.js?v=20261111-social-v1" defer></script>');
-    }
+    body = body.replace(
+      'src="admin-panel.js?v=20261105-responsive-tables-click-view-v1"',
+      'src="admin-panel.js?v=20261111-social-admin-v1"'
+    );
+    body = body.replace(
+      '<script src="app.js?v=20261110-webpush-v2" defer></script>',
+      '<script src="social-admin.js?v=20261111-social-v1" defer></script>' + nl +
+      '<script src="app.js?v=20261111-social-admin-v1" defer></script>'
+    );
   }
 
   if (path === "/admin-panel.js") {
     const before = '              <section class="admin-nav-group" aria-label="Administration">';
-    const after = '              <section class="admin-nav-group" aria-label="Marketing et communication">\\n' +
-      '                <span class="admin-nav-heading">MARKETING &amp; COMMUNICATION</span>\\n' +
-      '                <button class="side-btn" type="button" data-view="social"><span class="admin-nav-icon" aria-hidden="true">◎</span><span>Réseaux sociaux</span></button>\\n' +
-      '              </section>\\n\\n' + before;
+    const after = [
+      '              <section class="admin-nav-group" aria-label="Marketing et communication">',
+      '                <span class="admin-nav-heading">MARKETING &amp; COMMUNICATION</span>',
+      '                <button class="side-btn" type="button" data-view="social"><span class="admin-nav-icon" aria-hidden="true">◎</span><span>Réseaux sociaux</span></button>',
+      '              </section>',
+      '',
+      before
+    ].join(nl);
     body = patchSocialText(body, before, after);
   }
 
@@ -386,38 +390,44 @@ async function serveSocialAdminAssets(request, env) {
     );
     body = patchSocialText(
       body,
-      '    try {\\n      if (view === "prospects") { await renderProspectsAdmin();',
-      '    try {\\n      if (view === "social") {\\n' +
-      '        if (!window.SamaPackSocialAdmin || typeof window.SamaPackSocialAdmin.mount !== "function") {\\n' +
-      '          throw new Error("Le module Réseaux sociaux n’a pas pu être chargé. Recharge la page.");\\n' +
-      '        }\\n' +
-      '        await window.SamaPackSocialAdmin.mount({\\n' +
-      '          root: $("adminContent"), client, currentUser, currentProfile,\\n' +
-      '          canView: canViewAdminView("social"),\\n' +
-      '          canManage: hasAdminPermission("social.manage"),\\n' +
-      '          canPublish: hasAdminPermission("social.publish"),\\n' +
-      '          canManageAccounts: hasAdminPermission("social.accounts.manage")\\n' +
-      '        });\\n' +
-      '        return;\\n' +
-      '      }\\n' +
-      '      if (view === "prospects") { await renderProspectsAdmin();'
+      '      if (view === "prospects")',
+      [
+        '      if (view === "social") {',
+        '        if (!window.SamaPackSocialAdmin || typeof window.SamaPackSocialAdmin.mount !== "function") {',
+        '          throw new Error("Le module Réseaux sociaux n’a pas pu être chargé. Recharge la page.");',
+        '        }',
+        '        await window.SamaPackSocialAdmin.mount({',
+        '          root: $("adminContent"), client, currentUser, currentProfile,',
+        '          canView: canViewAdminView("social"),',
+        '          canManage: hasAdminPermission("social.manage"),',
+        '          canPublish: hasAdminPermission("social.publish"),',
+        '          canManageAccounts: hasAdminPermission("social.accounts.manage")',
+        '        });',
+        '        return;',
+        '      }',
+        '      if (view === "prospects")'
+      ].join(nl)
     );
     body = patchSocialText(
       body,
-      '    ["expenses.submit", "Soumettre des dépenses", "Déclarer des dépenses en attente de validation par le propriétaire."]\\n  ];',
-      '    ["expenses.submit", "Soumettre des dépenses", "Déclarer des dépenses en attente de validation par le propriétaire."],\\n' +
-      '    ["social.view", "Consulter les réseaux sociaux", "Voir les comptes, le calendrier et les publications SAMA-PACK."],\\n' +
-      '    ["social.manage", "Créer et gérer les contenus", "Créer, modifier et programmer les publications et gérer les médias."],\\n' +
-      '    ["social.publish", "Valider les publications", "Approuver les programmations préparées par un collaborateur."],\\n' +
-      '    ["social.accounts.manage", "Gérer les comptes sociaux", "Autoriser la connexion et la révocation des comptes officiels."]\\n  ];'
+      '    ["expenses.submit", "Soumettre des dépenses", "Déclarer des dépenses en attente de validation par le propriétaire."]',
+      [
+        '    ["expenses.submit", "Soumettre des dépenses", "Déclarer des dépenses en attente de validation par le propriétaire."],',
+        '    ["social.view", "Consulter les réseaux sociaux", "Voir les comptes, le calendrier et les publications SAMA-PACK."],',
+        '    ["social.manage", "Créer et gérer les contenus", "Créer, modifier et programmer les publications et gérer les médias."],',
+        '    ["social.publish", "Valider les publications", "Approuver les programmations préparées par un collaborateur."],',
+        '    ["social.accounts.manage", "Gérer les comptes sociaux", "Autoriser la connexion et la révocation des comptes officiels."]'
+      ].join(nl)
     );
     body = patchSocialText(
       body,
       '      else if (requestedAction === "manage") await openAdmin();',
-      '      else if (requestedAction === "manage") {\\n' +
-      '        await openAdmin();\\n' +
-      '        if (urlParams.get("view") === "social" && isAdmin()) await showAdminView("social");\\n' +
-      '      }'
+      [
+        '      else if (requestedAction === "manage") {',
+        '        await openAdmin();',
+        '        if (urlParams.get("view") === "social" && isAdmin()) await showAdminView("social");',
+        '      }'
+      ].join(nl)
     );
   }
 
