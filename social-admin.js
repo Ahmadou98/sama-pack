@@ -250,16 +250,20 @@
       if (canPublish && targets.some(target => target.status === "failed")) {
         actions += '<button class="btn small secondary" type="button" data-social-retry="' + esc(post.id) + '">Réessayer</button>';
       }
-      const tiktokReadyForManual = targets.some(target =>
-        target.provider === "tiktok" && target.status === "manual_required" &&
+      const manualTargetsReady = targets.filter(target =>
+        target.status === "manual_required" &&
         (!post.scheduled_at || new Date(post.scheduled_at).getTime() <= Date.now())
       );
-      if (canManage && tiktokReadyForManual) {
-        actions += '<button class="btn small ghost" type="button" data-social-copy-tiktok="' + esc(post.id) + '">Copier le texte TikTok</button>' +
-          '<button class="btn small secondary" type="button" data-social-open-tiktok="' + esc(post.id) + '">Ouvrir TikTok</button>';
-      }
-      if (canPublish && tiktokReadyForManual) {
-        actions += '<button class="btn small primary" type="button" data-social-confirm-tiktok="' + esc(post.id) + '">Confirmer la publication TikTok</button>';
+      if (canManage) {
+        manualTargetsReady.forEach(target => {
+          const provider = PROVIDER_BY_KEY[target.provider];
+          if (!provider) return;
+          actions += '<button class="btn small ghost" type="button" data-social-copy-manual="' + esc(target.id) + '">Copier ' + esc(provider.label) + '</button>' +
+            '<button class="btn small secondary" type="button" data-social-open-manual="' + esc(target.id) + '">Ouvrir ' + esc(provider.label) + '</button>';
+          if (canPublish) {
+            actions += '<button class="btn small primary" type="button" data-social-confirm-manual="' + esc(target.id) + '">Confirmer</button>';
+          }
+        });
       }
       if (canManage && !["published", "publishing", "partially_published"].includes(post.status)) {
         actions += '<button class="btn small ghost" type="button" data-social-edit="' + esc(post.id) + '">Modifier</button>' +
@@ -289,7 +293,7 @@
     let targets = [];
     if (ids.length) {
       const targetResult = await client.from("social_post_targets")
-        .select("id,post_id,provider,social_account_id,publication_mode,status,scheduled_at,published_at,permalink,error_message,platform_post_id,provider_options")
+        .select("id,post_id,provider,social_account_id,publication_mode,status,scheduled_at,published_at,permalink,error_message,platform_post_id,provider_options,caption")
         .in("post_id", ids);
       if (targetResult.error) throw targetResult.error;
       targets = targetResult.data || [];
@@ -726,47 +730,48 @@
       });
     });
 
-    root.querySelectorAll("[data-social-copy-tiktok]").forEach(button => {
+    const manualPlatformUrls = {
+      facebook: "https://www.facebook.com/",
+      instagram: "https://www.instagram.com/",
+      tiktok: "https://www.tiktok.com/upload",
+      linkedin: "https://www.linkedin.com/feed/",
+      youtube: "https://studio.youtube.com/"
+    };
+
+    root.querySelectorAll("[data-social-copy-manual]").forEach(button => {
       button.addEventListener("click", async () => {
-        const post = ctx.data.posts.find(item => item.id === button.dataset.socialCopyTiktok);
-        if (!post) return;
+        const target = ctx.data.targets.find(item => item.id === button.dataset.socialCopyManual);
+        const post = target && ctx.data.posts.find(item => item.id === target.post_id);
+        if (!target || !post) return;
+        const caption = target.caption || post.body || "";
         try {
-          const target = ctx.data.targets.find(item => item.post_id === post.id && item.provider === "tiktok");
-          const caption = target?.caption || post.body || "";
           await navigator.clipboard.writeText(caption);
           button.textContent = "Texte copié";
         } catch {
-          const target = ctx.data.targets.find(item => item.post_id === button.dataset.socialCopyTiktok && item.provider === "tiktok");
-          const caption = target?.caption || ctx.data.posts.find(item => item.id === button.dataset.socialCopyTiktok)?.body || "";
-          window.prompt("Copie le texte TikTok :", caption);
+          window.prompt("Copie le texte de la publication :", caption);
         }
       });
     });
 
-    root.querySelectorAll("[data-social-open-tiktok]").forEach(button => {
-      button.addEventListener("click", () => window.open("https://www.tiktok.com/upload", "_blank", "noopener,noreferrer"));
+    root.querySelectorAll("[data-social-open-manual]").forEach(button => {
+      button.addEventListener("click", () => {
+        const target = ctx.data.targets.find(item => item.id === button.dataset.socialOpenManual);
+        const url = target && manualPlatformUrls[target.provider];
+        if (url) window.open(url, "_blank", "noopener,noreferrer");
+      });
     });
 
-    root.querySelectorAll("[data-social-confirm-tiktok]").forEach(button => {
+    root.querySelectorAll("[data-social-confirm-manual]").forEach(button => {
       button.addEventListener("click", async () => {
         if (!ctx.canPublish) return;
-        const raw = window.prompt("Colle le lien de la vidéo TikTok publiée. Cette confirmation enregistrera le lien dans SAMA-PACK :");
+        const target = ctx.data.targets.find(item => item.id === button.dataset.socialConfirmManual);
+        if (!target) return;
+        const raw = window.prompt("Colle le lien de la publication après l'avoir publiée sur " + (PROVIDER_BY_KEY[target.provider]?.label || target.provider) + " :");
         if (!raw) return;
-        let permalink;
-        try {
-          const url = new URL(raw.trim());
-          if (url.protocol !== "https:" || !/(^|\\.)tiktok\\.com$/i.test(url.hostname)) {
-            throw new Error("Le lien doit provenir de tiktok.com.");
-          }
-          permalink = url.toString();
-        } catch (error) {
-          window.alert(error instanceof Error ? error.message : "Lien TikTok invalide.");
-          return;
-        }
         button.disabled = true;
         try {
           const { data, error } = await ctx.client.functions.invoke("sama-social-platforms", {
-            body: { action: "confirm_manual_tiktok", post_id: button.dataset.socialConfirmTiktok, permalink }
+            body: { action: "confirm_manual_target", target_id: target.id, permalink: raw.trim() }
           });
           if (error || data?.ok !== true) throw new Error(data?.error || error?.message || "Confirmation impossible.");
           await refresh(ctx, root);
