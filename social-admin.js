@@ -215,6 +215,17 @@
     }).join("") + '</div>';
   }
 
+  function renderPlatformActivity(targets) {
+    const rows = PROVIDERS.map(provider => {
+      const matching = (targets || []).filter(target => target.provider === provider.key);
+      const published = matching.filter(target => target.status === "published").length;
+      const failed = matching.filter(target => target.status === "failed").length;
+      const pending = matching.filter(target => ["scheduled", "publishing", "manual_required", "awaiting_connection", "draft"].includes(target.status)).length;
+      return '<article class="social-platform-activity"><div class="social-platform-activity-name"><span class="social-provider-mark social-provider-' + provider.key + '">' + esc(provider.short) + '</span><strong>' + esc(provider.label) + '</strong></div><div class="social-platform-activity-counts"><span><strong>' + published + '</strong> publiées</span><span><strong>' + pending + '</strong> en attente</span><span><strong>' + failed + '</strong> échecs</span></div></article>';
+    }).join("");
+    return '<div class="social-platform-activity-list">' + rows + '</div>';
+  }
+
   function renderPostRows(posts, targetsByPost, canManage, canPublish) {
     if (!posts.length) {
       return '<div class="social-empty-state"><span class="social-empty-icon">✎</span><h3>Aucune publication enregistrée</h3><p>Prépare le premier contenu de SAMA-PACK et choisis les réseaux à cibler.</p></div>';
@@ -324,6 +335,7 @@
     const draftCount = data.posts.filter(post => post.status === "draft").length;
     const approvalCount = data.posts.filter(post => post.status === "pending_approval").length;
     const scheduledCount = data.posts.filter(post => ["scheduled", "partially_published"].includes(post.status)).length;
+    const publishedCount = data.targets.filter(target => target.status === "published").length;
     const composer = canManage
       ? '<section class="panel social-composer-panel"><div class="social-section-heading"><div><span class="eyebrow">STUDIO DE CONTENU</span><h3 id="socialComposerTitle">Préparer une publication</h3><p>Rédige une fois, puis choisis le mode de diffusion pour chaque réseau.</p></div><span class="social-step-number">01</span></div>' +
         '<form id="socialPostForm" class="social-post-form">' +
@@ -332,6 +344,9 @@
         '<div class="social-form-section full"><div class="social-form-section-title"><strong>Plateformes ciblées</strong><span>Choisis les réseaux à utiliser et leur mode.</span></div><div class="social-provider-grid">' +
         PROVIDERS.map(provider => providerMarkup(provider.key, "approval")).join("") +
         '</div></div>' +
+        '<details class="social-caption-adaptations full"><summary>Adapter le texte pour chaque réseau (facultatif)</summary><div class="social-caption-grid">' +
+        PROVIDERS.map(provider => '<label class="social-field">' + esc(provider.label) + '<textarea class="input" name="caption_' + provider.key + '" rows="3" maxlength="5000" placeholder="Laisser vide pour utiliser le texte commun."></textarea></label>').join("") +
+        '</div></details>' +
         '<label class="social-field">Date et heure souhaitées<input class="input" name="scheduled_at" type="datetime-local" min="' + esc(localInputValue(new Date()).slice(0, 16)) + '"><small>Heure de Dakar (UTC+0).</small></label>' +
         '<label class="social-field">Photo ou vidéo<input class="input" name="media" type="file" accept="image/jpeg,image/png,image/webp,image/gif,video/mp4,video/quicktime"><small>Image ou vidéo, 100 Mo maximum.</small></label>' +
         '<label class="social-field">Visibilité YouTube<select class="input" name="youtube_privacy"><option value="public">Publique</option><option value="unlisted">Non répertoriée</option><option value="private">Privée</option></select><small>YouTube ne reçoit que des vidéos par cette API.</small></label>' +
@@ -348,6 +363,7 @@
       '<article class="social-stat-card"><span>Brouillons</span><strong>' + draftCount + '</strong></article>' +
       '<article class="social-stat-card"><span>À valider</span><strong>' + approvalCount + '</strong></article>' +
       '<article class="social-stat-card"><span>Programmations</span><strong>' + scheduledCount + '</strong></article>' +
+      '<article class="social-stat-card"><span>Publications confirmées</span><strong>' + publishedCount + '</strong></article>' +
       '</section>' +
       '<section class="social-api-notice"><span class="social-notice-icon" aria-hidden="true">i</span><div><strong>Publication sécurisée et contrôlée</strong><p>Les autorisations OAuth sont vérifiées pour chaque réseau. Les jetons sont conservés chiffrés côté serveur. Les comptes, programmations et résultats ne sont marqués comme connectés ou publiés qu’après confirmation de la plateforme.</p></div></section>' +
       '<section class="social-section"><div class="social-section-heading"><div><span class="eyebrow">COMPTES OFFICIELS</span><h3>Plateformes connectées</h3><p>Les autorisations et connexions OAuth seront intégrées dans une prochaine étape.</p></div><span class="social-step-number">02</span></div><div class="social-account-grid">' +
@@ -358,7 +374,9 @@
       (canPublish ? '<button class="btn small primary" type="button" id="socialRunDueBtn">Exécuter les publications dues</button>' : '') +
       '<span class="social-step-number">03</span></div></div>' +
       renderCalendar(data.posts) + '</section>' +
-      '<section class="social-section"><div class="social-section-heading"><div><span class="eyebrow">SUIVI ÉDITORIAL</span><h3>Publications récentes</h3><p>Derniers contenus enregistrés dans l’espace SAMA-PACK.</p></div><span class="social-step-number">04</span></div>' +
+      '<section class="social-section"><div class="social-section-heading"><div><span class="eyebrow">ACTIVITÉ PAR PLATEFORME</span><h3>Publications confirmées</h3><p>Nombre de publications confirmées par la plateforme ; les vues, commentaires et interactions dépendront des permissions Analytics disponibles.</p></div><span class="social-step-number">04</span></div>' +
+      renderPlatformActivity(data.targets) + '</section>' +
+      '<section class="social-section"><div class="social-section-heading"><div><span class="eyebrow">SUIVI ÉDITORIAL</span><h3>Publications récentes</h3><p>Derniers contenus enregistrés dans l’espace SAMA-PACK.</p></div><span class="social-step-number">05</span></div>' +
       '<div id="socialPostsList" class="social-post-list">' + renderPostRows(data.posts, data.targetsByPost, canManage, canPublish) + '</div></section>' +
       '<p class="social-security-footnote">Les jetons OAuth ne seront jamais accessibles dans le navigateur. Ils seront stockés chiffrés côté serveur lors de l’intégration des connexions.</p>' +
       '</div>';
@@ -509,8 +527,8 @@
         post_id: postId,
         provider,
         social_account_id: account?.id || null,
-        caption: body,
-        publication_mode: selectedModes[provider],
+        caption: String(formData.get("caption_" + provider) || "").trim() || body,
+        publication_mode: provider === "tiktok" ? "manual" : selectedModes[provider],
         status: provider === "tiktok" || selectedModes[provider] === "manual" ? "manual_required"
           : !account ? "awaiting_connection"
           : scheduledAt ? "scheduled" : "draft",
@@ -649,6 +667,10 @@
         editForm.dataset.postId = post.id;
         editForm.elements.title.value = post.title || "";
         editForm.elements.body.value = post.body || "";
+        targets.forEach(target => {
+          const caption = editForm.querySelector('[name="caption_' + target.provider + '"]');
+          if (caption) caption.value = target.caption || "";
+        });
         editForm.elements.scheduled_at.value = localInputValue(post.scheduled_at);
         editForm.elements.youtube_privacy.value = String(targets.find(item => item.provider === "youtube")?.provider_options?.privacy_status || "public");
         editForm.querySelectorAll('input[name="provider"]').forEach(input => {
