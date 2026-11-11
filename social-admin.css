@@ -93,3 +93,16 @@
 @media(max-width:1100px){.social-account-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.social-calendar-grid{grid-template-columns:repeat(4,minmax(0,1fr))}}
 @media(max-width:760px){.social-stat-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.social-account-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.social-post-card{display:grid}.social-post-actions{justify-content:flex-start}.social-composer-panel{padding:16px}.social-calendar-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:540px){.social-welcome{padding:19px}.social-welcome-mark{width:48px;height:48px;flex-basis:48px}.social-post-form{grid-template-columns:1fr}.social-field.full,.social-form-section.full,.social-composer-notice.full,.social-form-actions.full{grid-column:1}.social-provider-grid{grid-template-columns:1fr}.social-mode-select{max-width:52%}.social-section-heading h3{font-size:17px}.social-stat-card{padding:13px}.social-stat-card strong{font-size:23px}}
+
+.social-account-name{margin-top:2px}
+.social-disconnect-button{justify-self:start;padding:4px 7px;border:1px solid #ead8d6;border-radius:7px;background:#fff;color:#9e3d37;font-size:10px;font-weight:700;cursor:pointer}
+.social-disconnect-button:hover{background:#fff5f4}
+.social-connect-button{justify-self:start;margin-top:3px}
+.social-calendar-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end}
+.social-calendar-actions .btn{white-space:nowrap}
+.social-channel-chip{flex-wrap:wrap}
+.social-channel-chip a{color:#176b43;font-size:9px;font-weight:800;text-decoration:underline}
+.social-channel-error{flex-basis:100%;color:#a33f35!important;font-size:9px!important;line-height:1.35}
+.social-feedback-notice[hidden]{display:none}
+.social-feedback-notice{display:flex;align-items:flex-start}
+@media(max-width:760px){.social-calendar-actions{justify-content:flex-start}}
