@@ -1164,6 +1164,40 @@ Deno.serve(async (req: Request) => {
       return await runDue(req, false, origin);
     }
 
+    if (action === "confirm_manual_tiktok") {
+      const caller = await requirePermission(req, "social.publish");
+      const postId = String(payload.post_id || "");
+      const permalink = String(payload.permalink || "");
+      let parsed: URL;
+      try { parsed = new URL(permalink); }
+      catch { return json({ ok: false, error: "Lien TikTok invalide." }, 400, origin); }
+      if (parsed.protocol !== "https:" || !/(^|\\.)tiktok\\.com$/i.test(parsed.hostname)) {
+        return json({ ok: false, error: "Le lien doit provenir du domaine tiktok.com." }, 400, origin);
+      }
+      const { data: target, error: targetError } = await service.from("social_post_targets")
+        .select("id,post_id,provider,status")
+        .eq("post_id", postId)
+        .eq("provider", "tiktok")
+        .eq("status", "manual_required")
+        .maybeSingle();
+      if (targetError || !target) return json({ ok: false, error: "Aucune publication TikTok manuelle en attente pour ce contenu." }, 404, origin);
+      await updateTarget(target.id, "published", {
+        permalink: parsed.toString(),
+        published_at: new Date().toISOString(),
+        error_code: "",
+        error_message: "",
+      });
+      await service.from("audit_logs").insert({
+        actor_user_id: caller.userId,
+        actor_label: caller.profile.full_name || caller.profile.email || "Administrateur",
+        action: "social_manual_publication_confirmed",
+        entity_type: "social_post",
+        entity_id: postId,
+        details: { provider: "tiktok", permalink: parsed.toString() },
+      });
+      return json({ ok: true, message: "Publication TikTok confirmée et lien enregistré." }, 200, origin);
+    }
+
     if (action === "retry_post") {
       await requirePermission(req, "social.publish");
       const postId = String(payload.post_id || "");
