@@ -42,7 +42,9 @@ function patchPwaAssetReferences(html) {
 
 async function servePatchedSiteHtml(request, env) {
   const response = await env.ASSETS.fetch(request);
-  if (!response.ok || request.method === "HEAD") {
+  if (!response.ok) return response;
+
+  if (request.method === "HEAD") {
     const headers = new Headers(response.headers);
     headers.set("cache-control", "no-store");
     return new Response(null, {
