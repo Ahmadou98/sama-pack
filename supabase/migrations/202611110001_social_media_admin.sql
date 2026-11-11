@@ -294,11 +294,21 @@ begin
     from public.social_post_targets t
     join public.social_posts p on p.id = t.post_id
     join public.social_accounts a on a.id = t.social_account_id
-    where t.status = 'scheduled'
-      and t.provider <> 'tiktok'
-      and t.publication_mode in ('automatic','approval')
-      and t.scheduled_at is not null
-      and t.scheduled_at <= now()
+    where (
+        (
+          t.status = 'scheduled'
+          and t.publication_mode in ('automatic','approval')
+          and t.scheduled_at is not null
+          and t.scheduled_at <= now()
+        )
+        or (
+          t.status = 'publishing'
+          and t.provider = 'tiktok'
+          and t.platform_post_id is not null
+          and t.attempt_count < 50
+          and (t.last_attempt_at is null or t.last_attempt_at <= now() - interval '4 minutes')
+        )
+      )
       and a.status = 'connected'
       and p.status in ('scheduled','partially_published')
     order by t.scheduled_at asc, t.created_at asc
