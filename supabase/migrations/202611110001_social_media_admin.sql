@@ -65,7 +65,7 @@ create table if not exists public.social_post_targets (
     check (publication_mode in ('automatic','approval','manual')),
   status text not null default 'awaiting_connection'
     check (status in (
-      'awaiting_connection','draft','scheduled','manual_required',
+      'awaiting_connection','draft','scheduled','manual_required','publishing',
       'published','failed','cancelled'
     )),
   scheduled_at timestamptz,
@@ -73,6 +73,9 @@ create table if not exists public.social_post_targets (
   permalink text,
   error_code text,
   error_message text not null default '',
+  attempt_count integer not null default 0 check (attempt_count >= 0),
+  last_attempt_at timestamptz,
+  provider_options jsonb not null default '{}'::jsonb,
   published_at timestamptz,
   updated_at timestamptz not null default now(),
   created_at timestamptz not null default now(),
@@ -233,9 +236,10 @@ create policy sama_social_media_delete on storage.objects
     and private.sama_has_admin_permission('social.manage')
   );
 
--- Les secrets OAuth et les états anti-CSRF résident dans le schéma privé,
--- hors de l'API Data publique et sans droits pour anon/authenticated.
-create table if not exists private.social_credentials (
+-- Les secrets OAuth sont chiffrés côté serveur puis stockés dans des tables
+-- publiques uniquement pour permettre l'accès PostgREST au service_role.
+-- Aucun rôle navigateur ne reçoit de privilège ni de politique RLS.
+create table if not exists public.social_credentials (
   social_account_id uuid primary key references public.social_accounts(id) on delete cascade,
   access_token_ciphertext text not null,
   refresh_token_ciphertext text,
@@ -246,7 +250,7 @@ create table if not exists private.social_credentials (
   created_at timestamptz not null default now()
 );
 
-create table if not exists private.social_oauth_states (
+create table if not exists public.social_oauth_states (
   state_hash text primary key,
   provider text not null check (provider in ('tiktok','instagram','facebook','linkedin','youtube')),
   created_by uuid not null references public.profiles(id) on delete cascade,
@@ -256,13 +260,63 @@ create table if not exists private.social_oauth_states (
   created_at timestamptz not null default now()
 );
 
-alter table private.social_credentials enable row level security;
-alter table private.social_oauth_states enable row level security;
-revoke all on table private.social_credentials from public, anon, authenticated;
-revoke all on table private.social_oauth_states from public, anon, authenticated;
-grant usage on schema private to service_role;
-grant all on table private.social_credentials to service_role;
-grant all on table private.social_oauth_states to service_role;
+alter table public.social_credentials enable row level security;
+alter table public.social_oauth_states enable row level security;
+revoke all on table public.social_credentials from public, anon, authenticated;
+revoke all on table public.social_oauth_states from public, anon, authenticated;
+grant select, insert, update, delete on table public.social_credentials to service_role;
+grant select, insert, update, delete on table public.social_oauth_states to service_role;
+
+drop policy if exists social_credentials_service_role on public.social_credentials;
+create policy social_credentials_service_role on public.social_credentials
+  for all to service_role using (true) with check (true);
+
+drop policy if exists social_oauth_states_service_role on public.social_oauth_states;
+create policy social_oauth_states_service_role on public.social_oauth_states
+  for all to service_role using (true) with check (true);
+
+-- La file est réservée au service_role. Les accès déclenchés depuis l'interface
+-- sont préalablement autorisés par l'Edge Function, qui contrôle les permissions.
+create or replace function public.sama_claim_social_targets(p_limit integer default 10)
+returns setof public.social_post_targets
+language plpgsql
+security definer
+set search_path to ''
+as $function$
+begin
+  if coalesce(auth.jwt()->>'role','') <> 'service_role' then
+    raise exception 'Accès réservé au moteur de publication.';
+  end if;
+
+  return query
+  with candidates as (
+    select t.id
+    from public.social_post_targets t
+    join public.social_posts p on p.id = t.post_id
+    join public.social_accounts a on a.id = t.social_account_id
+    where t.status = 'scheduled'
+      and t.publication_mode in ('automatic','approval')
+      and t.scheduled_at is not null
+      and t.scheduled_at <= now()
+      and a.status = 'connected'
+      and p.status in ('scheduled','partially_published')
+    order by t.scheduled_at asc, t.created_at asc
+    for update of t skip locked
+    limit greatest(1, least(coalesce(p_limit,10), 25))
+  )
+  update public.social_post_targets t
+  set status = 'publishing',
+      attempt_count = t.attempt_count + 1,
+      last_attempt_at = now(),
+      updated_at = now()
+  from candidates c
+  where t.id = c.id
+  returning t.*;
+end;
+$function$;
+
+revoke all on function public.sama_claim_social_targets(integer) from public, anon, authenticated;
+grant execute on function public.sama_claim_social_targets(integer) to service_role;
 
 -- Validation des publications préparées par un collaborateur.
 -- Cette fonction ne lance PAS une publication externe ; elle enregistre l'approbation.
