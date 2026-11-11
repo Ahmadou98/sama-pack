@@ -312,8 +312,8 @@ begin
       and a.status = 'connected'
       and p.status in ('scheduled','partially_published')
     order by t.scheduled_at asc, t.created_at asc
-    for update of t skip locked
     limit greatest(1, least(coalesce(p_limit,10), 25))
+    for update of t skip locked
   )
   update public.social_post_targets t
   set status = 'publishing',
