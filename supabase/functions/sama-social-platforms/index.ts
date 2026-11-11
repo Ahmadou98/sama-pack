@@ -667,6 +667,35 @@ async function assetForTarget(mediaId: string | null): Promise<{ asset: SocialMe
   return { asset: asset as SocialMedia, url: signed.signedUrl };
 }
 
+async function notifySocialAdmins(
+  type: "social_publication_success" | "social_publication_failed",
+  title: string,
+  message: string,
+  postId: string,
+) {
+  try {
+    const { data: admins, error: readError } = await service.from("profiles")
+      .select("id,is_super_admin,admin_permissions")
+      .eq("role", "admin");
+    if (readError) throw readError;
+    const recipients = (admins || []).filter((profile: any) =>
+      profile.is_super_admin === true || profile.admin_permissions?.["social.view"] === true
+    );
+    if (!recipients.length) return;
+    const { error } = await service.from("notifications").insert(recipients.map((profile: any) => ({
+      recipient_user_id: profile.id,
+      type,
+      title: title.slice(0, 160),
+      message: message.slice(0, 1200),
+      entity_type: "social_post",
+      entity_id: postId,
+    })));
+    if (error) throw error;
+  } catch (error) {
+    console.error("SAMA-PACK social notification could not be queued", error);
+  }
+}
+
 async function updateTarget(
   targetId: string,
   status: string,
@@ -706,7 +735,10 @@ async function readTargetContext(target: SocialTarget) {
   if (postError || !post) throw new Error("Publication introuvable.");
   if (accountError || !account) throw new Error("Compte social non connecté.");
   if (account.provider !== target.provider || account.status !== "connected") throw new Error("Compte social indisponible ou non connecté.");
-  return { post: post as SocialPost, account: account as SocialAccount };
+  return {
+    post: { ...(post as SocialPost), body: target.caption || post.body } as SocialPost,
+    account: account as SocialAccount,
+  };
 }
 
 async function publishFacebook(
@@ -1037,6 +1069,14 @@ async function publishClaimedTarget(target: SocialTarget) {
       error_code: "",
       error_message: result.pendingMessage || "",
     });
+    if (!result.pending) {
+      await notifySocialAdmins(
+        "social_publication_success",
+        "Publication SAMA-PACK confirmée",
+        "Une publication a été confirmée sur " + target.provider + ".",
+        target.post_id,
+      );
+    }
     return {
       id: target.id,
       provider: target.provider,
@@ -1051,6 +1091,12 @@ async function publishClaimedTarget(target: SocialTarget) {
         error_code: "publication_failed",
         error_message: message.slice(0, 900),
       });
+      await notifySocialAdmins(
+        "social_publication_failed",
+        "Échec de publication SAMA-PACK",
+        "La publication sur " + target.provider + " a échoué : " + message.slice(0, 700),
+        target.post_id,
+      );
     } catch (writeError) {
       console.error("Could not save social publish failure", target.id, writeError);
     }
@@ -1187,6 +1233,12 @@ Deno.serve(async (req: Request) => {
         error_code: "",
         error_message: "",
       });
+      await notifySocialAdmins(
+        "social_publication_success",
+        "Publication TikTok confirmée",
+        "Une publication TikTok a été confirmée manuellement. Le lien a été enregistré.",
+        postId,
+      );
       await service.from("audit_logs").insert({
         actor_user_id: caller.userId,
         actor_label: caller.profile.full_name || caller.profile.email || "Administrateur",
