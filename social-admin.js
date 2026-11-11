@@ -118,15 +118,20 @@
   function providerMarkup(provider, mode) {
     const item = PROVIDER_BY_KEY[provider];
     if (!item) return "";
+    const manualOnly = provider === "tiktok";
+    const selectedMode = manualOnly ? "manual" : mode;
+    const choices = manualOnly
+      ? '<option value="automatic" disabled>Automatique indisponible</option><option value="approval" disabled>Validation automatique indisponible</option><option value="manual" selected>Publication manuelle</option>'
+      : '<option value="automatic"' + (selectedMode === "automatic" ? " selected" : "") + '>Automatique</option>' +
+        '<option value="approval"' + (!selectedMode || selectedMode === "approval" ? " selected" : "") + '>Après validation</option>' +
+        '<option value="manual"' + (selectedMode === "manual" ? " selected" : "") + '>Manuelle</option>';
     return '<label class="social-provider-option">' +
       '<span class="social-provider-main"><input type="checkbox" name="provider" value="' + item.key + '" checked>' +
       '<span class="social-provider-mark social-provider-' + item.key + '">' + esc(item.short) + '</span>' +
       '<span class="social-provider-name">' + esc(item.label) + '</span></span>' +
       '<select class="input social-mode-select" name="mode_' + item.key + '" aria-label="Mode de publication pour ' + esc(item.label) + '">' +
-      '<option value="automatic"' + (mode === "automatic" ? " selected" : "") + '>Automatique</option>' +
-      '<option value="approval"' + (!mode || mode === "approval" ? " selected" : "") + '>Après validation</option>' +
-      '<option value="manual"' + (mode === "manual" ? " selected" : "") + '>Manuelle</option>' +
-      '</select></label>';
+      choices + '</select></label>' +
+      (manualOnly ? '<small class="social-muted">Copier le texte, publier dans TikTok, puis confirmer le lien.</small>' : '');
   }
 
   function groupTargets(targets) {
@@ -157,24 +162,32 @@
               : '<small class="social-muted">Connexion à renouveler</small>')
           ).join("")
         : '<span class="social-account-empty">Aucun compte connecté</span>';
+      const isManualOnly = provider.key === "tiktok";
       const readiness = ctx.providerConfig?.[provider.key] || null;
       const configured = readiness?.ready === true;
       const missing = Array.isArray(readiness?.missing) ? readiness.missing : [];
       const badge = active.length
         ? '<span class="social-status is-success">' + active.length + ' connecté(s)</span>'
-        : configured
-          ? '<span class="social-status">Prêt à connecter</span>'
-          : '<span class="social-status is-warning">OAuth à configurer</span>';
-      const connect = ctx.canManageAccounts
+        : isManualOnly
+          ? '<span class="social-status is-warning">Publication manuelle</span>'
+          : configured
+            ? '<span class="social-status">Prêt à connecter</span>'
+            : '<span class="social-status is-warning">OAuth à configurer</span>';
+      const connect = ctx.canManageAccounts && !isManualOnly
         ? '<button class="btn small secondary social-connect-button" type="button" data-social-connect="' + provider.key + '"' +
           (configured ? '' : ' disabled title="' + esc(missing.length ? 'Secrets manquants : ' + missing.join(', ') : 'Vérification de configuration indisponible') + '"') + '>' +
           (configured ? (active.length ? 'Ajouter un compte' : 'Connecter') : 'Configuration requise') + '</button>' +
           (!configured ? '<small class="social-muted">À ajouter dans Supabase Edge Function Secrets : ' + esc(missing.join(', ') || 'configuration non vérifiée') + '</small>' : '')
         : '';
+      const descriptionText = isManualOnly
+        ? "Publication manuelle : TikTok ne sera pas automatisé depuis cet outil interne."
+        : provider.key === "youtube" ? "Chaînes et téléversement vidéo."
+        : provider.key === "linkedin" ? "Profil membre ou page autorisée."
+        : "Pages et comptes professionnels.";
       return '<article class="social-account-card">' +
         '<div class="social-account-card-top"><span class="social-provider-mark social-provider-' + provider.key + '">' + esc(provider.short) + '</span>' + badge + '</div>' +
         '<strong>' + esc(provider.label) + '</strong>' + description +
-        '<small class="social-muted">' + (provider.key === "youtube" ? "Chaînes et téléversement vidéo." : provider.key === "tiktok" ? "Vidéos via Content Posting API." : provider.key === "linkedin" ? "Profil membre LinkedIn." : "Pages et comptes professionnels.") + '</small>' +
+        '<small class="social-muted">' + descriptionText + '</small>' +
         connect +
         '</article>';
     }).join("");
@@ -225,6 +238,13 @@
       }
       if (canPublish && targets.some(target => target.status === "failed")) {
         actions += '<button class="btn small secondary" type="button" data-social-retry="' + esc(post.id) + '">Réessayer</button>';
+      }
+      if (canManage && targets.some(target => target.provider === "tiktok" && target.status === "manual_required")) {
+        actions += '<button class="btn small ghost" type="button" data-social-copy-tiktok="' + esc(post.id) + '">Copier le texte TikTok</button>' +
+          '<button class="btn small secondary" type="button" data-social-open-tiktok="' + esc(post.id) + '">Ouvrir TikTok</button>';
+      }
+      if (canPublish && targets.some(target => target.provider === "tiktok" && target.status === "manual_required")) {
+        actions += '<button class="btn small primary" type="button" data-social-confirm-tiktok="' + esc(post.id) + '">Confirmer la publication</button>';
       }
       if (canManage && !["published", "publishing", "partially_published"].includes(post.status)) {
         actions += '<button class="btn small ghost" type="button" data-social-edit="' + esc(post.id) + '">Modifier</button>' +
@@ -314,7 +334,6 @@
         '</div></div>' +
         '<label class="social-field">Date et heure souhaitées<input class="input" name="scheduled_at" type="datetime-local" min="' + esc(localInputValue(new Date()).slice(0, 16)) + '"><small>Heure de Dakar (UTC+0).</small></label>' +
         '<label class="social-field">Photo ou vidéo<input class="input" name="media" type="file" accept="image/jpeg,image/png,image/webp,image/gif,video/mp4,video/quicktime"><small>Image ou vidéo, 100 Mo maximum.</small></label>' +
-        '<label class="social-field">Visibilité TikTok<select class="input" name="tiktok_privacy"><option value="SELF_ONLY">Privée (conseillée pour tester)</option><option value="PUBLIC_TO_EVERYONE">Publique</option><option value="MUTUAL_FOLLOW_FRIENDS">Amis mutuels</option></select><small>La visibilité publique dépend de l’audit TikTok de l’application.</small></label>' +
         '<label class="social-field">Visibilité YouTube<select class="input" name="youtube_privacy"><option value="public">Publique</option><option value="unlisted">Non répertoriée</option><option value="private">Privée</option></select><small>YouTube ne reçoit que des vidéos par cette API.</small></label>' +
         '<div class="social-composer-notice full"><strong>Avant l’envoi :</strong> chaque réseau doit être connecté avec ses autorisations officielles. Les publications automatiques ne sont lancées qu’après validation et à la date prévue. Les formats non pris en charge restent à publier manuellement.</div>' +
         '<div class="social-form-actions full"><button class="btn primary" type="submit" id="socialSavePostBtn">Enregistrer le contenu</button><button class="btn ghost" type="button" id="socialResetPostBtn">Effacer</button><span id="socialFormFeedback" role="status" aria-live="polite"></span></div>' +
@@ -419,7 +438,7 @@
     form.reset();
     delete form.dataset.postId;
     form.querySelectorAll('input[name="provider"]').forEach(input => { input.checked = true; });
-    form.querySelectorAll(".social-mode-select").forEach(select => { select.value = "approval"; });
+    form.querySelectorAll(".social-mode-select").forEach(select => { select.value = select.name === "mode_tiktok" ? "manual" : "approval"; });
     const heading = root.querySelector("#socialComposerTitle");
     if (heading) heading.textContent = "Préparer une publication";
     const save = root.querySelector("#socialSavePostBtn");
@@ -491,15 +510,13 @@
         social_account_id: account?.id || null,
         caption: body,
         publication_mode: selectedModes[provider],
-        status: !account ? "awaiting_connection"
-          : selectedModes[provider] === "manual" ? "manual_required"
+        status: provider === "tiktok" || selectedModes[provider] === "manual" ? "manual_required"
+          : !account ? "awaiting_connection"
           : scheduledAt ? "scheduled" : "draft",
         scheduled_at: scheduledAt,
-        provider_options: provider === "tiktok"
-          ? { privacy_level: String(formData.get("tiktok_privacy") || "SELF_ONLY") }
-          : provider === "youtube"
-            ? { privacy_status: String(formData.get("youtube_privacy") || "public") }
-            : {},
+        provider_options: provider === "youtube"
+          ? { privacy_status: String(formData.get("youtube_privacy") || "public") }
+          : {},
         updated_at: new Date().toISOString()
       };
       const old = oldByProvider.get(provider);
@@ -632,7 +649,6 @@
         editForm.elements.title.value = post.title || "";
         editForm.elements.body.value = post.body || "";
         editForm.elements.scheduled_at.value = localInputValue(post.scheduled_at);
-        editForm.elements.tiktok_privacy.value = String(targets.find(item => item.provider === "tiktok")?.provider_options?.privacy_level || "SELF_ONLY");
         editForm.elements.youtube_privacy.value = String(targets.find(item => item.provider === "youtube")?.provider_options?.privacy_status || "public");
         editForm.querySelectorAll('input[name="provider"]').forEach(input => {
           const target = targets.find(item => item.provider === input.value);
