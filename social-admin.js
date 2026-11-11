@@ -727,10 +727,14 @@
         const post = ctx.data.posts.find(item => item.id === button.dataset.socialCopyTiktok);
         if (!post) return;
         try {
-          await navigator.clipboard.writeText(post.body || "");
+          const target = ctx.data.targets.find(item => item.post_id === post.id && item.provider === "tiktok");
+          const caption = target?.caption || post.body || "";
+          await navigator.clipboard.writeText(caption);
           button.textContent = "Texte copié";
         } catch {
-          window.prompt("Copie le texte TikTok :", post.body || "");
+          const target = ctx.data.targets.find(item => item.post_id === button.dataset.socialCopyTiktok && item.provider === "tiktok");
+          const caption = target?.caption || ctx.data.posts.find(item => item.id === button.dataset.socialCopyTiktok)?.body || "";
+          window.prompt("Copie le texte TikTok :", caption);
         }
       });
     });
