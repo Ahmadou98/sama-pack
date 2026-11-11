@@ -326,8 +326,9 @@
     root.innerHTML = '<div class="panel social-loading"><span class="admin-loading-spinner" aria-hidden="true"></span><p>Chargement de la gestion des réseaux sociaux…</p></div>';
     try {
       const data = await loadData(ctx.client);
+      ctx.data = data;
       root.innerHTML = buildMarkup(data, ctx);
-      bind(root, ctx, data);
+      bind(root, ctx);
     } catch (error) {
       console.error("SAMA-PACK social admin failed:", error);
       root.innerHTML = '<div class="panel social-error"><h3>Module réseaux sociaux indisponible</h3><p>' +
