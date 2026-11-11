@@ -244,7 +244,7 @@
           '<button class="btn small secondary" type="button" data-social-open-tiktok="' + esc(post.id) + '">Ouvrir TikTok</button>';
       }
       if (canPublish && targets.some(target => target.provider === "tiktok" && target.status === "manual_required")) {
-        actions += '<button class="btn small primary" type="button" data-social-confirm-tiktok="' + esc(post.id) + '">Confirmer la publication</button>';
+        actions += '<button class="btn small primary" type="button" data-social-confirm-tiktok="' + esc(post.id) + '">Confirmer la publication TikTok</button>';
       }
       if (canManage && !["published", "publishing", "partially_published"].includes(post.status)) {
         actions += '<button class="btn small ghost" type="button" data-social-edit="' + esc(post.id) + '">Modifier</button>' +
@@ -475,8 +475,9 @@
       mediaAssetId = await uploadMedia(ctx.client, ctx.currentUser.id, file);
     }
 
+    const requiresApproval = scheduledAt && providers.some(provider => selectedModes[provider] === "approval");
     const postStatus = scheduledAt
-      ? (ctx.canPublish ? "scheduled" : "pending_approval")
+      ? (requiresApproval ? "pending_approval" : "scheduled")
       : "draft";
     const payload = {
       title,
@@ -695,6 +696,53 @@
         } catch (error) {
           button.disabled = false;
           window.alert(error && error.message ? error.message : "Nouvel essai impossible.");
+        }
+      });
+    });
+
+    root.querySelectorAll("[data-social-copy-tiktok]").forEach(button => {
+      button.addEventListener("click", async () => {
+        const post = ctx.data.posts.find(item => item.id === button.dataset.socialCopyTiktok);
+        if (!post) return;
+        try {
+          await navigator.clipboard.writeText(post.body || "");
+          button.textContent = "Texte copié";
+        } catch {
+          window.prompt("Copie le texte TikTok :", post.body || "");
+        }
+      });
+    });
+
+    root.querySelectorAll("[data-social-open-tiktok]").forEach(button => {
+      button.addEventListener("click", () => window.open("https://www.tiktok.com/upload", "_blank", "noopener,noreferrer"));
+    });
+
+    root.querySelectorAll("[data-social-confirm-tiktok]").forEach(button => {
+      button.addEventListener("click", async () => {
+        if (!ctx.canPublish) return;
+        const raw = window.prompt("Colle le lien de la vidéo TikTok publiée. Cette confirmation enregistrera le lien dans SAMA-PACK :");
+        if (!raw) return;
+        let permalink;
+        try {
+          const url = new URL(raw.trim());
+          if (url.protocol !== "https:" || !/(^|\\.)tiktok\\.com$/i.test(url.hostname)) {
+            throw new Error("Le lien doit provenir de tiktok.com.");
+          }
+          permalink = url.toString();
+        } catch (error) {
+          window.alert(error instanceof Error ? error.message : "Lien TikTok invalide.");
+          return;
+        }
+        button.disabled = true;
+        try {
+          const { data, error } = await ctx.client.functions.invoke("sama-social-platforms", {
+            body: { action: "confirm_manual_tiktok", post_id: button.dataset.socialConfirmTiktok, permalink }
+          });
+          if (error || data?.ok !== true) throw new Error(data?.error || error?.message || "Confirmation impossible.");
+          await refresh(ctx, root);
+        } catch (error) {
+          button.disabled = false;
+          window.alert(error && error.message ? error.message : "Confirmation impossible.");
         }
       });
     });
