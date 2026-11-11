@@ -204,12 +204,19 @@
         const provider = PROVIDER_BY_KEY[target.provider];
         const label = provider ? provider.label : target.provider;
         const targetStatus = TARGET_STATUS_LABELS[target.status] || target.status;
-        return '<span class="social-channel-chip">' + esc(label) + '<small>' + esc(targetStatus) + '</small></span>';
+        return '<span class="social-channel-chip" title="' + esc(target.error_message || target.permalink || "") + '">' +
+          esc(label) + '<small>' + esc(targetStatus) + '</small>' +
+          (target.error_message ? '<small class="social-channel-error">' + esc(target.error_message) + '</small>' : '') +
+          (target.permalink ? '<a href="' + esc(target.permalink) + '" target="_blank" rel="noopener noreferrer">Voir</a>' : '') +
+          '</span>';
       }).join("");
       const media = post.media_asset_id ? '<span class="social-media-indicator">Média joint</span>' : "";
       let actions = "";
       if (post.status === "pending_approval" && canPublish) {
         actions += '<button class="btn small primary" type="button" data-social-approve="' + esc(post.id) + '">Valider</button>';
+      }
+      if (canPublish && targets.some(target => target.status === "failed")) {
+        actions += '<button class="btn small secondary" type="button" data-social-retry="' + esc(post.id) + '">Réessayer</button>';
       }
       if (canManage && !["published", "publishing", "partially_published"].includes(post.status)) {
         actions += '<button class="btn small ghost" type="button" data-social-edit="' + esc(post.id) + '">Modifier</button>' +
@@ -239,7 +246,7 @@
     let targets = [];
     if (ids.length) {
       const targetResult = await client.from("social_post_targets")
-        .select("id,post_id,provider,social_account_id,publication_mode,status,scheduled_at,published_at,permalink,error_message")
+        .select("id,post_id,provider,social_account_id,publication_mode,status,scheduled_at,published_at,permalink,error_message,platform_post_id")
         .in("post_id", ids);
       if (targetResult.error) throw targetResult.error;
       targets = targetResult.data || [];
@@ -299,6 +306,8 @@
         '</div></div>' +
         '<label class="social-field">Date et heure souhaitées<input class="input" name="scheduled_at" type="datetime-local" min="' + esc(localInputValue(new Date()).slice(0, 16)) + '"><small>Heure de Dakar (UTC+0).</small></label>' +
         '<label class="social-field">Photo ou vidéo<input class="input" name="media" type="file" accept="image/jpeg,image/png,image/webp,image/gif,video/mp4,video/quicktime"><small>Image ou vidéo, 100 Mo maximum.</small></label>' +
+        '<label class="social-field">Visibilité TikTok<select class="input" name="tiktok_privacy"><option value="SELF_ONLY">Privée (conseillée pour tester)</option><option value="PUBLIC_TO_EVERYONE">Publique</option><option value="MUTUAL_FOLLOW_FRIENDS">Amis mutuels</option></select><small>La visibilité publique dépend de l’audit TikTok de l’application.</small></label>' +
+        '<label class="social-field">Visibilité YouTube<select class="input" name="youtube_privacy"><option value="public">Publique</option><option value="unlisted">Non répertoriée</option><option value="private">Privée</option></select><small>YouTube ne reçoit que des vidéos par cette API.</small></label>' +
         '<div class="social-composer-notice full"><strong>Publication réelle non activée :</strong> cette version enregistre les contenus et les programmations éditoriales. Elle n’envoie rien aux réseaux avant la configuration des API officielles et de leurs autorisations.</div>' +
         '<div class="social-form-actions full"><button class="btn primary" type="submit" id="socialSavePostBtn">Enregistrer le contenu</button><button class="btn ghost" type="button" id="socialResetPostBtn">Effacer</button><span id="socialFormFeedback" role="status" aria-live="polite"></span></div>' +
         '</form></section>'
@@ -460,6 +469,11 @@
           : selectedModes[provider] === "manual" ? "manual_required"
           : scheduledAt ? "scheduled" : "draft",
         scheduled_at: scheduledAt,
+        provider_options: provider === "tiktok"
+          ? { privacy_level: String(formData.get("tiktok_privacy") || "SELF_ONLY") }
+          : provider === "youtube"
+            ? { privacy_status: String(formData.get("youtube_privacy") || "public") }
+            : {},
         updated_at: new Date().toISOString()
       };
       const old = oldByProvider.get(provider);
@@ -540,14 +554,14 @@
           const { data, error } = await ctx.client.functions.invoke("sama-social-platforms", {
             body: { action: "run_due" }
           });
-          if (error || !data?.ok) throw new Error(data?.error || error?.message || "Le moteur de publication a signalé une erreur.");
+          if (error || !data) throw new Error(data?.error || error?.message || "Le moteur de publication n'a pas répondu.");
           await refresh(ctx, root);
           const feedback = root.querySelector("#socialOauthFeedback");
           if (feedback) {
             feedback.hidden = false;
             feedback.innerHTML = '<span class="social-notice-icon" aria-hidden="true">✓</span><div><strong>Traitement terminé</strong><p>' +
               Number(data.published || 0) + ' publiée(s), ' + Number(data.processing || 0) +
-              ' en cours, ' + Number(data.failed || 0) + ' en échec.</p></div>';
+              ' en cours, ' + Number(data.failed || 0) + ' en échec. Les détails sont visibles sur chaque réseau.</p></div>';
           }
         } catch (error) {
           runDueButton.disabled = false;
@@ -592,6 +606,8 @@
         editForm.elements.title.value = post.title || "";
         editForm.elements.body.value = post.body || "";
         editForm.elements.scheduled_at.value = localInputValue(post.scheduled_at);
+        editForm.elements.tiktok_privacy.value = String(targets.find(item => item.provider === "tiktok")?.provider_options?.privacy_level || "SELF_ONLY");
+        editForm.elements.youtube_privacy.value = String(targets.find(item => item.provider === "youtube")?.provider_options?.privacy_status || "public");
         editForm.querySelectorAll('input[name="provider"]').forEach(input => {
           const target = targets.find(item => item.provider === input.value);
           input.checked = Boolean(target);
@@ -619,6 +635,24 @@
         } catch (error) {
           button.disabled = false;
           window.alert(error && error.message ? error.message : "Suppression impossible.");
+        }
+      });
+    });
+
+    root.querySelectorAll("[data-social-retry]").forEach(button => {
+      button.addEventListener("click", async () => {
+        if (!ctx.canPublish) return;
+        if (!window.confirm("Réessayer les cibles de publication en échec pour ce contenu ?")) return;
+        button.disabled = true;
+        try {
+          const { data, error } = await ctx.client.functions.invoke("sama-social-platforms", {
+            body: { action: "retry_post", post_id: button.dataset.socialRetry }
+          });
+          if (error || !data) throw new Error(data?.error || error?.message || "Nouvel essai impossible.");
+          await refresh(ctx, root);
+        } catch (error) {
+          button.disabled = false;
+          window.alert(error && error.message ? error.message : "Nouvel essai impossible.");
         }
       });
     });
