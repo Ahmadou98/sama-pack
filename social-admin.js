@@ -138,7 +138,7 @@
     return result;
   }
 
-  function renderAccounts(accounts, canManageAccounts) {
+  function renderAccounts(accounts, ctx) {
     const byProvider = new Map();
     (accounts || []).forEach(account => {
       const list = byProvider.get(account.provider) || [];
@@ -147,18 +147,27 @@
     });
     return PROVIDERS.map(provider => {
       const connected = byProvider.get(provider.key) || [];
+      const active = connected.filter(account => account.status === "connected");
       const description = connected.length
-        ? connected.map(account => '<span class="social-account-name">' + esc(account.account_name || account.username || "Compte connecté") + '</span>').join("")
+        ? connected.map(account =>
+            '<span class="social-account-name">' + esc(account.account_name || account.username || "Compte connecté") + '</span>' +
+            (account.status === "connected"
+              ? (ctx.canManageAccounts ? '<button class="social-disconnect-button" type="button" data-social-disconnect="' + esc(account.id) + '">Déconnecter</button>' : '')
+              : '<small class="social-muted">Connexion à renouveler</small>')
+          ).join("")
         : '<span class="social-account-empty">Aucun compte connecté</span>';
-      const badge = connected.some(account => account.status === "connected")
-        ? '<span class="social-status is-success">Connecté</span>'
+      const badge = active.length
+        ? '<span class="social-status is-success">' + active.length + ' connecté(s)</span>'
         : '<span class="social-status">À connecter</span>';
-      const detail = canManageAccounts
-        ? '<small class="social-muted">La connexion OAuth officielle sera activée dans une prochaine étape.</small>'
-        : '<small class="social-muted">Connexion réservée aux comptes autorisés.</small>';
+      const connect = ctx.canManageAccounts
+        ? '<button class="btn small secondary social-connect-button" type="button" data-social-connect="' + provider.key + '">' +
+          (active.length ? 'Ajouter un compte' : 'Connecter') + '</button>'
+        : '';
       return '<article class="social-account-card">' +
         '<div class="social-account-card-top"><span class="social-provider-mark social-provider-' + provider.key + '">' + esc(provider.short) + '</span>' + badge + '</div>' +
-        '<strong>' + esc(provider.label) + '</strong>' + description + detail +
+        '<strong>' + esc(provider.label) + '</strong>' + description +
+        '<small class="social-muted">' + (provider.key === "youtube" ? "Chaînes et téléversement vidéo." : provider.key === "tiktok" ? "Vidéos via Content Posting API." : provider.key === "linkedin" ? "Profil membre LinkedIn." : "Pages et comptes professionnels.") + '</small>' +
+        connect +
         '</article>';
     }).join("");
   }
@@ -296,6 +305,7 @@
       : '<section class="panel social-composer-panel"><div class="social-section-heading"><div><span class="eyebrow">STUDIO DE CONTENU</span><h3>Accès en consultation</h3><p>La création et les modifications nécessitent une permission spécifique.</p></div></div></section>';
 
     return '<div class="social-admin">' +
+      '<div id="socialOauthFeedback" class="social-api-notice social-feedback-notice" hidden role="status" aria-live="polite"></div>' +
       '<section class="social-welcome"><div><span class="eyebrow">MARKETING & COMMUNICATION</span><h2>Réseaux sociaux SAMA-PACK</h2><p>Centralise les contenus, le calendrier et les comptes officiels de la marque.</p></div><div class="social-welcome-mark" aria-hidden="true">SP</div></section>' +
       '<section class="social-stat-grid">' +
       '<article class="social-stat-card"><span>Comptes connectés</span><strong>' + connectedCount + '<small> / 5 réseaux</small></strong></article>' +
@@ -305,10 +315,12 @@
       '</section>' +
       '<section class="social-api-notice"><span class="social-notice-icon" aria-hidden="true">i</span><div><strong>Connexions aux plateformes à configurer</strong><p>Les comptes et publications seront connectés par les API officielles de TikTok, Instagram, Facebook, LinkedIn et YouTube. Aucun compte n’est considéré comme publié ou connecté tant que le réseau ne l’a pas confirmé.</p></div></section>' +
       '<section class="social-section"><div class="social-section-heading"><div><span class="eyebrow">COMPTES OFFICIELS</span><h3>Plateformes connectées</h3><p>Les autorisations et connexions OAuth seront intégrées dans une prochaine étape.</p></div><span class="social-step-number">02</span></div><div class="social-account-grid">' +
-      renderAccounts(data.accounts, Boolean(ctx.canManageAccounts)) +
+      renderAccounts(data.accounts, ctx) +
       '</div></section>' +
       composer +
-      '<section class="social-section"><div class="social-section-heading"><div><span class="eyebrow">CALENDRIER ÉDITORIAL</span><h3>Les 14 prochains jours</h3><p>Programmations enregistrées dans Social Desk, en heure de Dakar.</p></div><span class="social-step-number">03</span></div>' +
+      '<section class="social-section"><div class="social-section-heading"><div><span class="eyebrow">CALENDRIER ÉDITORIAL</span><h3>Les 14 prochains jours</h3><p>Programmations enregistrées dans Social Desk, en heure de Dakar.</p></div><div class="social-calendar-actions">' +
+      (canPublish ? '<button class="btn small primary" type="button" id="socialRunDueBtn">Exécuter les publications dues</button>' : '') +
+      '<span class="social-step-number">03</span></div></div>' +
       renderCalendar(data.posts) + '</section>' +
       '<section class="social-section"><div class="social-section-heading"><div><span class="eyebrow">SUIVI ÉDITORIAL</span><h3>Publications récentes</h3><p>Derniers contenus enregistrés dans l’espace SAMA-PACK.</p></div><span class="social-step-number">04</span></div>' +
       '<div id="socialPostsList" class="social-post-list">' + renderPostRows(data.posts, data.targetsByPost, canManage, canPublish) + '</div></section>' +
@@ -329,6 +341,26 @@
       ctx.data = data;
       root.innerHTML = buildMarkup(data, ctx);
       bind(root, ctx);
+      const url = new URL(window.location.href);
+      const socialStatus = url.searchParams.get("social");
+      if (socialStatus) {
+        const feedback = root.querySelector("#socialOauthFeedback");
+        const provider = url.searchParams.get("provider") || "";
+        const count = url.searchParams.get("count") || "";
+        const reason = url.searchParams.get("reason") || "";
+        if (feedback) {
+          feedback.hidden = false;
+          if (socialStatus === "connected") {
+            feedback.innerHTML = '<span class="social-notice-icon" aria-hidden="true">✓</span><div><strong>Compte(s) relié(s)</strong><p>' +
+              esc(provider.toUpperCase()) + ' · ' + esc(count || "Connexion") + ' compte(s) enregistré(s). Tu peux maintenant préparer les publications compatibles.</p></div>';
+        } else {
+            feedback.innerHTML = '<span class="social-notice-icon" aria-hidden="true">!</span><div><strong>Connexion non terminée</strong><p>' +
+              esc(reason || "La plateforme n’a pas autorisé la connexion. Vérifie les paramètres OAuth et réessaie.") + '</p></div>';
+          }
+        }
+        ["social","provider","count","reason"].forEach(key => url.searchParams.delete(key));
+        window.history.replaceState({}, "", url.pathname + (url.search ? url.search : "") + url.hash);
+      }
     } catch (error) {
       console.error("SAMA-PACK social admin failed:", error);
       root.innerHTML = '<div class="panel social-error"><h3>Module réseaux sociaux indisponible</h3><p>' +
@@ -459,6 +491,72 @@
   }
 
   function bind(root, ctx) {
+    root.querySelectorAll("[data-social-connect]").forEach(button => {
+      button.addEventListener("click", async () => {
+        if (!ctx.canManageAccounts) return;
+        const provider = button.dataset.socialConnect;
+        button.disabled = true;
+        const oldText = button.textContent;
+        button.textContent = "Connexion…";
+        try {
+          const { data, error } = await ctx.client.functions.invoke("sama-social-platforms", {
+            body: { action: "connect", provider }
+          });
+          if (error || !data?.authorization_url) throw new Error(data?.error || error?.message || "Impossible d'ouvrir la connexion OAuth.");
+          window.location.assign(data.authorization_url);
+        } catch (error) {
+          button.disabled = false;
+          button.textContent = oldText;
+          window.alert(error && error.message ? error.message : "Connexion impossible.");
+        }
+      });
+    });
+
+    root.querySelectorAll("[data-social-disconnect]").forEach(button => {
+      button.addEventListener("click", async () => {
+        if (!ctx.canManageAccounts) return;
+        if (!window.confirm("Déconnecter ce compte social ? Les publications déjà enregistrées seront conservées.")) return;
+        button.disabled = true;
+        try {
+          const { data, error } = await ctx.client.functions.invoke("sama-social-platforms", {
+            body: { action: "disconnect", account_id: button.dataset.socialDisconnect }
+          });
+          if (error || !data?.ok) throw new Error(data?.error || error?.message || "Déconnexion impossible.");
+          await refresh(ctx, root);
+        } catch (error) {
+          button.disabled = false;
+          window.alert(error && error.message ? error.message : "Déconnexion impossible.");
+        }
+      });
+    });
+
+    const runDueButton = root.querySelector("#socialRunDueBtn");
+    if (runDueButton && ctx.canPublish) {
+      runDueButton.addEventListener("click", async () => {
+        if (!window.confirm("Lancer maintenant les publications dont la date est arrivée et qui sont validées ? Cette action peut publier publiquement sur les comptes connectés.")) return;
+        runDueButton.disabled = true;
+        runDueButton.textContent = "Publication en cours…";
+        try {
+          const { data, error } = await ctx.client.functions.invoke("sama-social-platforms", {
+            body: { action: "run_due" }
+          });
+          if (error || !data?.ok) throw new Error(data?.error || error?.message || "Le moteur de publication a signalé une erreur.");
+          await refresh(ctx, root);
+          const feedback = root.querySelector("#socialOauthFeedback");
+          if (feedback) {
+            feedback.hidden = false;
+            feedback.innerHTML = '<span class="social-notice-icon" aria-hidden="true">✓</span><div><strong>Traitement terminé</strong><p>' +
+              Number(data.published || 0) + ' publiée(s), ' + Number(data.processing || 0) +
+              ' en cours, ' + Number(data.failed || 0) + ' en échec.</p></div>';
+          }
+        } catch (error) {
+          runDueButton.disabled = false;
+          runDueButton.textContent = "Réessayer les publications dues";
+          window.alert(error && error.message ? error.message : "Exécution impossible.");
+        }
+      });
+    }
+
     const form = root.querySelector("#socialPostForm");
     if (form) {
       form.addEventListener("submit", async event => {
