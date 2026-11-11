@@ -294,10 +294,21 @@ begin
     from public.social_post_targets t
     join public.social_posts p on p.id = t.post_id
     join public.social_accounts a on a.id = t.social_account_id
-    where t.status = 'scheduled'
-      and t.publication_mode in ('automatic','approval')
-      and t.scheduled_at is not null
-      and t.scheduled_at <= now()
+    where (
+        (
+          t.status = 'scheduled'
+          and t.publication_mode in ('automatic','approval')
+          and t.scheduled_at is not null
+          and t.scheduled_at <= now()
+        )
+        or (
+          t.status = 'publishing'
+          and t.provider = 'tiktok'
+          and t.platform_post_id is not null
+          and t.attempt_count < 50
+          and (t.last_attempt_at is null or t.last_attempt_at <= now() - interval '4 minutes')
+        )
+      )
       and a.status = 'connected'
       and p.status in ('scheduled','partially_published')
     order by t.scheduled_at asc, t.created_at asc
@@ -317,6 +328,108 @@ $function$;
 
 revoke all on function public.sama_claim_social_targets(integer) from public, anon, authenticated;
 grant execute on function public.sama_claim_social_targets(integer) to service_role;
+
+-- Clés aléatoires générées une seule fois et conservées dans Supabase Vault.
+-- La clé AES chiffre les jetons OAuth avant insertion dans social_credentials.
+do $social_vault$
+begin
+  if not exists (
+    select 1 from vault.decrypted_secrets
+    where name = 'sama_social_token_encryption_key'
+  ) then
+    perform vault.create_secret(
+      encode(extensions.gen_random_bytes(32), 'base64'),
+      'sama_social_token_encryption_key',
+      'Clé AES-GCM utilisée exclusivement par l’Edge Function Social Desk.'
+    );
+  end if;
+
+  if not exists (
+    select 1 from vault.decrypted_secrets
+    where name = 'sama_social_worker_token'
+  ) then
+    perform vault.create_secret(
+      encode(extensions.gen_random_bytes(48), 'base64'),
+      'sama_social_worker_token',
+      'Jeton serveur-à-serveur pour le déclencheur périodique des publications SAMA-PACK.'
+    );
+  end if;
+end;
+$social_vault$;
+
+create or replace function public.sama_get_social_token_encryption_key()
+returns text
+language plpgsql
+security definer
+set search_path to ''
+as $function$
+begin
+  if coalesce(auth.jwt()->>'role','') <> 'service_role' then
+    raise exception 'Accès réservé au moteur social.';
+  end if;
+  return (
+    select decrypted_secret
+    from vault.decrypted_secrets
+    where name = 'sama_social_token_encryption_key'
+    limit 1
+  );
+end;
+$function$;
+
+create or replace function public.sama_get_social_worker_token()
+returns text
+language plpgsql
+security definer
+set search_path to ''
+as $function$
+begin
+  if coalesce(auth.jwt()->>'role','') <> 'service_role' then
+    raise exception 'Accès réservé au moteur social.';
+  end if;
+  return (
+    select decrypted_secret
+    from vault.decrypted_secrets
+    where name = 'sama_social_worker_token'
+    limit 1
+  );
+end;
+$function$;
+
+revoke all on function public.sama_get_social_token_encryption_key() from public, anon, authenticated;
+revoke all on function public.sama_get_social_worker_token() from public, anon, authenticated;
+grant execute on function public.sama_get_social_token_encryption_key() to service_role;
+grant execute on function public.sama_get_social_worker_token() to service_role;
+
+-- Un déclencheur périodique vérifie les publications arrivées à échéance et
+-- les traitements TikTok encore en cours. Le jeton serveur reste dans Vault.
+do $social_cron$
+begin
+  if not exists (
+    select 1 from cron.job where jobname = 'sama-pack-social-publisher'
+  ) then
+    perform cron.schedule(
+      'sama-pack-social-publisher',
+      '*/5 * * * *',
+      $job$
+        select net.http_post(
+          url := 'https://tbxxrnhcfuaeaatlrdtr.supabase.co/functions/v1/sama-social-platforms',
+          headers := jsonb_build_object(
+            'Content-Type', 'application/json',
+            'x-social-worker-token', (
+              select decrypted_secret
+              from vault.decrypted_secrets
+              where name = 'sama_social_worker_token'
+              limit 1
+            )
+          ),
+          body := jsonb_build_object('action', 'worker'),
+          timeout_milliseconds := 120000
+        );
+      $job$
+    );
+  end if;
+end;
+$social_cron$;
 
 -- Validation des publications préparées par un collaborateur.
 -- Cette fonction ne lance PAS une publication externe ; elle enregistre l'approbation.
