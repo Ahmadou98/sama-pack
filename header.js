@@ -23,7 +23,7 @@
           <a href="livraison-retours.html">Livraison et retours</a>
           <a href="conditions-vente.html">Conditions de vente</a>
           <a href="confidentialite.html">Confidentialité</a>
-          <a href="telecharger-application.html">Application mobile</a>
+          <a href="telecharger-application.html">Guide d’installation</a>
         </div>
       </details>
     </nav>
@@ -48,7 +48,6 @@
           <a class="mobile-nav-item" href="comment-ca-marche.html"><span aria-hidden="true">ⓘ</span><small>Comment ça marche</small></a>
           <a class="mobile-nav-item" href="/#b2b"><span aria-hidden="true">▤</span><small>Professionnels</small></a>
           <button class="mobile-nav-item" id="mobilePushEnableBtn" data-header-action="push" type="button"><span aria-hidden="true">🔔</span><small>Activer les notifications</small></button>
-          <a class="mobile-nav-item" href="telecharger-application.html"><span aria-hidden="true">↓</span><small>Application mobile</small></a>
           <details class="mobile-nav-group">
             <summary class="mobile-nav-item"><small>Aide &amp; contact</small><span class="mobile-nav-group-chevron" aria-hidden="true">⌄</span></summary>
             <div class="mobile-nav-submenu">
@@ -56,6 +55,7 @@
               <a href="livraison-retours.html">Livraison et retours</a>
               <a href="conditions-vente.html">Conditions de vente</a>
               <a href="confidentialite.html">Confidentialité</a>
+              <a href="telecharger-application.html">Guide d’installation</a>
             </div>
           </details>
           <button type="button" id="mobileManageBtn" data-header-action="manage" class="mobile-nav-item hidden" aria-label="Ouvrir la gestion"><span aria-hidden="true">⚙</span><small>Gestion</small></button>
