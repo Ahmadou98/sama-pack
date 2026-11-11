@@ -296,7 +296,7 @@ async function startOAuth(provider: Provider, userId: string): Promise<string> {
     state_hash: stateHash,
     provider,
     created_by: userId,
-    redirect_path: "/?spAction=manage&social=connected",
+    redirect_path: "/?spAction=manage&view=social&social=connected",
     expires_at: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
   };
   const { error } = await service.from("social_oauth_states").insert(record);
