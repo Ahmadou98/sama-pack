@@ -66,7 +66,7 @@ self.addEventListener("notificationclick", (event) => {
 
 "use strict";
 
-const CACHE_NAME = "sama-pack-pwa-v2";
+const CACHE_NAME = "sama-pack-pwa-v3";
 const OFFLINE_URL = "/offline.html";
 const PRECACHE_URLS = [
   OFFLINE_URL,
@@ -77,7 +77,9 @@ const PRECACHE_URLS = [
   "/icons/apple-touch-icon.png",
   "/pwa.css?v=20261106-pwa-v1",
   "/pwa.js?v=20261106-pwa-v1",
-  "/web-push.js?v=20261110-webpush-v1"
+  "/web-push.js?v=20261110-webpush-v1",
+  "/social-admin.css?v=20261111-social-v1",
+  "/social-admin.js?v=20261111-social-v1"
 ];
 
 self.addEventListener("install", (event) => {
