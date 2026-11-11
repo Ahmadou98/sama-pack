@@ -82,6 +82,11 @@
                 <button class="side-btn" type="button" data-view="profitability"><span class="admin-nav-icon" aria-hidden="true">↗</span><span>Rentabilité</span></button>
               </section>
 
+              <section class="admin-nav-group" aria-label="Marketing et communication">
+                <span class="admin-nav-heading">MARKETING &amp; COMMUNICATION</span>
+                <button class="side-btn" type="button" data-view="social"><span class="admin-nav-icon" aria-hidden="true">◎</span><span>Réseaux sociaux</span></button>
+              </section>
+
               <section class="admin-nav-group" aria-label="Administration">
                 <span class="admin-nav-heading">ADMINISTRATION</span>
                 <button class="side-btn" type="button" data-view="admins"><span class="admin-nav-icon" aria-hidden="true">♧</span><span>Comptes administrateurs</span></button>
