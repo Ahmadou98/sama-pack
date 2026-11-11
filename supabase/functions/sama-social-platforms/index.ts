@@ -48,6 +48,7 @@ type SocialTarget = {
   status: string;
   provider_options: Record<string, unknown> | null;
   platform_post_id?: string | null;
+  attempt_count?: number;
 };
 type SocialPost = {
   id: string;
@@ -987,6 +988,9 @@ async function publishYouTube(
 }
 
 async function pollTikTokStatus(target: SocialTarget, account: SocialAccount, token: string) {
+  if (Number(target.attempt_count || 0) >= 50) {
+    throw new Error("TikTok n'a pas terminé le traitement après plusieurs vérifications. Relance la publication depuis Social Desk.");
+  }
   const publishId = String(target.platform_post_id || "");
   const status = await fetchJson("https://open.tiktokapis.com/v2/post/publish/status/fetch/", {
     method: "POST",
