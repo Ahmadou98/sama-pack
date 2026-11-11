@@ -177,7 +177,7 @@
         ? '<button class="btn small secondary social-connect-button" type="button" data-social-connect="' + provider.key + '"' +
           (configured ? '' : ' disabled title="' + esc(missing.length ? 'Secrets manquants : ' + missing.join(', ') : 'Vérification de configuration indisponible') + '"') + '>' +
           (configured ? (active.length ? 'Ajouter un compte' : 'Connecter') : 'Configuration requise') + '</button>' +
-          (!configured ? '<small class="social-muted">À ajouter dans Supabase Edge Function Secrets : ' + esc(missing.join(', ') || 'configuration non vérifiée') + '</small>' : '')
+          (!configured ? '<small class="social-muted">Secrets serveur manquants : ' + esc(missing.join(', ') || 'configuration non vérifiée') + '</small>' : '')
         : '';
       const descriptionText = isManualOnly
         ? "Publication manuelle : TikTok ne sera pas automatisé depuis cet outil interne."
@@ -250,11 +250,15 @@
       if (canPublish && targets.some(target => target.status === "failed")) {
         actions += '<button class="btn small secondary" type="button" data-social-retry="' + esc(post.id) + '">Réessayer</button>';
       }
-      if (canManage && targets.some(target => target.provider === "tiktok" && target.status === "manual_required")) {
+      const tiktokReadyForManual = targets.some(target =>
+        target.provider === "tiktok" && target.status === "manual_required" &&
+        (!post.scheduled_at || new Date(post.scheduled_at).getTime() <= Date.now())
+      );
+      if (canManage && tiktokReadyForManual) {
         actions += '<button class="btn small ghost" type="button" data-social-copy-tiktok="' + esc(post.id) + '">Copier le texte TikTok</button>' +
           '<button class="btn small secondary" type="button" data-social-open-tiktok="' + esc(post.id) + '">Ouvrir TikTok</button>';
       }
-      if (canPublish && targets.some(target => target.provider === "tiktok" && target.status === "manual_required")) {
+      if (canPublish && tiktokReadyForManual) {
         actions += '<button class="btn small primary" type="button" data-social-confirm-tiktok="' + esc(post.id) + '">Confirmer la publication TikTok</button>';
       }
       if (canManage && !["published", "publishing", "partially_published"].includes(post.status)) {
@@ -366,7 +370,7 @@
       '<article class="social-stat-card"><span>Publications confirmées</span><strong>' + publishedCount + '</strong></article>' +
       '</section>' +
       '<section class="social-api-notice"><span class="social-notice-icon" aria-hidden="true">i</span><div><strong>Publication sécurisée et contrôlée</strong><p>Les autorisations OAuth sont vérifiées pour chaque réseau. Les jetons sont conservés chiffrés côté serveur. Les comptes, programmations et résultats ne sont marqués comme connectés ou publiés qu’après confirmation de la plateforme.</p></div></section>' +
-      '<section class="social-section"><div class="social-section-heading"><div><span class="eyebrow">COMPTES OFFICIELS</span><h3>Plateformes connectées</h3><p>Les autorisations et connexions OAuth seront intégrées dans une prochaine étape.</p></div><span class="social-step-number">02</span></div><div class="social-account-grid">' +
+      '<section class="social-section"><div class="social-section-heading"><div><span class="eyebrow">COMPTES OFFICIELS</span><h3>Plateformes connectées</h3><p>Connecte les comptes après configuration des identifiants développeur requis.</p></div><span class="social-step-number">02</span></div><div class="social-account-grid">' +
       renderAccounts(data.accounts, ctx) +
       '</div></section>' +
       composer +
