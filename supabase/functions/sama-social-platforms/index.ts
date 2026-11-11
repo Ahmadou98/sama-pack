@@ -129,7 +129,7 @@ function base64Decode(value: string): Uint8Array {
   return Uint8Array.from(binary, char => char.charCodeAt(0));
 }
 
-async async function encryptionKey(): Promise<CryptoKey> {
+async function encryptionKey(): Promise<CryptoKey> {
   const { data, error } = await service.rpc("sama_get_social_token_encryption_key");
   if (error || typeof data !== "string" || !data) {
     throw new Error("La clé de chiffrement Social Desk n'est pas disponible dans Supabase Vault.");
