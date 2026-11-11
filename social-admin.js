@@ -157,12 +157,19 @@
               : '<small class="social-muted">Connexion à renouveler</small>')
           ).join("")
         : '<span class="social-account-empty">Aucun compte connecté</span>';
+      const readiness = ctx.providerConfig?.[provider.key] || null;
+      const configured = readiness?.ready === true;
+      const missing = Array.isArray(readiness?.missing) ? readiness.missing : [];
       const badge = active.length
         ? '<span class="social-status is-success">' + active.length + ' connecté(s)</span>'
-        : '<span class="social-status">À connecter</span>';
+        : configured
+          ? '<span class="social-status">Prêt à connecter</span>'
+          : '<span class="social-status is-warning">OAuth à configurer</span>';
       const connect = ctx.canManageAccounts
-        ? '<button class="btn small secondary social-connect-button" type="button" data-social-connect="' + provider.key + '">' +
-          (active.length ? 'Ajouter un compte' : 'Connecter') + '</button>'
+        ? '<button class="btn small secondary social-connect-button" type="button" data-social-connect="' + provider.key + '"' +
+          (configured ? '' : ' disabled title="' + esc(missing.length ? 'Secrets manquants : ' + missing.join(', ') : 'Vérification de configuration indisponible') + '"') + '>' +
+          (configured ? (active.length ? 'Ajouter un compte' : 'Connecter') : 'Configuration requise') + '</button>' +
+          (!configured ? '<small class="social-muted">À ajouter dans Supabase Edge Function Secrets : ' + esc(missing.join(', ') || 'configuration non vérifiée') + '</small>' : '')
         : '';
       return '<article class="social-account-card">' +
         '<div class="social-account-card-top"><span class="social-provider-mark social-provider-' + provider.key + '">' + esc(provider.short) + '</span>' + badge + '</div>' +
@@ -309,7 +316,7 @@
         '<label class="social-field">Photo ou vidéo<input class="input" name="media" type="file" accept="image/jpeg,image/png,image/webp,image/gif,video/mp4,video/quicktime"><small>Image ou vidéo, 100 Mo maximum.</small></label>' +
         '<label class="social-field">Visibilité TikTok<select class="input" name="tiktok_privacy"><option value="SELF_ONLY">Privée (conseillée pour tester)</option><option value="PUBLIC_TO_EVERYONE">Publique</option><option value="MUTUAL_FOLLOW_FRIENDS">Amis mutuels</option></select><small>La visibilité publique dépend de l’audit TikTok de l’application.</small></label>' +
         '<label class="social-field">Visibilité YouTube<select class="input" name="youtube_privacy"><option value="public">Publique</option><option value="unlisted">Non répertoriée</option><option value="private">Privée</option></select><small>YouTube ne reçoit que des vidéos par cette API.</small></label>' +
-        '<div class="social-composer-notice full"><strong>Publication réelle non activée :</strong> cette version enregistre les contenus et les programmations éditoriales. Elle n’envoie rien aux réseaux avant la configuration des API officielles et de leurs autorisations.</div>' +
+        '<div class="social-composer-notice full"><strong>Avant l’envoi :</strong> chaque réseau doit être connecté avec ses autorisations officielles. Les publications automatiques ne sont lancées qu’après validation et à la date prévue. Les formats non pris en charge restent à publier manuellement.</div>' +
         '<div class="social-form-actions full"><button class="btn primary" type="submit" id="socialSavePostBtn">Enregistrer le contenu</button><button class="btn ghost" type="button" id="socialResetPostBtn">Effacer</button><span id="socialFormFeedback" role="status" aria-live="polite"></span></div>' +
         '</form></section>'
       : '<section class="panel social-composer-panel"><div class="social-section-heading"><div><span class="eyebrow">STUDIO DE CONTENU</span><h3>Accès en consultation</h3><p>La création et les modifications nécessitent une permission spécifique.</p></div></div></section>';
@@ -323,7 +330,7 @@
       '<article class="social-stat-card"><span>À valider</span><strong>' + approvalCount + '</strong></article>' +
       '<article class="social-stat-card"><span>Programmations</span><strong>' + scheduledCount + '</strong></article>' +
       '</section>' +
-      '<section class="social-api-notice"><span class="social-notice-icon" aria-hidden="true">i</span><div><strong>Connexions aux plateformes à configurer</strong><p>Les comptes et publications seront connectés par les API officielles de TikTok, Instagram, Facebook, LinkedIn et YouTube. Aucun compte n’est considéré comme publié ou connecté tant que le réseau ne l’a pas confirmé.</p></div></section>' +
+      '<section class="social-api-notice"><span class="social-notice-icon" aria-hidden="true">i</span><div><strong>Publication sécurisée et contrôlée</strong><p>Les autorisations OAuth sont vérifiées pour chaque réseau. Les jetons sont conservés chiffrés côté serveur. Les comptes, programmations et résultats ne sont marqués comme connectés ou publiés qu’après confirmation de la plateforme.</p></div></section>' +
       '<section class="social-section"><div class="social-section-heading"><div><span class="eyebrow">COMPTES OFFICIELS</span><h3>Plateformes connectées</h3><p>Les autorisations et connexions OAuth seront intégrées dans une prochaine étape.</p></div><span class="social-step-number">02</span></div><div class="social-account-grid">' +
       renderAccounts(data.accounts, ctx) +
       '</div></section>' +
@@ -338,6 +345,20 @@
       '</div>';
   }
 
+  async function loadProviderConfiguration(ctx) {
+    if (!ctx.canManageAccounts) return {};
+    try {
+      const { data, error } = await ctx.client.functions.invoke("sama-social-platforms", {
+        body: { action: "configuration" }
+      });
+      if (error || data?.ok !== true || !data.providers) return {};
+      return data.providers;
+    } catch (error) {
+      console.warn("Social Desk OAuth configuration is not readable yet.", error);
+      return {};
+    }
+  }
+
   async function mount(ctx) {
     const root = ctx && ctx.root;
     if (!root || !ctx.client) return;
@@ -347,8 +368,12 @@
     }
     root.innerHTML = '<div class="panel social-loading"><span class="admin-loading-spinner" aria-hidden="true"></span><p>Chargement de la gestion des réseaux sociaux…</p></div>';
     try {
-      const data = await loadData(ctx.client);
+      const [data, providerConfig] = await Promise.all([
+        loadData(ctx.client),
+        loadProviderConfiguration(ctx)
+      ]);
       ctx.data = data;
+      ctx.providerConfig = providerConfig;
       root.innerHTML = buildMarkup(data, ctx);
       bind(root, ctx);
       const url = new URL(window.location.href);
