@@ -2,6 +2,8 @@
 -- À appliquer après revue/validation de cette branche.
 -- Les identifiants OAuth ne sont jamais exposés dans les tables publiques.
 
+create schema if not exists private;
+
 create table if not exists public.social_accounts (
   id uuid primary key default gen_random_uuid(),
   provider text not null check (provider in ('tiktok','instagram','facebook','linkedin','youtube')),
@@ -219,6 +221,7 @@ create policy sama_social_media_insert on storage.objects
   for insert to authenticated
   with check (
     bucket_id = 'sama-social-media'
+    and (storage.foldername(name))[1] = (select auth.uid()::text)
     and private.sama_has_admin_permission('social.manage')
   );
 
