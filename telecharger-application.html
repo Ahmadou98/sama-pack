@@ -4,16 +4,16 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#166534">
-  <meta name="description" content="Téléchargez l’application Android officielle SAMA-PACK ou installez la boutique sur votre iPhone. Retrouvez le catalogue, vos commandes et votre compte client.">
+  <meta name="description" content="Installez la boutique SAMA-PACK sur l’écran d’accueil de votre Android ou iPhone, directement depuis votre navigateur.">
   <meta name="robots" content="index,follow,max-image-preview:large">
   <link rel="canonical" href="https://sama-pack.store/telecharger-application.html">
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="SAMA-PACK">
-  <meta property="og:title" content="Télécharger l’application SAMA-PACK">
-  <meta property="og:description" content="L’application officielle SAMA-PACK pour Android et iPhone.">
+  <meta property="og:title" content="Installer SAMA-PACK sur votre téléphone">
+  <meta property="og:description" content="Accédez à SAMA-PACK depuis l’écran d’accueil, avec l’installation PWA.">
   <meta property="og:url" content="https://sama-pack.store/telecharger-application.html">
   <meta property="og:image" content="https://sama-pack.store/icons/icon-512.png">
-  <title>Télécharger l’application SAMA-PACK | Android et iPhone</title>
+  <title>Installer SAMA-PACK | Android et iPhone</title>
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
   <link rel="apple-touch-icon" sizes="180x180" href="/icons/apple-touch-icon.png">
@@ -36,15 +36,12 @@
     .app-download-wrap{width:min(960px,92vw);margin:0 auto}
     .app-platform-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;margin-top:28px}
     .app-platform-card{display:flex;flex-direction:column;align-items:flex-start;min-width:0;padding:24px;border:1px solid #dfe9e2;border-radius:20px;background:#fff;box-shadow:0 12px 34px rgba(15,23,42,.045)}
-    .app-platform-icon{display:grid;place-items:center;width:48px;height:48px;margin-bottom:14px;border-radius:14px;background:#edf8f0;color:#166534;font-size:24px;font-weight:900}
+    .app-platform-icon{display:grid;place-items:center;width:48px;height:48px;margin-bottom:14px;border-radius:14px;background:#edf8f0;color:#166534;font-size:21px;font-weight:900}
     .app-platform-card h2{margin:0 0 8px;font-size:22px;letter-spacing:-.025em;color:#1a3324}
     .app-platform-card>p{margin:0 0 15px;color:#5d6e62;font-size:14px;line-height:1.65}
     .app-download-primary{display:flex;align-items:center;justify-content:center;width:100%;min-height:48px;margin-top:auto;padding:12px 16px;border:0;border-radius:12px;background:#166534;color:#fff;font:inherit;font-weight:850;text-align:center;text-decoration:none}
-    .app-download-primary[aria-disabled="true"]{background:#dce8df;color:#587060;cursor:not-allowed;pointer-events:none}
-    .app-download-secondary{display:flex;align-items:center;justify-content:center;width:100%;min-height:45px;margin-top:9px;padding:10px 14px;border:1px solid #d6e5da;border-radius:11px;background:#fff;color:#166534;font-size:13px;font-weight:800;text-align:center;text-decoration:none}
     .app-download-status{min-height:36px;margin:12px 0 0;color:#617366;font-size:12px;line-height:1.5}
     .app-download-status.success{color:#17643a;font-weight:700}
-    .app-download-status.warning{color:#8a5700}
     .app-download-meta{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
     .app-download-meta span{padding:6px 9px;border:1px solid #e2ece4;border-radius:999px;background:#f8fbf9;color:#627267;font-size:11px;font-weight:750}
     .app-install-guide{margin-top:25px;padding:24px;border:1px solid #e2eae4;border-radius:18px;background:#fbfdfb}
@@ -79,9 +76,9 @@
           <img src="/icons/icon-192.png" alt="Icône SAMA-PACK" width="66" height="66">
           <span>SAMA-PACK</span>
         </div>
-        <div class="eyebrow">APPLICATION OFFICIELLE</div>
-        <h1>La boutique SAMA-PACK dans votre téléphone.</h1>
-        <p>Installez SAMA-PACK pour retrouver facilement nos produits d’entretien, vos commandes et votre espace client, où que vous soyez.</p>
+        <div class="eyebrow">BOUTIQUE WEB INSTALLABLE</div>
+        <h1>SAMA-PACK, directement sur votre écran d’accueil.</h1>
+        <p>Installez la boutique depuis votre navigateur. Retrouvez vos produits, votre panier et vos commandes sans télécharger de fichier APK.</p>
       </div>
     </section>
 
@@ -90,108 +87,56 @@
         <article class="app-platform-card">
           <div class="app-platform-icon" aria-hidden="true">A</div>
           <div class="eyebrow">ANDROID</div>
-          <h2>Télécharger l’APK</h2>
-          <p>Obtenez le fichier officiel SAMA-PACK et installez-le directement sur votre téléphone Android.</p>
-          <a id="apkDownloadLink" class="app-download-primary" href="#" aria-disabled="true" tabindex="-1">APK en préparation</a>
-          <div id="apkDownloadStatus" class="app-download-status" role="status" aria-live="polite">La première version Android est en cours de préparation.</div>
-          <div class="app-download-meta">
-            <span id="apkVersion">Version : à venir</span>
-            <span>Fichier APK officiel</span>
-          </div>
+          <h2>Installer depuis Chrome</h2>
+          <p>Ouvrez SAMA-PACK dans Chrome, puis utilisez la commande d’installation du navigateur pour ajouter la boutique à votre écran d’accueil.</p>
+          <a class="app-download-primary" href="/" aria-label="Ouvrir SAMA-PACK dans votre navigateur Android">Ouvrir SAMA-PACK</a>
+          <div class="app-download-status success">Installation PWA : aucun APK à télécharger.</div>
+          <div class="app-download-meta"><span>Android</span><span>Installation gratuite</span></div>
         </article>
 
         <article class="app-platform-card">
           <div class="app-platform-icon" aria-hidden="true"></div>
           <div class="eyebrow">IPHONE</div>
           <h2>Ajouter à l’écran d’accueil</h2>
-          <p>Sur iPhone, installez la version Web de SAMA-PACK depuis Safari. Elle s’ouvre ensuite comme une application.</p>
-          <a class="app-download-primary" href="/" aria-label="Ouvrir SAMA-PACK pour l’ajouter à l’écran d’accueil">Ouvrir SAMA-PACK</a>
-          <div class="app-download-status success">Compatible avec l’installation depuis Safari, sans téléchargement d’APK.</div>
-          <div class="app-download-meta">
-            <span>iPhone / iPad</span>
-            <span>Installation gratuite</span>
-          </div>
+          <p>Ouvrez SAMA-PACK dans Safari et ajoutez la boutique à votre écran d’accueil. Elle s’ouvrira ensuite dans sa propre fenêtre.</p>
+          <a class="app-download-primary" href="/" aria-label="Ouvrir SAMA-PACK dans Safari">Ouvrir SAMA-PACK</a>
+          <div class="app-download-status success">Installation PWA depuis Safari, sans App Store.</div>
+          <div class="app-download-meta"><span>iPhone / iPad</span><span>Installation gratuite</span></div>
         </article>
       </div>
 
       <section class="app-install-guide" aria-labelledby="appInstallGuideTitle">
         <h2 id="appInstallGuideTitle">Comment installer SAMA-PACK ?</h2>
         <div class="app-guide-columns">
-          <div>
-            <h3>Sur Android</h3>
-            <ol>
-              <li>Téléchargez le fichier APK depuis cette page officielle.</li>
-              <li>Ouvrez le fichier depuis les notifications ou le dossier Téléchargements.</li>
-              <li>Si Android le demande, autorisez temporairement votre navigateur à installer cette application.</li>
-              <li>Appuyez sur « Installer », puis ouvrez SAMA-PACK.</li>
-            </ol>
-          </div>
-          <div>
-            <h3>Sur iPhone</h3>
-            <ol>
-              <li>Ouvrez sama-pack.store dans Safari.</li>
-              <li>Appuyez sur le bouton Partager.</li>
-              <li>Choisissez « Sur l’écran d’accueil ».</li>
-              <li>Validez avec « Ajouter ».</li>
-            </ol>
-          </div>
+          <div><h3>Sur Android</h3><ol>
+            <li>Ouvrez <strong>sama-pack.store</strong> dans Chrome.</li>
+            <li>Appuyez sur le menu ⋮ du navigateur.</li>
+            <li>Choisissez « Installer l’application » ou « Ajouter à l’écran d’accueil ».</li>
+            <li>Confirmez l’installation.</li>
+          </ol></div>
+          <div><h3>Sur iPhone</h3><ol>
+            <li>Ouvrez <strong>sama-pack.store</strong> dans Safari.</li>
+            <li>Appuyez sur le bouton Partager.</li>
+            <li>Choisissez « Sur l’écran d’accueil ».</li>
+            <li>Appuyez sur « Ajouter ».</li>
+          </ol></div>
         </div>
-        <p class="app-download-note">Sécurité : téléchargez toujours l’application Android depuis le domaine officiel <strong>sama-pack.store</strong>. La boutique a besoin d’une connexion Internet pour actualiser les prix, les disponibilités et vos commandes. L’installation ne nécessite aucun compte SAMA-PACK.</p>
+        <p class="app-download-note">SAMA-PACK est une application Web progressive (PWA). Elle utilise le site officiel et ses services existants. Une connexion Internet reste nécessaire pour actualiser les prix, les stocks et les commandes.</p>
       </section>
 
       <section class="app-download-faq" aria-labelledby="appDownloadFaqTitle">
         <h2>À savoir</h2>
-        <details>
-          <summary>Pourquoi Android affiche-t-il une autorisation avant l’installation ?</summary>
-          <p>Un APK téléchargé depuis un site Web est installé hors du Play Store. Android peut donc demander d’autoriser le navigateur utilisé à installer des applications. N’accordez cette autorisation que pour un fichier provenant de notre domaine officiel.</p>
+        <details><summary>Faut-il télécharger un fichier ou passer par un store ?</summary>
+          <p>Non. L’installation se fait directement depuis le navigateur. Aucun APK ni téléchargement depuis un store n’est nécessaire.</p>
         </details>
-        <details>
-          <summary>L’application Android est-elle différente du site ?</summary>
-          <p>Elle donne accès à la même boutique dans une fenêtre d’application dédiée. Le catalogue, les comptes, le panier et les commandes restent synchronisés avec SAMA-PACK.</p>
+        <details><summary>Est-ce que mes commandes restent synchronisées ?</summary>
+          <p>Oui. La PWA utilise le même compte client et les mêmes commandes que le site SAMA-PACK.</p>
         </details>
-        <details>
-          <summary>Est-ce que je peux commander sans Internet ?</summary>
-          <p>Non. Une connexion Internet est nécessaire pour vérifier les informations à jour et transmettre une commande. Aucune commande n’est validée hors connexion.</p>
+        <details><summary>Les notifications fonctionnent-elles ?</summary>
+          <p>Les notifications Web dépendent du navigateur, de l’appareil et des autorisations que vous accordez. Activez-les depuis votre compte lorsque l’option est disponible.</p>
         </details>
       </section>
     </section>
   </main>
-  <script>
-    (() => {
-      const downloadLink = document.getElementById("apkDownloadLink");
-      const status = document.getElementById("apkDownloadStatus");
-      const versionLabel = document.getElementById("apkVersion");
-      const apkUrl = "/downloads/SAMA-PACK.apk";
-
-      async function loadAndroidRelease() {
-        try {
-          const response = await fetch("/downloads/version.json", { cache: "no-store" });
-          if (!response.ok) throw new Error("Version Android non publiée");
-          const release = await response.json();
-          const apkResponse = await fetch(apkUrl, { method: "HEAD", cache: "no-store" });
-          if (!apkResponse.ok) throw new Error("Fichier APK non disponible");
-
-          downloadLink.href = apkUrl;
-          downloadLink.download = "SAMA-PACK.apk";
-          downloadLink.textContent = "Télécharger l’application Android";
-          downloadLink.removeAttribute("aria-disabled");
-          downloadLink.removeAttribute("tabindex");
-          versionLabel.textContent = "Version : " + String(release.version || "disponible");
-          status.textContent = "Fichier officiel prêt au téléchargement. Taille : " +
-            (apkResponse.headers.get("content-length")
-              ? Math.max(1, Math.round(Number(apkResponse.headers.get("content-length")) / 1048576)) + " Mo"
-              : "consultez le téléchargement") + ".";
-          status.classList.add("success");
-        } catch (error) {
-          downloadLink.textContent = "APK en préparation";
-          downloadLink.setAttribute("aria-disabled", "true");
-          downloadLink.setAttribute("tabindex", "-1");
-          status.textContent = "La première version Android sera disponible ici après validation de sa compilation et de sa signature.";
-        }
-      }
-
-      loadAndroidRelease();
-    })();
-  </script>
 </body>
 </html>
