@@ -288,6 +288,30 @@ async function saveAccount(input: {
     tokenExpiry(input.expiresIn),
     input.scopes || [],
   );
+
+  // Lorsqu'un compte est nouvellement relié, rattacher les cibles éditoriales
+  // restées en attente de connexion pour cette plateforme.
+  const { data: waitingTargets, error: waitingError } = await service.from("social_post_targets")
+    .select("id,publication_mode,scheduled_at")
+    .eq("provider", input.provider)
+    .is("social_account_id", null)
+    .eq("status", "awaiting_connection");
+  if (waitingError) throw new Error("Le compte est connecté, mais les publications en attente n'ont pas pu être rattachées.");
+  for (const target of (waitingTargets || [])) {
+    const nextStatus = target.publication_mode === "manual"
+      ? "manual_required"
+      : target.scheduled_at
+        ? "scheduled"
+        : "draft";
+    const { error: linkError } = await service.from("social_post_targets").update({
+      social_account_id: data.id,
+      status: nextStatus,
+      updated_at: new Date().toISOString(),
+    }).eq("id", target.id).is("social_account_id", null);
+    if (linkError) {
+      console.error("SAMA-PACK social target could not be linked to connected account", target.id, linkError.message);
+    }
+  }
 }
 
 async function startOAuth(provider: Provider, userId: string): Promise<string> {
