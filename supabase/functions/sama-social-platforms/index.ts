@@ -1078,6 +1078,22 @@ async function runDue(req: Request, internal: boolean, origin: string | null) {
   }, 200, origin);
 }
 
+function providerConfiguration(names: string[]) {
+  const missing = names.filter(name => !(Deno.env.get(name) || "").trim());
+  return { ready: missing.length === 0, missing };
+}
+
+function socialConfiguration() {
+  const meta = providerConfiguration(["META_APP_ID", "META_APP_SECRET", "META_GRAPH_API_VERSION"]);
+  return {
+    facebook: meta,
+    instagram: meta,
+    tiktok: providerConfiguration(["TIKTOK_CLIENT_KEY", "TIKTOK_CLIENT_SECRET"]),
+    linkedin: providerConfiguration(["LINKEDIN_CLIENT_ID", "LINKEDIN_CLIENT_SECRET"]),
+    youtube: providerConfiguration(["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET"]),
+  };
+}
+
 async function disconnectAccount(req: Request, accountId: string) {
   const caller = await requirePermission(req, "social.accounts.manage");
   if (!accountId) throw new Error("Compte social manquant.");
@@ -1124,6 +1140,11 @@ Deno.serve(async (req: Request) => {
 
   const action = String(payload.action || "");
   try {
+    if (action === "configuration") {
+      await requirePermission(req, "social.accounts.manage");
+      return json({ ok: true, providers: socialConfiguration() }, 200, origin);
+    }
+
     if (action === "connect") {
       const provider = String(payload.provider || "") as Provider;
       if (!["facebook", "instagram", "tiktok", "linkedin", "youtube"].includes(provider)) {
