@@ -473,7 +473,6 @@
             : result.scheduledAt
               ? "Programmation éditoriale enregistrée. Aucun réseau n’a encore reçu la publication."
               : "Brouillon enregistré.";
-          ctx.data = await loadData(ctx.client);
           await refresh(ctx, root);
           const newFeedback = root.querySelector("#socialFormFeedback");
           if (newFeedback) newFeedback.textContent = message;
