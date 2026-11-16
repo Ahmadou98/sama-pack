@@ -3513,189 +3513,33 @@
     window.open(url, "_blank", "noopener,noreferrer");
   }
 
-  async function paymentFunctionError(error, fallback) {
-    try {
-      const response = error?.context;
-      if (response && typeof response.clone === "function") {
-        const body = await response.clone().json();
-        if (body?.error) return String(body.error);
-      }
-    } catch { /* fallback below */ }
-    return fallback || errorMessage(error);
+  function contactOrderOnWhatsApp(orderId, purpose = "faire le point sur ma commande") {
+    const id = String(orderId || "").trim();
+    if (!id) return toast("Référence de commande manquante.", true);
+    openWA("Bonjour SAMA-PACK, je souhaite " + purpose + " " + id + ". Merci de me confirmer la situation et les modalités de règlement. Le paiement des nouvelles commandes se fait à la livraison.");
   }
 
-  async function retryOrderPayment(orderId) {
-    if (!currentUser) { openAccountModal(); return toast("Connecte-toi pour reprendre le paiement.", true); }
-    if (!orderId) {
-      try { orderId = localStorage.getItem("sama_pack_pending_payment_v1") || ""; } catch { orderId = ""; }
-    }
-    if (!orderId) return toast("Aucune commande en attente de paiement n’a été trouvée.", true);
-    toast("Préparation du paiement sécurisé…");
-    const { data, error } = await client.functions.invoke("sama-payment-checkout", { body: { action: "create_checkout", order_id: orderId } });
-    if (error || data?.error) {
-      const message = data?.error || await paymentFunctionError(error, "Le paiement n’a pas pu être lancé. Vérifie que les clés PayDunya sont configurées dans les secrets Supabase.");
-      showModal(`<div class="modal-head"><div><div class="eyebrow">PAIEMENT EN ATTENTE</div><h2>Commande ${esc(orderId)}</h2></div><button class="close" onclick="closeModal()">✕</button></div>
-        <p>La commande n’est pas encore confirmée et ne sera pas préparée tant que le paiement requis n’est pas vérifié.</p>
-        <div class="inline-message">${esc(message)}</div>
-        <button class="btn primary full" onclick="retryOrderPayment('${esc(orderId)}')">Réessayer le paiement</button>
-        <button class="btn ghost full" onclick="showAccountHome()">Voir mes commandes</button>`);
-      return;
-    }
-    if (data?.already_confirmed) {
-      try { localStorage.removeItem("sama_pack_pending_payment_v1"); } catch { /* stockage facultatif */ }
-      await showAccountHome();
-      toast("Cette commande est déjà confirmée.");
-      return;
-    }
-    if (!data?.payment_url) return toast("Le prestataire n’a pas renvoyé de lien de paiement. Réessaie.", true);
-    window.location.assign(data.payment_url);
+  function retryOrderPayment(orderId) {
+    contactOrderOnWhatsApp(orderId, "reprendre contact au sujet de la commande");
   }
 
-  async function retryPaymentVerification(orderId) {
-    if (!currentUser) { openAccountModal(); return toast("Connecte-toi avec le compte utilisé pour cette commande.", true); }
-    if (!orderId) {
-      try { orderId = localStorage.getItem("sama_pack_pending_payment_v1") || ""; } catch { orderId = ""; }
-    }
-    if (!orderId) return toast("Référence de commande manquante. Ouvre Mes commandes.", true);
-
-    toast("Vérification de la transaction auprès de PayDunya…");
-    const { data, error } = await client.functions.invoke("sama-payment-checkout", {
-      body: { action: "verify_return", order_id: String(orderId) },
-    });
-
-    if (error || data?.error) {
-      const message = data?.error || await paymentFunctionError(error, "La transaction n’a pas encore pu être vérifiée. Ne relance aucun paiement.");
-      showModal(`<div class="modal-head"><div><div class="eyebrow">VÉRIFICATION DU PAIEMENT</div><h2>Vérification toujours en cours</h2></div><button class="close" onclick="closeModal()">✕</button></div>
-        <p>Ne crée pas une nouvelle transaction. Vérifie d’abord l’historique de ton portefeuille et contacte SAMA-PACK en cas de débit confirmé.</p>
-        <div class="inline-message">${esc(message)}</div>
-        <button class="btn primary full" onclick="retryPaymentVerification('${esc(orderId)}')">Vérifier à nouveau</button>
-        <button class="btn ghost full" onclick="showAccountHome()">Voir mes commandes</button>`);
-      return;
-    }
-
-    if (data?.order_status === "new" && data?.order) {
-      try { localStorage.removeItem("sama_pack_pending_payment_v1"); } catch { /* stockage facultatif */ }
-      await loadNotifications();
-      await showAccountHome();
-      toast("Paiement vérifié. Ta commande est maintenant confirmée.");
-      return;
-    }
-
-    const gatewayStatus = String(data?.gateway_status || "en attente");
-    const notice = data?.manual_review_required
-      ? "Le prestataire confirme un paiement total supérieur au montant attendu (" + money(data.expected_online_amount) + "). La commande est bloquée pour vérification par SAMA-PACK. Ne paie pas une deuxième fois."
-      : gatewayStatus === "completed"
-        ? "PayDunya confirme une transaction, mais la commande doit encore être rapprochée. Ne paie pas une deuxième fois ; contacte SAMA-PACK."
-        : "PayDunya n’a pas encore confirmé le paiement. Aucun nouveau paiement n’a été lancé.";
-    showModal(`<div class="modal-head"><div><div class="eyebrow">VÉRIFICATION DU PAIEMENT</div><h2>Statut : ${esc(gatewayStatus)}</h2></div><button class="close" onclick="closeModal()">✕</button></div>
-      <p>${esc(notice)}</p>
-      <button class="btn primary full" onclick="retryPaymentVerification('${esc(orderId)}')">Vérifier à nouveau</button>
-      <button class="btn ghost full" onclick="showAccountHome()">Voir mes commandes</button>`);
-    await loadNotifications();
+  function retryPaymentVerification(orderId) {
+    contactOrderOnWhatsApp(orderId, "vérifier le suivi de la commande");
   }
 
-  async function resendPaymentConfirmation(orderId) {
-    if (!currentUser) { openAccountModal(); return toast("Connecte-toi pour recevoir ton reçu.", true); }
-    if (!orderId) return toast("Référence de commande manquante.", true);
-    toast("Vérification du paiement et envoi du reçu…");
-    const { data, error } = await client.functions.invoke("sama-payment-checkout", {
-      body: { action: "send_payment_confirmation", order_id: String(orderId) },
-    });
-    if (error || data?.error) {
-      const message = data?.error || await paymentFunctionError(error, "Le reçu n’a pas pu être envoyé. Le statut du paiement reste consultable dans Mes commandes.");
-      toast(message, true);
-      return;
-    }
-    if (data?.confirmation_email_status === "sent") {
-      toast("Confirmation et reçu envoyés à " + String(currentUser.email || "l’adresse e-mail du compte") + ".");
-    } else if (data?.confirmation_email_status === "sending") {
-      toast("L’envoi du reçu est déjà en cours. Vérifie ta boîte mail dans quelques instants.");
-    } else {
-      toast("Le paiement reste confirmé, mais l’e-mail n’a pas pu être envoyé. Réessaie ou contacte SAMA-PACK.", true);
-    }
-    await showAccountHome();
+  function resendPaymentConfirmation(orderId) {
+    contactOrderOnWhatsApp(orderId, "recevoir une confirmation ou un justificatif pour la commande");
   }
 
   async function handlePaymentReturn() {
-    let params;
-    try { params = new URLSearchParams(window.location.search); } catch { return; }
-    const paydunyaOrderId = params.get("paydunya_order_id") || params.get("paytech_order_id");
-    const canceledOrderId = params.get("paydunya_cancelled_order_id") || params.get("paytech_cancelled_order_id");
-    const invoiceToken = params.get("token");
-    if (!paydunyaOrderId && !canceledOrderId && !invoiceToken) return;
-
-    const cleanupPaymentQuery = () => {
-      try {
-        params.delete("token");
-        params.delete("paydunya_order_id");
-        params.delete("paydunya_cancelled_order_id");
-        params.delete("paytech_order_id");
-        params.delete("paytech_cancelled_order_id");
-        const query = params.toString();
-        window.history.replaceState({}, document.title, window.location.pathname + (query ? "?" + query : "") + window.location.hash);
-      } catch { /* l'URL de retour reste utilisable même si l'historique est indisponible */ }
-    };
-
-    if (canceledOrderId) {
-      cleanupPaymentQuery();
-      try { localStorage.setItem("sama_pack_pending_payment_v1", canceledOrderId); } catch { /* stockage facultatif */ }
-      toast("Paiement annulé. Aucun règlement n'est confirmé ; tu peux réessayer depuis Mes commandes.");
-      if (currentUser) await showAccountHome();
-      return;
-    }
-
-    if (!currentUser) {
-      toast("Connecte-toi avec le compte utilisé pour cette commande afin de vérifier le paiement.", true);
-      return;
-    }
-
-    let storedOrderId = "";
-    try { storedOrderId = localStorage.getItem("sama_pack_pending_payment_v1") || ""; } catch { storedOrderId = ""; }
-    const orderIdForCheck = paydunyaOrderId || storedOrderId;
-    if (!orderIdForCheck && !invoiceToken) {
-      cleanupPaymentQuery();
-      toast("Référence de commande absente. Ouvre Mes commandes pour vérifier le paiement.", true);
-      return;
-    }
-
-    const { data, error } = await client.functions.invoke("sama-payment-checkout", {
-      body: { action: "verify_return", order_id: orderIdForCheck || undefined, invoice_token: invoiceToken || undefined },
-    });
-    cleanupPaymentQuery();
-    const orderId = data?.order_id || data?.order?.id || orderIdForCheck || storedOrderId;
-    if (error || data?.error) {
-      const message = data?.error || await paymentFunctionError(error, "Le statut du paiement n’a pas encore pu être vérifié.");
-      showModal(`<div class="modal-head"><div><div class="eyebrow">VÉRIFICATION DU PAIEMENT</div><h2>Statut en cours de vérification</h2></div><button class="close" onclick="closeModal()">✕</button></div>
-        <p>Ne relance pas un nouveau paiement si ton portefeuille a déjà été débité. Vérifie ton historique de transaction puis réessaie de vérifier ici.</p>
-        <div class="inline-message">${esc(message)}</div>
-        ${orderId ? `<button class="btn primary full" onclick="retryPaymentVerification('${esc(orderId)}')">Vérifier le paiement</button>` : ""}
-        <button class="btn ghost full" onclick="showAccountHome()">Voir mes commandes</button>`);
-      return;
-    }
-    if (data?.order_status === "new" && data?.order) {
-      try { localStorage.removeItem("sama_pack_pending_payment_v1"); } catch { /* stockage facultatif */ }
-      cart = []; saveCart(); updateCartCount();
-      await loadNotifications();
-      const order = data.order;
-      showModal(`<div class="modal-head"><div><div class="eyebrow">PAIEMENT CONFIRMÉ</div><h2>Merci pour ta commande !</h2></div><button class="close" onclick="closeModal()">✕</button></div>
-        <div class="confirmation-mark">✓</div>
-        <p>PayDunya a confirmé le paiement. La commande ${esc(order.id)} est maintenant enregistrée pour traitement.</p>
-        <div class="summary">
-          <div class="summary-row"><span>Montant de la commande</span><strong>${money(order.total)}</strong></div>
-          <div class="summary-row"><span>Montant encaissé</span><strong>${money(order.amount_paid)}</strong></div>
-          <div class="summary-row total"><span>Reste à payer</span><strong>${money(Math.max(0, Number(order.total || 0) - Number(order.amount_paid || 0)))}</strong></div>
-        </div>
-        <button class="btn primary full" onclick="showAccountHome()">Suivre ma commande</button>`);
-      return;
-    }
-    showModal(`<div class="modal-head"><div><div class="eyebrow">PAIEMENT NON CONFIRMÉ</div><h2>La commande attend encore le paiement</h2></div><button class="close" onclick="closeModal()">✕</button></div>
-      <p>PayDunya n’a pas encore confirmé le paiement. Aucun livreur ne sera envoyé à ce stade.</p>
-      <div class="inline-message">Statut du paiement : ${esc(data?.gateway_status || "en attente")}</div>
-      ${orderId ? `<button class="btn primary full" onclick="retryOrderPayment('${esc(orderId)}')">Réessayer le paiement</button>` : ""}
-      <button class="btn ghost full" onclick="showAccountHome()">Voir mes commandes</button>`);
-    await loadNotifications();
+    const params = new URLSearchParams(window.location.search || "");
+    const legacyKeys = ["paydunya_order_id", "paydunya_cancelled_order_id", "paytech_order_id", "paytech_cancelled_order_id", "token"];
+    if (!legacyKeys.some(key => params.has(key))) return;
+    legacyKeys.forEach(key => params.delete(key));
+    const query = params.toString();
+    window.history.replaceState({}, document.title, window.location.pathname + (query ? "?" + query : "") + window.location.hash);
+    toast("Le paiement en ligne est temporairement désactivé. Contacte SAMA-PACK sur WhatsApp pour toute ancienne commande en attente.", true);
   }
-
 
   function b2bProductOptions(selectedId) {
     const available = replenishmentProducts();
