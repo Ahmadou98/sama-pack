@@ -1787,9 +1787,9 @@
     const list = Array.isArray(p.items) && p.items.length
       ? '<h2>Composition et caractéristiques</h2><ul class="seo-product-list">' + p.items.map(item => '<li>' + esc(item) + '</li>').join("") + '</ul>'
       : "";
-    const status = p.availability_status === "out_of_stock" ? "Actuellement en rupture de stock." : "Article disponible à la commande, sous réserve de confirmation au moment de valider le panier.";
-    host.innerHTML = '<article class="seo-product-layout">' + picture + '<div class="seo-product-info"><div class="eyebrow">' + esc(category) + ' · ' + esc(publicProductRef(p)) + '</div><h1>' + esc(p.name) + '</h1><div id="seoProductRatingSummary">' + renderProductRatingSummary(p.id) + '</div><p>' + esc(p.desc || p.description || "") + '</p>' + productHowToLinkHtml(p) + '<p class="small-note">' + esc(status) + '</p>' + list + '<div class="seo-product-price">' + priceDisplayHtml(p) + '</div><div class="product-actions"><button class="btn primary" type="button" id="seoAddToCartBtn" ' + (canSellProduct(p) ? "" : "disabled") + '>' + (p.availability_status === "out_of_stock" ? "Rupture de stock" : canSellProduct(p) ? "Ajouter au panier" : "Prix à confirmer") + '</button><button class="btn ghost" type="button" id="seoOpenCartBtn">Voir le panier</button><button class="btn ghost product-detail-share-button" type="button" id="seoShareProductBtn">Partager</button></div>' + productDeliveryBadgeHtml(p) + '<a class="btn ghost" href="' + (p.catalog_type === "product" ? "produits.html" : p.catalog_type === "tool" ? "outils.html" : "/#catalogue") + '">Retour au catalogue</a></div></article><section id="productReviewsPanel" class="product-reviews-panel" data-product-id="' + esc(p.id) + '"><p class="review-loading">Chargement des avis…</p></section>';
-    $("seoAddToCartBtn")?.addEventListener("click", () => addToCart(p.id));
+    const status = p.availability_status === "out_of_stock" ? "Actuellement en rupture de stock." : "Disponibilité à confirmer par SAMA-PACK lors de votre demande WhatsApp.";
+    host.innerHTML = '<article class="seo-product-layout">' + picture + '<div class="seo-product-info"><div class="eyebrow">' + esc(category) + ' · ' + esc(publicProductRef(p)) + '</div><h1>' + esc(p.name) + '</h1><div id="seoProductRatingSummary">' + renderProductRatingSummary(p.id) + '</div><p>' + esc(p.desc || p.description || "") + '</p>' + productHowToLinkHtml(p) + '<p class="small-note">' + esc(status) + '</p>' + list + '<div class="seo-product-price">' + priceDisplayHtml(p) + '</div><div class="product-actions"><button class="btn primary" type="button" id="seoWhatsAppOrderBtn" ' + (canSellProduct(p) ? "" : "disabled") + '>' + (p.availability_status === "out_of_stock" ? "Rupture de stock" : canSellProduct(p) ? "Commander sur WhatsApp" : "Prix à confirmer") + '</button><button class="btn ghost" type="button" id="seoOpenCartBtn">Voir le panier</button><button class="btn ghost product-detail-share-button" type="button" id="seoShareProductBtn">Partager</button></div>' + productDeliveryBadgeHtml(p) + '<a class="btn ghost" href="' + (p.catalog_type === "product" ? "produits.html" : p.catalog_type === "tool" ? "outils.html" : "/#catalogue") + '">Retour au catalogue</a></div></article><section id="productReviewsPanel" class="product-reviews-panel" data-product-id="' + esc(p.id) + '"><p class="review-loading">Chargement des avis…</p></section>';
+    $("seoWhatsAppOrderBtn")?.addEventListener("click", () => orderProductOnWhatsApp(p.id));
     $("seoOpenCartBtn")?.addEventListener("click", renderCartModal);
     $("seoShareProductBtn")?.addEventListener("click", () => shareProduct(p.id));
     const offer = { "@type":"Offer", "priceCurrency":"XOF", "price":getEffectivePrice(p), "availability":p.availability_status === "out_of_stock" ? "https://schema.org/OutOfStock" : "https://schema.org/InStock", "url":canonical };
@@ -2547,7 +2547,7 @@
   ];
   function orderTrackingHtml(order) {
     const status = String(order?.status || "new");
-    if (["awaiting_payment", "awaiting_delivery_payment"].includes(status)) return '<div class="order-tracking-pending">Suivi disponible après confirmation du paiement.</div>';
+    if (["awaiting_payment", "awaiting_delivery_payment"].includes(status)) return '<div class="order-tracking-pending">Commande en attente de confirmation par SAMA-PACK.</div>';
     if (status === "cancelled") return '<div class="order-tracking-cancelled">Commande annulée</div>';
     const current = Math.max(0, ORDER_TRACKING_STEPS.findIndex(step => step.status === status));
     return '<ol class="order-track" aria-label="Progression de la commande">' + ORDER_TRACKING_STEPS.map((step, i) =>
@@ -3061,7 +3061,7 @@
     const orderHtml = orders.length ? '<div class="table-wrap account-orders-table-wrap"><table class="table account-orders-table"><thead><tr><th class="account-order-col-reference">Commande</th><th class="account-order-col-date">Date</th><th class="account-order-col-total">Total</th><th class="account-order-col-payment">Paiement et solde</th><th class="account-order-col-tracking">Suivi</th><th class="account-order-col-actions">Action</th></tr></thead><tbody>' + orders.map(o => {
       const paymentPending = ["awaiting_payment","awaiting_delivery_payment"].includes(o.status);
       const paymentActionHtml = paymentPending
-        ? '<button class="btn small primary" onclick="retryOrderPayment(\'' + esc(o.id) + '\')">Payer</button>'
+        ? '<button class="btn small primary" onclick="retryOrderPayment(\'' + esc(o.id) + '\')">Contacter SAMA-PACK</button>'
         : ["paid", "partially_paid"].includes(o.payment_status)
           ? '<button class="btn small ghost" onclick="resendPaymentConfirmation(\'' + esc(o.id) + '\')">Renvoyer le reçu</button>'
           : "";
@@ -3069,7 +3069,7 @@
       const slotHtml = o.slot ? '<div class="small-note order-slot"><strong>Créneau :</strong> ' + esc(o.slot) + '</div>' : '';
       const actionHtml = '<div class="account-order-actions">' + paymentActionHtml + '<button class="btn small ghost" onclick="reorderOrder(\'' + esc(o.id) + '\')">Recommander</button></div>';
       return `<tr class="account-order-row" tabindex="0" aria-label="Ouvrir le détail de la commande ${esc(o.id)}" onclick="if(!event.target.closest('button,a,input,select,textarea,label'))showOrder('${esc(o.id)}')" onkeydown="if((event.key==='Enter'||event.key===' ')&&!event.target.closest('button,a,input,select,textarea,label')){event.preventDefault();showOrder('${esc(o.id)}')}"><td class="account-order-col-reference"><strong>${esc(o.id)}</strong><span class="small-note account-order-date-inline">${esc(fmtDate(o.created_at))}</span><span class="small-note account-order-status-inline">${esc(statusLabel(o.status))}</span></td><td class="account-order-col-date">${esc(fmtDate(o.created_at))}</td><td class="account-order-col-total">${money(o.total)}</td><td class="account-order-col-payment"><span class="small-note">${esc(paymentStatusLabel(o.payment_status))}</span><br><span class="small-note">Payé : ${money(o.amount_paid || 0)}</span><br><span class="small-note">Solde : ${money(balance)}</span></td><td class="account-order-col-tracking"><span class="status ${esc(o.status)}">${esc(statusLabel(o.status))}</span>${orderTrackingHtml(o)}${slotHtml}</td><td class="account-order-col-actions">${actionHtml}</td></tr>`;
-    }).join("") + '</tbody></table></div>' : '<div class="empty compact-empty">Tu n’as pas encore passé de commande en ligne.</div>';
+    }).join("") + '</tbody></table></div>' : '<div class="empty compact-empty">Aucune commande enregistrée dans ton compte pour le moment. Les nouvelles commandes se passent sur WhatsApp.</div>';
     const subscriptionsHtml = renderSubscriptionsHtml(cachedSubscriptions);
     const accountNotificationsHtml = userNotifications.length ? userNotifications.map(n => '<article class="notification-item ' + (n.read_at ? 'read' : 'unread') + '"><div class="notification-title">' + esc(n.title) + '</div><div class="notification-message">' + esc(n.message) + '</div><div class="notification-meta">' + esc(fmtDate(n.created_at)) + (n.read_at ? ' · Lue' : ' · <button class="link-btn dark-link" onclick="markNotificationRead(\'' + esc(n.id) + '\')">Marquer comme lue</button>') + '</div></article>').join("") : '<div class="empty compact-empty">Aucune notification pour le moment.</div>';
     const courierAccountTabHtml = isCourier()
@@ -4494,7 +4494,7 @@
           </div>
         </div>
       </section>
-      ${["awaiting_payment","awaiting_delivery_payment"].includes(o.status) ? `<button class="btn primary full" onclick="retryOrderPayment('${esc(o.id)}')">Reprendre le paiement</button>` : ""}
+      ${["awaiting_payment","awaiting_delivery_payment"].includes(o.status) ? `<button class="btn primary full" onclick="retryOrderPayment('${esc(o.id)}')">Contacter SAMA-PACK</button>` : ""}
     </div>`);
   }
   async function setOrderStatus(id, status) {
@@ -5643,7 +5643,7 @@
 
   // Functions called by inline storefront/admin controls.
   Object.assign(window,{
-    updateContactMessageStatus,openProduct,addToCart,shareProduct,copyProductLink,closeModal,changeQty,checkoutModal,retryOrderPayment,resendPaymentConfirmation,
+    updateContactMessageStatus,openProduct,addToCart,shareProduct,copyProductLink,closeModal,changeQty,checkoutModal,orderProductOnWhatsApp,contactOrderOnWhatsApp,retryOrderPayment,resendPaymentConfirmation,
     showAccountHome,reorderOrder,openBudgetPackBuilder,suggestBudgetPack,changeBudgetBuilderQty,addBudgetPackToCart,signOut,
     renderAuthForm,resetPassword,enableBrowserNotifications,loadAndShowNotifications,markNotificationRead,showAdminView,
     editPack,cancelPackEdit,togglePack,setOrderStatus,showOrder,setQuoteStatus,goToProductPage,movePromo,goToPromo,
