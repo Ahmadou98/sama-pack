@@ -2037,6 +2037,71 @@
   function updateCartCount() { const el = $("cartCount"); if (el) el.textContent = String(cart.reduce((sum, i) => sum + i.qty, 0)); }
   function saveAndRenderCart() { saveCart(); updateCartCount(); renderCartModal(); }
   function cartTotals() { const subtotal = cart.reduce((sum, i) => sum + getEffectivePrice(getP(i.id)) * i.qty, 0); const delivery = Number(appSettings.deliveryFee || 0); return { subtotal, delivery, total: subtotal + delivery }; }
+
+  function buildCustomerWhatsAppDetails() {
+    const profile = currentProfile || {};
+    const name = String(profile.full_name || currentUser?.user_metadata?.full_name || "").trim();
+    const phone = String(profile.phone || currentUser?.user_metadata?.phone || "").trim();
+    const address = profileDeliveryAddress(profile);
+    const zone = profileDeliveryZone(profile);
+    const details = [];
+    if (name) details.push("Nom : " + name);
+    if (phone) details.push("Téléphone / WhatsApp : " + phone);
+    if (address) details.push("Adresse : " + address);
+    if (zone) details.push("Zone / quartier : " + zone);
+    return details.length ? ["Informations de livraison :", ...details] : ["Je vous communiquerai mon nom, mon téléphone et mon adresse de livraison dans cet échange."];
+  }
+
+  function buildProductWhatsAppMessage(product, quantity = 1) {
+    if (!product) return "Bonjour SAMA-PACK, je souhaite obtenir des informations sur un article.";
+    const qty = Math.max(1, Math.min(99, Number(quantity) || 1));
+    const unitPrice = getEffectivePrice(product);
+    const lines = [
+      "Bonjour SAMA-PACK,",
+      "Je souhaite commander l’article suivant :",
+      "",
+      qty + " × " + String(product.name || "Article"),
+      "Référence : " + publicProductRef(product),
+      "Prix unitaire / " + getSaleUnitLabel(product) + " : " + money(unitPrice),
+      "Montant estimatif : " + money(unitPrice * qty)
+    ];
+    if (Array.isArray(product.items) && product.items.length) {
+      lines.push("Composition :");
+      product.items.forEach(item => lines.push("- " + String(item)));
+    }
+    lines.push("", "Livraison : à confirmer selon ma zone.", "Mode de paiement : à la livraison.", "", ...buildCustomerWhatsAppDetails(), "", "Merci de confirmer la disponibilité, le montant final et le délai de livraison.");
+    return lines.join("\n");
+  }
+
+  function buildCartWhatsAppMessage() {
+    const totals = cartTotals();
+    const lines = ["Bonjour SAMA-PACK,", "Je souhaite commander les articles suivants :", ""];
+    cart.forEach(entry => {
+      const product = getP(entry.id);
+      if (!product) return;
+      const quantity = Math.max(1, Number(entry.qty) || 1);
+      const unitPrice = getEffectivePrice(product);
+      lines.push(quantity + " × " + String(product.name || "Article") + " (" + getSaleUnitLabel(product) + ")");
+      lines.push("Prix unitaire : " + money(unitPrice) + " · Sous-total : " + money(unitPrice * quantity));
+      if (Array.isArray(product.items) && product.items.length) {
+        lines.push("Composition :");
+        product.items.forEach(item => lines.push("- " + String(item)));
+      }
+      lines.push("");
+    });
+    lines.push("Sous-total des articles : " + money(totals.subtotal));
+    lines.push("Frais de livraison estimés (à confirmer) : " + money(totals.delivery));
+    lines.push("Total estimatif : " + money(totals.total));
+    lines.push("Mode de paiement : à la livraison.", "", ...buildCustomerWhatsAppDetails(), "", "Merci de confirmer la disponibilité des articles, les frais définitifs et le délai de livraison.");
+    return lines.join("\n");
+  }
+
+  function orderProductOnWhatsApp(productId) {
+    if (isGeneralAdmin()) return toast("Le compte administrateur général n’utilise pas les fonctions d’achat client.", true);
+    const product = getP(String(productId || ""));
+    if (!product || !canSellProduct(product)) return toast("Cet article n’est pas disponible à la commande pour le moment.", true);
+    openWA(buildProductWhatsAppMessage(product, 1));
+  }
   function ensureModalRoot() {
     let root = $("modalRoot");
     if (!root) {
@@ -2060,6 +2125,11 @@
       showModal(`<div class="modal-head"><h2>Ton panier</h2><button class="close" onclick="closeModal()">✕</button></div><div class="empty">Ton panier est vide.<br><br><a class="btn primary" href="#catalogue" onclick="closeModal()">Voir le catalogue</a></div>`);
       return;
     }
+    const cartOrderReady = cart.every(item => { const p = getP(item.id); return canSellProduct(p) && !getCartLineModeMismatch(item); });
+    const cartOrderUrl = cartOrderReady ? whatsappUrl(buildCartWhatsAppMessage()) : "#";
+    const cartOrderAction = cartOrderUrl !== "#"
+      ? '<a class="btn primary full cart-checkout-cta" href="' + esc(cartOrderUrl) + '" target="_blank" rel="noopener noreferrer"><span>Commander sur WhatsApp</span><span class="cart-checkout-arrow" aria-hidden="true">→</span></a>'
+      : '<button class="btn primary full cart-checkout-cta" type="button" onclick="checkoutModal()"><span>Commander sur WhatsApp</span><span class="cart-checkout-arrow" aria-hidden="true">→</span></button>';
     const t = cartTotals();
     const cartQuantity = cart.reduce((sum, item) => sum + Number(item.qty || 0), 0);
     showModal(`<section class="cart-premium" aria-label="Contenu du panier">
@@ -2097,9 +2167,9 @@
       <div class="cart-reassurance" aria-label="Informations de livraison et paiement">
         <span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7h11v10H3zM14 10h4l3 3v4h-7z"/><circle cx="7.5" cy="18" r="1.5"/><circle cx="17.5" cy="18" r="1.5"/></svg>Livraison à Dakar</span>
         <i aria-hidden="true"></i>
-        <span><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3M12 14v3"/></svg>Paiement en ligne sécurisé</span>
+        <span><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3M12 14v3"/></svg>Paiement à la livraison</span>
       </div>
-      <button class="btn primary full cart-checkout-cta" onclick="checkoutModal()"><span>Passer la commande</span><span class="cart-checkout-arrow" aria-hidden="true">→</span></button>
+      ${cartOrderAction}
     </section>`);
     const modalRoot = $("modalRoot");
     modalRoot?.querySelectorAll("[data-odometer]").forEach((node, index) => {
@@ -3433,91 +3503,14 @@
   }
 
   function checkoutModal() {
-    if (isGeneralAdmin()) return toast("La commande en ligne est réservée aux comptes clients.");
+    if (isGeneralAdmin()) return toast("Le compte administrateur général n’utilise pas les fonctions d’achat client.", true);
     if (!cart.length) return toast("Ton panier est vide.", true);
     const unavailableLines = cart.filter(line => { const p = getP(line.id); return !canSellProduct(p); });
     if (unavailableLines.length) return toast("Retire les articles en rupture ou sans prix confirmé du panier avant de commander.", true);
     if (cart.some(getCartLineModeMismatch)) return toast("Le mode de vente d’un article a changé. Retire-le du panier puis ajoute-le à nouveau avant de commander.", true);
-    if (!currentUser) { closeModal(); renderAuthForm("login", "Connecte-toi ou crée un compte pour confirmer ta commande en ligne."); return; }
-    const totals = cartTotals(); const profile = currentProfile || {};
-    const savedAddress = profileDeliveryAddress(profile);
-    const savedZone = profileDeliveryZone(profile);
-    const deliveryAllowed = Number(totals.delivery) > 0;
-    showModal(`<div class="modal-head"><div><div class="eyebrow">COMMANDE EN LIGNE</div><h2>Finaliser la commande</h2></div><button class="close" onclick="closeModal()">✕</button></div>
-      <form id="checkoutForm" class="checkout-grid">
-        <p class="small-note full">Les coordonnées de ton profil sont préremplies. Modifie-les ici seulement si cette commande doit être livrée ailleurs.</p>
-        <input class="input full" name="name" required minlength="2" maxlength="120" placeholder="Nom complet" value="${esc(profile.full_name || currentUser.user_metadata?.full_name || "")}">
-        <input class="input" name="phone" required minlength="8" maxlength="25" placeholder="WhatsApp" value="${esc(profile.phone || currentUser.user_metadata?.phone || "")}">
-        <input class="input" name="zone" placeholder="Zone / quartier" maxlength="300" value="${esc(savedZone)}">
-        <input class="input full" name="address" required minlength="4" maxlength="300" placeholder="Adresse de livraison" value="${esc(savedAddress)}">
-        <input class="input full" name="slot" placeholder="Créneau souhaité (facultatif)" maxlength="120">
-        <div class="payment-choice-list full">
-          <div class="eyebrow">COMMENT SOUHAITES-TU PAYER ?</div>
-          <label class="payment-choice-card is-selected">
-            <input type="radio" name="payment_choice" value="pay_now" checked>
-            <span class="payment-choice-copy"><strong>Payer maintenant</strong><small>Règle la totalité de la commande via Wave, Orange Money ou un autre moyen disponible sur la page sécurisée.</small></span>
-            <strong class="payment-choice-amount">${money(totals.total)}</strong>
-          </label>
-          <label class="payment-choice-card ${deliveryAllowed ? "" : "is-disabled"}">
-            <input type="radio" name="payment_choice" value="pay_later" ${deliveryAllowed ? "" : "disabled"}>
-            <span class="payment-choice-copy"><strong>Payer plus tard</strong><small>Tu règles les frais de livraison maintenant. Le solde des produits est payé à la livraison. Aucun livreur ne part avant confirmation de ce paiement.</small></span>
-            <strong class="payment-choice-amount">${money(totals.delivery)}</strong>
-          </label>
-          ${deliveryAllowed ? "" : '<p class="small-note">Les frais de livraison sont nuls ou indisponibles : seul le paiement intégral est proposé.</p>'}
-        </div>
-        <div class="summary full">
-          <div class="summary-row"><span>Sous-total des articles</span><strong>${money(totals.subtotal)}</strong></div>
-          <div class="summary-row"><span>Frais de livraison</span><strong>${money(totals.delivery)}</strong></div>
-          <div class="summary-row"><span>Total de la commande</span><strong>${money(totals.total)}</strong></div>
-          <div class="summary-row total"><span>À payer maintenant</span><strong id="checkoutAmountNow">${money(totals.total)}</strong></div>
-          <div class="summary-row"><span>Solde prévu à la livraison</span><strong id="checkoutAmountLater">0 FCFA</strong></div>
-          <p id="paymentChoiceHint" class="small-note">Le paiement est confirmé par le prestataire avant que la commande passe en préparation.</p>
-        </div>
-        <button class="btn primary full" type="submit">Continuer vers le paiement sécurisé</button>
-      </form>`);
-    const form = $("checkoutForm");
-    const syncPaymentChoice = () => {
-      const selected = form.querySelector('input[name="payment_choice"]:checked')?.value || "pay_now";
-      form.querySelectorAll(".payment-choice-card").forEach(card => card.classList.toggle("is-selected", card.querySelector('input[name="payment_choice"]')?.value === selected));
-      const amountNow = selected === "pay_now" ? totals.total : totals.delivery;
-      const amountLater = selected === "pay_now" ? 0 : totals.subtotal;
-      if ($("checkoutAmountNow")) $("checkoutAmountNow").textContent = money(amountNow);
-      if ($("checkoutAmountLater")) $("checkoutAmountLater").textContent = money(amountLater);
-      if ($("paymentChoiceHint")) $("paymentChoiceHint").textContent = selected === "pay_now"
-        ? "La commande ne sera confirmée qu’après vérification du paiement intégral par le prestataire."
-        : "Seuls les frais de livraison sont payés maintenant. Le solde reste dû à la livraison. Pas de départ du livreur avant confirmation du paiement de la livraison.";
-    };
-    form.querySelectorAll('input[name="payment_choice"]').forEach(input => input.addEventListener("change", syncPaymentChoice));
-    syncPaymentChoice();
-    form.onsubmit = async e => {
-      e.preventDefault();
-      if (!currentUser) return toast("Reconnecte-toi avant de confirmer la commande.", true);
-      const f = new FormData(form);
-      const orderPhone = normalizeWhatsAppNumber(f.get("phone"));
-      if (!orderPhone) return toast("Saisis un numéro WhatsApp valide pour cette commande.", true);
-      const paymentChoice = String(f.get("payment_choice") || "pay_now");
-      if (paymentChoice === "pay_later" && !deliveryAllowed) return toast("Le paiement plus tard exige des frais de livraison à régler maintenant.", true);
-      setBusy(form, true, "Création de la commande…");
-      const payload = {
-        customer: { name: String(f.get("name") || "").trim(), phone: orderPhone, address: String(f.get("address") || "").trim(), zone: String(f.get("zone") || "").trim() },
-        slot: String(f.get("slot") || "").trim(),
-        payment_choice: paymentChoice,
-        business_account_id: currentBusinessAccount?.id || null,
-        sales_referral_code: getSalesReferralCode(),
-        items: cart.map(i => ({ product_id: i.id, quantity: i.qty }))
-      };
-      const { data, error } = await client.rpc("sama_place_order", { p_payload: payload });
-      setBusy(form, false);
-      if (error) return toast(errorMessage(error), true);
-      const order = data?.order;
-      if (!data?.ok || !order?.id) return toast("La commande n’a pas pu être préparée. Réessaie.", true);
-      const profileUpdate = await client.from("profiles").update({full_name:payload.customer.name,phone:payload.customer.phone}).eq("id",currentUser.id);
-      if (!profileUpdate.error) currentProfile = {...(currentProfile||{}),full_name:payload.customer.name,phone:payload.customer.phone};
-      cart = []; saveCart(); updateCartCount();
-      try { localStorage.setItem("sama_pack_pending_payment_v1", order.id); } catch { /* stockage facultatif */ }
-      closeModal();
-      await retryOrderPayment(order.id);
-    };
+    const url = whatsappUrl(buildCartWhatsAppMessage());
+    if (url === "#") return toast("Le numéro WhatsApp professionnel doit être configuré dans Gestion → Paramètres.", true);
+    window.open(url, "_blank", "noopener,noreferrer");
   }
 
   async function paymentFunctionError(error, fallback) {
