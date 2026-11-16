@@ -2397,7 +2397,7 @@
 
   function renderAuthForm(mode = "login", message = "") {
     const signup = mode === "signup";
-    showModal(`<div class="modal-head"><div><div class="eyebrow">ESPACE CLIENT</div><h2>${signup ? "Créer un compte" : "Se connecter"}</h2></div><button class="close" onclick="closeModal()">✕</button></div><p class="muted">Crée ton compte pour commander directement sur Sama-Pack, retrouver tes commandes et recevoir des notifications.</p>${message ? `<div class="inline-message">${esc(message)}</div>` : ""}<form id="authForm" class="checkout-grid">
+    showModal(`<div class="modal-head"><div><div class="eyebrow">ESPACE CLIENT</div><h2>${signup ? "Créer un compte" : "Se connecter"}</h2></div><button class="close" onclick="closeModal()">✕</button></div><p class="muted">Crée ton compte pour gérer ton profil et retrouver tes anciennes commandes. Pour une nouvelle commande, utilise le bouton WhatsApp de la boutique.</p>${message ? `<div class="inline-message">${esc(message)}</div>` : ""}<form id="authForm" class="checkout-grid">
       <label class="full ${signup ? "" : "hidden"}">Nom complet<input class="input" name="full_name" placeholder="Nom complet" autocomplete="name" ${signup ? "required minlength=2 maxlength=120" : ""}></label>
       <label class="full">Adresse e-mail<input class="input" name="email" type="email" required maxlength="254" placeholder="Adresse e-mail" autocomplete="email"></label>
       <label class="${signup ? "" : "hidden"}">WhatsApp (obligatoire)<input class="input" id="signupPhone" name="phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="+221 77 123 45 67" ${signup ? "required maxlength=25" : "disabled"}></label>
